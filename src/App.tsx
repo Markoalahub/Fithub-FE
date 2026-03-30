@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import PMDashboard from './components/PMDashboard';
 import DevDashboard from './components/DevDashboard';
 import AdminDashboard from './components/AdminDashboard';
-import { MessageSquare } from 'lucide-react';
+import LoginScreen from './components/LoginScreen';
+import { LogOut, MessageSquare } from 'lucide-react';
 import appConfig from '@/app.config';
+import type { AuthUser } from './types/auth';
 
 export type Task = { id: string; title: string; completed: boolean; isAiSuggested?: boolean };
 export type Feature = { id: number; name: string; tasks: Task[] };
@@ -67,17 +69,39 @@ const initialTimeline: TimelineMessage[] = [
   }
 ];
 
+type ViewType = 'pm' | 'dev' | 'admin';
+
 export default function App() {
-  const [currentView, setCurrentView] = useState('pm');
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const [currentView, setCurrentView] = useState<ViewType>('pm');
   const [features, setFeatures] = useState<Feature[]>(initialFeatures);
   const [timelineEvents, setTimelineEvents] = useState<TimelineMessage[]>(initialTimeline);
   const [proposalStatus, setProposalStatus] = useState<'discussing' | 'dev_confirmed' | 'pm_confirmed'>('discussing');
 
-  const tabs = [
-    { id: 'pm', label: '기획자 대시보드' },
-    { id: 'dev', label: '개발자 대시보드' },
-    { id: 'admin', label: '관리자 설정' },
-  ];
+  const tabs = useMemo<{ id: ViewType; label: string }[]>(() => {
+    if (!authUser) return [];
+    if (authUser.role === 'pm') {
+      return [
+        { id: 'pm', label: '기획자 대시보드' },
+        { id: 'admin', label: '관리자 설정' },
+      ];
+    }
+    return [{ id: 'dev', label: '개발자 대시보드' }];
+  }, [authUser]);
+
+  const handleLogin = (user: AuthUser) => {
+    setAuthUser(user);
+    setCurrentView(user.role === 'pm' ? 'pm' : 'dev');
+  };
+
+  const handleLogout = () => {
+    setAuthUser(null);
+    setCurrentView('pm');
+  };
+
+  if (!authUser) {
+    return <LoginScreen onLogin={handleLogin} />;
+  }
 
   return (
     <div className="flex flex-col h-screen bg-gray-50 text-gray-900 font-sans">
@@ -105,12 +129,27 @@ export default function App() {
           ))}
         </div>
         
-        <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold">
-          U
+        <div className="flex items-center gap-3">
+          <div className="text-right">
+            <p className="text-sm font-semibold text-gray-800">{authUser.name}</p>
+            <p className="text-xs text-gray-500">
+              {authUser.role === 'pm' ? '기획자' : '개발자'} · {authUser.provider === 'github' ? 'GitHub' : '카카오'} 로그인
+            </p>
+          </div>
+          <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold">
+            {authUser.name[0]}
+          </div>
+          <button
+            onClick={handleLogout}
+            className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50"
+          >
+            <LogOut className="h-3.5 w-3.5" />
+            로그아웃
+          </button>
         </div>
       </header>
       <main className="flex-1 overflow-y-auto">
-        {currentView === 'pm' && (
+        {authUser.role === 'pm' && currentView === 'pm' && (
           <PMDashboard 
             features={features} 
             setFeatures={setFeatures}
@@ -120,7 +159,7 @@ export default function App() {
             setProposalStatus={setProposalStatus}
           />
         )}
-        {currentView === 'dev' && (
+        {authUser.role === 'dev' && currentView === 'dev' && (
           <DevDashboard 
             features={features} 
             setFeatures={setFeatures}
@@ -130,7 +169,7 @@ export default function App() {
             setProposalStatus={setProposalStatus}
           />
         )}
-        {currentView === 'admin' && <AdminDashboard />}
+        {authUser.role === 'pm' && currentView === 'admin' && <AdminDashboard />}
       </main>
     </div>
   );
