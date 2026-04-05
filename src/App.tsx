@@ -348,6 +348,19 @@ export default function App() {
     );
   };
 
+  const cancelQuestionConfirmByPm = (questionId: string) => {
+    setFeatureQuestions((prev) =>
+      prev.map((question) =>
+        question.id === questionId && !question.closed
+          ? {
+              ...question,
+              pmConfirmed: false,
+            }
+          : question,
+      ),
+    );
+  };
+
   const confirmQuestionByDev = (questionId: string) => {
     setFeatureQuestions((prev) =>
       prev.map((question) => {
@@ -499,6 +512,7 @@ export default function App() {
               }
               onDeleteQuestion={deleteFeatureQuestion}
               onConfirmQuestionByPm={confirmQuestionByPm}
+              onCancelQuestionConfirmByPm={cancelQuestionConfirmByPm}
               onTogglePmTaskConfirm={togglePmTaskConfirm}
               onMoveSection={(next) => setCurrentSection(next)}
             />

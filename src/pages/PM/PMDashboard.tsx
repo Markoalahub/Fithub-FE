@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
-  ArrowLeft,
   ArrowRight,
   Check,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
   GitPullRequest,
+  GripVertical,
   MessageSquare,
   Pencil,
   Plus,
@@ -36,6 +36,7 @@ interface PMDashboardProps {
   onDeleteQuestionMessage: (questionId: string, messageId: string) => void;
   onDeleteQuestion: (questionId: string) => void;
   onConfirmQuestionByPm: (questionId: string) => void;
+  onCancelQuestionConfirmByPm: (questionId: string) => void;
   onTogglePmTaskConfirm: (featureId: number, taskId: string) => void;
   onMoveSection: (section: "pm-ai" | "pm-pipeline" | "pm-review") => void;
 }
@@ -53,6 +54,7 @@ export default function PMDashboard({
   onDeleteQuestionMessage,
   onDeleteQuestion,
   onConfirmQuestionByPm,
+  onCancelQuestionConfirmByPm,
   onTogglePmTaskConfirm,
   onMoveSection,
 }: PMDashboardProps) {
@@ -77,6 +79,12 @@ export default function PMDashboard({
   const [newMessageInput, setNewMessageInput] = useState("");
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editingMessageInput, setEditingMessageInput] = useState("");
+  const [draggingFeatureId, setDraggingFeatureId] = useState<number | null>(
+    null,
+  );
+  const [dragOverFeatureId, setDragOverFeatureId] = useState<number | null>(
+    null,
+  );
 
   const activeQuestions = useMemo(
     () => featureQuestions.filter((question) => !question.closed),
@@ -110,19 +118,20 @@ export default function PMDashboard({
     );
   };
 
-  const moveFeature = (featureId: number, direction: "left" | "right") => {
+  const reorderFeatures = (dragFeatureId: number, targetFeatureId: number) => {
     setFeatures((prev) => {
-      const currentIndex = prev.findIndex(
-        (feature) => feature.id === featureId,
+      const dragIndex = prev.findIndex(
+        (feature) => feature.id === dragFeatureId,
       );
-      if (currentIndex === -1) return prev;
-
-      const targetIndex =
-        direction === "left" ? currentIndex - 1 : currentIndex + 1;
-      if (targetIndex < 0 || targetIndex >= prev.length) return prev;
+      const targetIndex = prev.findIndex(
+        (feature) => feature.id === targetFeatureId,
+      );
+      if (dragIndex === -1 || targetIndex === -1 || dragIndex === targetIndex) {
+        return prev;
+      }
 
       const next = [...prev];
-      const [item] = next.splice(currentIndex, 1);
+      const [item] = next.splice(dragIndex, 1);
       next.splice(targetIndex, 0, item);
       return next;
     });
@@ -282,17 +291,15 @@ export default function PMDashboard({
     };
   };
 
-  const totalTasks = features.reduce(
-    (acc, feature) => acc + feature.tasks.length,
-    0,
-  );
-  const totalPmConfirmed = features.reduce(
-    (acc, feature) =>
-      acc + feature.tasks.filter((task) => task.pmConfirmed).length,
-    0,
-  );
   const totalProgress =
-    totalTasks === 0 ? 0 : Math.round((totalPmConfirmed / totalTasks) * 100);
+    features.length === 0
+      ? 0
+      : Math.round(
+          features.reduce(
+            (acc, feature) => acc + calculateProgress(feature.tasks).pm,
+            0,
+          ) / features.length,
+        );
 
   if (section === "ai") {
     return (
@@ -495,85 +502,109 @@ export default function PMDashboard({
 
               return (
                 <div key={feature.id} className="inline-flex items-start gap-3">
-                  <article className="w-[320px] rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-                    <div className="flex items-start justify-between gap-2">
-                      <button
-                        onClick={() => toggleFeatureExpand(feature.id)}
-                        className="inline-flex items-center gap-2 text-left"
-                      >
-                        {isExpanded ? (
-                          <ChevronUp className="h-4 w-4 text-indigo-500" />
-                        ) : (
-                          <ChevronDown className="h-4 w-4 text-indigo-500" />
-                        )}
-
-                        {editingFeatureId === feature.id ? (
-                          <input
-                            value={editingFeatureName}
-                            onChange={(event) =>
-                              setEditingFeatureName(event.target.value)
-                            }
-                            className="w-40 rounded-lg border border-gray-300 px-2 py-1 text-sm"
-                          />
-                        ) : (
-                          <h4 className="font-semibold text-gray-900">
-                            {feature.name}
-                          </h4>
-                        )}
-                      </button>
-
-                      <div className="flex items-center gap-1">
+                  <article
+                    draggable={editingFeatureId !== feature.id}
+                    onDragStart={() => setDraggingFeatureId(feature.id)}
+                    onDragOver={(event) => {
+                      event.preventDefault();
+                      if (dragOverFeatureId !== feature.id) {
+                        setDragOverFeatureId(feature.id);
+                      }
+                    }}
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      if (draggingFeatureId === null) return;
+                      reorderFeatures(draggingFeatureId, feature.id);
+                      setDraggingFeatureId(null);
+                      setDragOverFeatureId(null);
+                    }}
+                    onDragEnd={() => {
+                      setDraggingFeatureId(null);
+                      setDragOverFeatureId(null);
+                    }}
+                    className={`w-[280px] sm:w-[320px] rounded-2xl border bg-white p-4 shadow-sm transition-all ${
+                      draggingFeatureId === feature.id ? "opacity-60" : ""
+                    } ${
+                      dragOverFeatureId === feature.id &&
+                      draggingFeatureId !== feature.id
+                        ? "border-indigo-300 ring-2 ring-indigo-200"
+                        : "border-gray-200"
+                    }`}
+                  >
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-start gap-2 min-w-0">
                         <button
-                          onClick={() => moveFeature(feature.id, "left")}
-                          className="rounded-md border border-gray-200 p-1 text-gray-500 hover:bg-gray-50"
-                          title="왼쪽으로 이동"
+                          onClick={() => toggleFeatureExpand(feature.id)}
+                          className="mt-0.5 shrink-0"
                         >
-                          <ArrowLeft className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          onClick={() => moveFeature(feature.id, "right")}
-                          className="rounded-md border border-gray-200 p-1 text-gray-500 hover:bg-gray-50"
-                          title="오른쪽으로 이동"
-                        >
-                          <ArrowRight className="h-3.5 w-3.5" />
+                          {isExpanded ? (
+                            <ChevronUp className="h-4 w-4 text-indigo-500" />
+                          ) : (
+                            <ChevronDown className="h-4 w-4 text-indigo-500" />
+                          )}
                         </button>
 
-                        {editingFeatureId === feature.id ? (
-                          <>
-                            <button
-                              onClick={saveFeatureEdit}
-                              className="rounded-md bg-indigo-600 px-2 py-1 text-xs font-semibold text-white"
-                            >
-                              저장
-                            </button>
-                            <button
-                              onClick={() => {
-                                setEditingFeatureId(null);
-                                setEditingFeatureName("");
-                              }}
-                              className="rounded-md border border-gray-300 px-2 py-1 text-xs font-semibold text-gray-600"
-                            >
-                              취소
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <button
-                              onClick={() => startEditFeature(feature)}
-                              className="rounded-md border border-gray-200 p-1 text-gray-500 hover:bg-gray-50"
-                              title="기능 이름 수정"
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </button>
-                            <button
-                              onClick={() => deleteFeature(feature.id)}
-                              className="rounded-md border border-red-200 p-1 text-red-500 hover:bg-red-50"
-                              title="기능 삭제"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </>
-                        )}
+                        <div className="min-w-0 flex-1">
+                          {editingFeatureId === feature.id ? (
+                            <input
+                              value={editingFeatureName}
+                              onChange={(event) =>
+                                setEditingFeatureName(event.target.value)
+                              }
+                              className="w-full rounded-lg border border-gray-300 px-2.5 py-1.5 text-sm"
+                            />
+                          ) : (
+                            <h4 className="font-semibold text-gray-900 truncate">
+                              {feature.name}
+                            </h4>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="inline-flex items-center gap-1 text-[11px] text-gray-400">
+                          <GripVertical className="h-3.5 w-3.5" />
+                          드래그로 순서 변경
+                        </span>
+
+                        <div className="flex items-center gap-1 flex-wrap justify-end">
+                          {editingFeatureId === feature.id ? (
+                            <>
+                              <button
+                                onClick={saveFeatureEdit}
+                                className="rounded-md bg-indigo-600 px-2 py-1 text-xs font-semibold text-white"
+                              >
+                                저장
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setEditingFeatureId(null);
+                                  setEditingFeatureName("");
+                                }}
+                                className="rounded-md border border-gray-300 px-2 py-1 text-xs font-semibold text-gray-600"
+                              >
+                                취소
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                onClick={() => startEditFeature(feature)}
+                                className="rounded-md border border-gray-200 p-1 text-gray-500 hover:bg-gray-50"
+                                title="기능 이름 수정"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                onClick={() => deleteFeature(feature.id)}
+                                className="rounded-md border border-red-200 p-1 text-red-500 hover:bg-red-50"
+                                title="기능 삭제"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </div>
                     </div>
 
@@ -658,17 +689,13 @@ export default function PMDashboard({
     );
   }
 
-  const selectedSummary = selectedQuestion
-    ? {
-        messageCount: selectedQuestion.messages.length,
-        pmCount: selectedQuestion.messages.filter(
-          (message) => message.role === "pm",
-        ).length,
-        devCount: selectedQuestion.messages.filter(
-          (message) => message.role === "dev",
-        ).length,
-      }
-    : null;
+  const firstQuestionMessage =
+    selectedQuestion?.messages.find((message) => message.role === "pm") ??
+    selectedQuestion?.messages[0];
+
+  const latestMessage = selectedQuestion
+    ? selectedQuestion.messages[selectedQuestion.messages.length - 1]
+    : undefined;
 
   return (
     <section className="grid grid-cols-1 xl:grid-cols-[280px_1fr_320px] gap-5">
@@ -733,19 +760,10 @@ export default function PMDashboard({
       </div>
 
       <div className="rounded-3xl border border-gray-200 bg-white shadow-sm min-h-[620px] flex flex-col">
-        <div className="p-5 border-b border-gray-100 flex items-center justify-between gap-3">
+        <div className="p-5 border-b border-gray-100">
           <h3 className="font-semibold text-gray-800 flex items-center gap-2">
             <MessageSquare className="h-5 w-5" /> 기능 질문 타임라인
           </h3>
-
-          {selectedQuestion && (
-            <button
-              onClick={() => onDeleteQuestion(selectedQuestion.id)}
-              className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-2.5 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50"
-            >
-              <Trash2 className="h-3.5 w-3.5" /> 질문 삭제
-            </button>
-          )}
         </div>
 
         {!selectedQuestion && (
@@ -756,20 +774,6 @@ export default function PMDashboard({
 
         {selectedQuestion && (
           <>
-            <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/60">
-              <div className="flex flex-wrap items-center gap-2 text-xs">
-                <span className="rounded-full bg-indigo-100 px-2.5 py-1 font-semibold text-indigo-700">
-                  {selectedQuestion.featureName}
-                </span>
-                <span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold text-slate-700">
-                  {selectedQuestion.taskTitle ?? "기능 전체"}
-                </span>
-                <span className="text-gray-500">
-                  생성 {selectedQuestion.createdAt}
-                </span>
-              </div>
-            </div>
-
             <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
               {selectedQuestion.messages.map((message) => {
                 const isPm = message.role === "pm";
@@ -854,46 +858,33 @@ export default function PMDashboard({
               })}
             </div>
 
-            <div className="p-4 border-t border-gray-100 space-y-3">
-              {selectedQuestion.pmConfirmed ? (
-                <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
-                  PM 컨펌 완료됨. 개발자의 최종 확인 시 이 질문이 닫힙니다.
-                </div>
-              ) : (
-                <>
-                  <div className="flex gap-2">
-                    <input
-                      value={newMessageInput}
-                      onChange={(event) =>
-                        setNewMessageInput(event.target.value)
-                      }
-                      onKeyDown={(event) => {
-                        if (event.key !== "Enter") return;
-                        if (event.nativeEvent.isComposing) return;
-                        event.preventDefault();
-                        submitNewMessage();
-                      }}
-                      placeholder="추가 질문을 입력하세요"
-                      className="flex-1 rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:border-indigo-400 focus:outline-none"
-                    />
-                    <button
-                      onClick={submitNewMessage}
-                      className="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-3 text-white hover:bg-indigo-700"
-                    >
-                      <Send className="h-4 w-4" />
-                    </button>
-                  </div>
-
-                  <div className="flex justify-end">
-                    <button
-                      onClick={() => onConfirmQuestionByPm(selectedQuestion.id)}
-                      className="inline-flex items-center gap-2 rounded-xl bg-green-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-green-700"
-                    >
-                      <Check className="h-4 w-4" /> PM 컨펌 요청
-                    </button>
-                  </div>
-                </>
-              )}
+            <div className="p-4 border-t border-gray-100">
+              <div className="flex gap-2">
+                <input
+                  value={newMessageInput}
+                  onChange={(event) => setNewMessageInput(event.target.value)}
+                  disabled={selectedQuestion.pmConfirmed}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter") return;
+                    if (event.nativeEvent.isComposing) return;
+                    event.preventDefault();
+                    submitNewMessage();
+                  }}
+                  placeholder={
+                    selectedQuestion.pmConfirmed
+                      ? "컨펌 이후에는 채팅이 잠깁니다"
+                      : "추가 질문을 입력하세요"
+                  }
+                  className="flex-1 rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:border-indigo-400 focus:outline-none disabled:bg-gray-100 disabled:text-gray-400"
+                />
+                <button
+                  onClick={submitNewMessage}
+                  disabled={selectedQuestion.pmConfirmed}
+                  className="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-3 text-white hover:bg-indigo-700 disabled:bg-gray-300"
+                >
+                  <Send className="h-4 w-4" />
+                </button>
+              </div>
             </div>
           </>
         )}
@@ -908,52 +899,28 @@ export default function PMDashboard({
           <p className="text-sm text-gray-500">선택된 질문이 없습니다.</p>
         )}
 
-        {selectedQuestion && selectedSummary && (
+        {selectedQuestion && (
           <div className="space-y-4">
             <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
-              <p className="font-semibold text-gray-900">
+              <p className="text-xs text-gray-500">기능</p>
+              <p className="font-semibold text-gray-900 mt-1">
                 {selectedQuestion.featureName}
               </p>
-              <p className="text-xs mt-1">
+              <p className="text-xs text-gray-500 mt-3">세부작업</p>
+              <p className="text-sm text-gray-800 mt-1">
                 {selectedQuestion.taskTitle ?? "기능 전체"}
+              </p>
+              <p className="text-xs text-gray-500 mt-3">질문 생성</p>
+              <p className="text-sm text-gray-800 mt-1">
+                {selectedQuestion.createdAt}
               </p>
             </div>
 
-            <div className="grid grid-cols-3 gap-2 text-center text-xs">
-              <div className="rounded-lg bg-indigo-50 border border-indigo-100 px-2 py-2">
-                <p className="font-semibold text-indigo-700">총 메시지</p>
-                <p className="text-lg font-bold text-indigo-900 mt-1">
-                  {selectedSummary.messageCount}
-                </p>
-              </div>
-              <div className="rounded-lg bg-blue-50 border border-blue-100 px-2 py-2">
-                <p className="font-semibold text-blue-700">PM</p>
-                <p className="text-lg font-bold text-blue-900 mt-1">
-                  {selectedSummary.pmCount}
-                </p>
-              </div>
-              <div className="rounded-lg bg-emerald-50 border border-emerald-100 px-2 py-2">
-                <p className="font-semibold text-emerald-700">DEV</p>
-                <p className="text-lg font-bold text-emerald-900 mt-1">
-                  {selectedSummary.devCount}
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              {selectedQuestion.messages.slice(-6).map((message) => (
-                <div
-                  key={message.id}
-                  className="rounded-lg border border-gray-200 px-3 py-2 text-xs"
-                >
-                  <p className="font-semibold text-gray-600">
-                    {message.role.toUpperCase()} · {message.createdAt}
-                  </p>
-                  <p className="mt-1 text-gray-800 line-clamp-2">
-                    {message.content}
-                  </p>
-                </div>
-              ))}
+            <div className="rounded-xl border border-gray-200 p-3 text-xs space-y-2">
+              <p className="text-gray-500">질문 본문</p>
+              <p className="text-gray-800 leading-relaxed">
+                {firstQuestionMessage?.content ?? "질문 내용이 없습니다."}
+              </p>
             </div>
 
             <div className="rounded-xl border border-gray-200 p-3 text-xs space-y-1">
@@ -983,10 +950,61 @@ export default function PMDashboard({
               </p>
               <p className="flex items-center justify-between">
                 <span className="text-gray-500">질문 상태</span>
-                <span className="inline-flex items-center gap-1 font-semibold text-indigo-700">
-                  <CheckCircle2 className="h-3.5 w-3.5" /> 진행중
+                <span
+                  className={`inline-flex items-center gap-1 font-semibold ${
+                    selectedQuestion.pmConfirmed
+                      ? "text-amber-700"
+                      : "text-indigo-700"
+                  }`}
+                >
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  {selectedQuestion.pmConfirmed
+                    ? "DEV 최종확인 대기"
+                    : "대화중"}
                 </span>
               </p>
+            </div>
+
+            <div className="rounded-xl border border-gray-200 p-3 text-xs space-y-2">
+              <p className="text-gray-500">이벤트</p>
+              <p className="text-gray-800">
+                - 질문 생성: {selectedQuestion.createdAt}
+              </p>
+              <p className="text-gray-800">
+                - 최근 업데이트: {latestMessage?.createdAt ?? "-"}
+              </p>
+              <p className="text-gray-800">
+                - 최근 발화자: {latestMessage?.role?.toUpperCase() ?? "-"}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              {!selectedQuestion.pmConfirmed && (
+                <button
+                  onClick={() => onConfirmQuestionByPm(selectedQuestion.id)}
+                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-green-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-green-700"
+                >
+                  <Check className="h-4 w-4" /> PM 컨펌 요청
+                </button>
+              )}
+
+              {selectedQuestion.pmConfirmed && (
+                <button
+                  onClick={() =>
+                    onCancelQuestionConfirmByPm(selectedQuestion.id)
+                  }
+                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-100"
+                >
+                  <X className="h-4 w-4" /> PM 컨펌 취소
+                </button>
+              )}
+
+              <button
+                onClick={() => onDeleteQuestion(selectedQuestion.id)}
+                className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-red-200 px-3.5 py-2 text-xs font-semibold text-red-600 hover:bg-red-50"
+              >
+                <Trash2 className="h-4 w-4" /> 질문 삭제
+              </button>
             </div>
           </div>
         )}
