@@ -1,11 +1,11 @@
 import { useMemo, useState } from "react";
-import PMDashboard from "./pages/Home/PMDashboard";
-import DevDashboard from "./pages/Home/DevDashboard";
+import PMDashboard from "./pages/PM/PMDashboard";
+import DevDashboard from "./pages/Dev/DevDashboard";
 import AdminDashboard from "./pages/Admin/AdminDashboard";
 import LoginScreen from "./pages/Auth/LoginScreen";
 import { LogOut, MessageSquare } from "lucide-react";
 import appConfig from "@/app.config";
-import type { AuthUser, Feature, TimelineMessage } from "./types";
+import type { AuthUser, Feature, TimelineMessage } from "./types/index";
 
 const initialFeatures: Feature[] = [
   {
@@ -82,10 +82,7 @@ export default function App() {
   const tabs = useMemo<{ id: ViewType; label: string }[]>(() => {
     if (!authUser) return [];
     if (authUser.role === "pm") {
-      return [
-        { id: "pm", label: "기획자 대시보드" },
-        { id: "admin", label: "관리자 설정" },
-      ];
+      return [{ id: "pm", label: "기획자 대시보드" }];
     }
     return [{ id: "dev", label: "개발자 대시보드" }];
   }, [authUser]);
@@ -120,7 +117,10 @@ export default function App() {
               key={tab.id}
               onClick={() => setCurrentView(tab.id)}
               className={`px-6 py-2 rounded-full text-sm font-medium transition-all ${
-                currentView === tab.id
+                currentView === tab.id ||
+                (authUser.role === "pm" &&
+                  currentView === "admin" &&
+                  tab.id === "pm")
                   ? "bg-white text-indigo-600 shadow-sm"
                   : "text-gray-500 hover:text-gray-900"
               }`}
@@ -161,6 +161,7 @@ export default function App() {
             setTimelineEvents={setTimelineEvents}
             proposalStatus={proposalStatus}
             setProposalStatus={setProposalStatus}
+            onOpenSettings={() => setCurrentView("admin")}
           />
         )}
         {authUser.role === "dev" && currentView === "dev" && (

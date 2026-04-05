@@ -1,7 +1,11 @@
 import { FormEvent, useState } from "react";
 import { Github, LogIn } from "lucide-react";
 import appConfig from "@/app.config";
-import { demoAccounts, type AuthUser, type LoginProvider } from "../../types";
+import {
+  demoAccounts,
+  type AuthUser,
+  type LoginProvider,
+} from "../../types/index";
 
 interface LoginScreenProps {
   onLogin: (user: AuthUser) => void;
