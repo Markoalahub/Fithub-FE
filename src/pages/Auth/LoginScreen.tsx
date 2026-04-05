@@ -71,6 +71,20 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
       ? "bg-gray-900 text-white hover:bg-gray-800"
       : "bg-yellow-300 text-gray-900 hover:bg-yellow-400";
 
+  const handleQuickLogin = (role: "pm" | "dev") => {
+    const matchedAccount = demoAccounts.find(
+      (account) => account.role === role,
+    );
+
+    if (!matchedAccount) {
+      setError("데모 계정을 찾지 못했습니다.");
+      return;
+    }
+
+    setError("");
+    onLogin(toAuthUser(matchedAccount, selectedProvider));
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-sky-50 px-6 py-8 text-gray-900">
       <div className="mx-auto flex w-full max-w-md items-center justify-center py-12">
@@ -109,6 +123,28 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
               <KakaoTalkIcon className="h-4 w-4" />
               카카오
             </button>
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-3">
+            <p className="text-xs font-semibold text-indigo-800 mb-2">
+              원클릭 데모 로그인
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => handleQuickLogin("pm")}
+                className="rounded-xl bg-indigo-600 px-3 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700"
+              >
+                기획자 로그인
+              </button>
+              <button
+                type="button"
+                onClick={() => handleQuickLogin("dev")}
+                className="rounded-xl bg-slate-800 px-3 py-2.5 text-sm font-semibold text-white hover:bg-slate-900"
+              >
+                개발자 로그인
+              </button>
+            </div>
           </div>
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
