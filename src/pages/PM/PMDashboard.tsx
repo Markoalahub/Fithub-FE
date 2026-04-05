@@ -42,6 +42,10 @@ interface PMDashboardProps {
 }
 
 const makeTaskId = (featureId: number) => `${featureId}-${Date.now()}`;
+const FEATURE_NAME_MAX_LENGTH = 40;
+const TASK_TITLE_MAX_LENGTH = 90;
+const QUESTION_TEXT_MAX_LENGTH = 280;
+const TIMELINE_MESSAGE_MAX_LENGTH = 220;
 
 export default function PMDashboard({
   section,
@@ -65,6 +69,8 @@ export default function PMDashboard({
   const [editingFeatureId, setEditingFeatureId] = useState<number | null>(null);
   const [editingFeatureName, setEditingFeatureName] = useState("");
   const [taskDrafts, setTaskDrafts] = useState<Record<number, string>>({});
+  const [editingTaskKey, setEditingTaskKey] = useState<string | null>(null);
+  const [editingTaskTitle, setEditingTaskTitle] = useState("");
 
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [selectedFeatureId, setSelectedFeatureId] = useState("");
@@ -85,6 +91,11 @@ export default function PMDashboard({
   const [dragOverFeatureId, setDragOverFeatureId] = useState<number | null>(
     null,
   );
+  const [draggingTask, setDraggingTask] = useState<{
+    featureId: number;
+    taskId: string;
+  } | null>(null);
+  const [dragOverTaskKey, setDragOverTaskKey] = useState<string | null>(null);
 
   const activeQuestions = useMemo(
     () => featureQuestions.filter((question) => !question.closed),
@@ -137,8 +148,43 @@ export default function PMDashboard({
     });
   };
 
+  const reorderTasks = (
+    featureId: number,
+    dragTaskId: string,
+    targetTaskId: string,
+  ) => {
+    setFeatures((prev) =>
+      prev.map((feature) => {
+        if (feature.id !== featureId) return feature;
+
+        const dragIndex = feature.tasks.findIndex(
+          (task) => task.id === dragTaskId,
+        );
+        const targetIndex = feature.tasks.findIndex(
+          (task) => task.id === targetTaskId,
+        );
+        if (
+          dragIndex === -1 ||
+          targetIndex === -1 ||
+          dragIndex === targetIndex
+        ) {
+          return feature;
+        }
+
+        const nextTasks = [...feature.tasks];
+        const [movedTask] = nextTasks.splice(dragIndex, 1);
+        nextTasks.splice(targetIndex, 0, movedTask);
+
+        return {
+          ...feature,
+          tasks: nextTasks,
+        };
+      }),
+    );
+  };
+
   const createFeature = () => {
-    const trimmed = newFeatureName.trim();
+    const trimmed = newFeatureName.trim().slice(0, FEATURE_NAME_MAX_LENGTH);
     if (!trimmed) return;
 
     const nextId =
@@ -164,7 +210,7 @@ export default function PMDashboard({
 
   const saveFeatureEdit = () => {
     if (editingFeatureId === null) return;
-    const trimmed = editingFeatureName.trim();
+    const trimmed = editingFeatureName.trim().slice(0, FEATURE_NAME_MAX_LENGTH);
     if (!trimmed) return;
 
     setFeatures((prev) =>
@@ -188,7 +234,9 @@ export default function PMDashboard({
   };
 
   const addTask = (featureId: number) => {
-    const draft = (taskDrafts[featureId] ?? "").trim();
+    const draft = (taskDrafts[featureId] ?? "")
+      .trim()
+      .slice(0, TASK_TITLE_MAX_LENGTH);
     if (!draft) return;
 
     setFeatures((prev) =>
@@ -213,6 +261,58 @@ export default function PMDashboard({
     setTaskDrafts((prev) => ({ ...prev, [featureId]: "" }));
   };
 
+  const getTaskEditKey = (featureId: number, taskId: string) =>
+    `${featureId}:${taskId}`;
+
+  const startEditTask = (featureId: number, task: Task) => {
+    setEditingTaskKey(getTaskEditKey(featureId, task.id));
+    setEditingTaskTitle(task.title);
+  };
+
+  const cancelTaskEdit = () => {
+    setEditingTaskKey(null);
+    setEditingTaskTitle("");
+  };
+
+  const saveTaskEdit = (featureId: number, taskId: string) => {
+    const trimmed = editingTaskTitle.trim().slice(0, TASK_TITLE_MAX_LENGTH);
+    if (!trimmed) return;
+
+    setFeatures((prev) =>
+      prev.map((feature) =>
+        feature.id === featureId
+          ? {
+              ...feature,
+              tasks: feature.tasks.map((task) =>
+                task.id === taskId ? { ...task, title: trimmed } : task,
+              ),
+            }
+          : feature,
+      ),
+    );
+
+    cancelTaskEdit();
+  };
+
+  const deleteTask = (featureId: number, taskId: string) => {
+    setFeatures((prev) =>
+      prev.map((feature) =>
+        feature.id === featureId
+          ? {
+              ...feature,
+              tasks: feature.tasks.filter((task) => task.id !== taskId),
+            }
+          : feature,
+      ),
+    );
+
+    if (selectedTaskId === taskId) setSelectedTaskId("");
+    if (pickerTaskId === taskId) setPickerTaskId("");
+    if (editingTaskKey === getTaskEditKey(featureId, taskId)) {
+      cancelTaskEdit();
+    }
+  };
+
   const selectedFeature = features.find(
     (feature) => String(feature.id) === selectedFeatureId,
   );
@@ -234,20 +334,26 @@ export default function PMDashboard({
 
   const submitQuestion = () => {
     const featureIdNumber = Number(selectedFeatureId);
-    if (!featureIdNumber || !questionInput.trim()) return;
+    const trimmedQuestion = questionInput
+      .trim()
+      .slice(0, QUESTION_TEXT_MAX_LENGTH);
+    if (!featureIdNumber || !trimmedQuestion) return;
 
     onCreateFeatureQuestion({
       featureId: featureIdNumber,
       taskId: selectedTaskId || undefined,
-      content: questionInput,
+      content: trimmedQuestion,
     });
     setQuestionInput("");
     onMoveSection("pm-review");
   };
 
   const submitNewMessage = () => {
-    if (!selectedQuestion || !newMessageInput.trim()) return;
-    onAddQuestionMessage(selectedQuestion.id, newMessageInput);
+    const trimmedMessage = newMessageInput
+      .trim()
+      .slice(0, TIMELINE_MESSAGE_MAX_LENGTH);
+    if (!selectedQuestion || !trimmedMessage) return;
+    onAddQuestionMessage(selectedQuestion.id, trimmedMessage);
     setNewMessageInput("");
   };
 
@@ -257,12 +363,14 @@ export default function PMDashboard({
   };
 
   const saveEditedMessage = () => {
-    if (!selectedQuestion || !editingMessageId || !editingMessageInput.trim())
-      return;
+    const trimmedMessage = editingMessageInput
+      .trim()
+      .slice(0, TIMELINE_MESSAGE_MAX_LENGTH);
+    if (!selectedQuestion || !editingMessageId || !trimmedMessage) return;
     onUpdateQuestionMessage(
       selectedQuestion.id,
       editingMessageId,
-      editingMessageInput,
+      trimmedMessage,
     );
     setEditingMessageId(null);
     setEditingMessageInput("");
@@ -349,6 +457,7 @@ export default function PMDashboard({
               </label>
               <textarea
                 value={questionInput}
+                maxLength={QUESTION_TEXT_MAX_LENGTH}
                 onChange={(event) => setQuestionInput(event.target.value)}
                 rows={6}
                 placeholder="예: 결제 실패 시 리트라이 정책과 사용자 안내 문구를 어떻게 나누면 좋을까요?"
@@ -483,6 +592,7 @@ export default function PMDashboard({
           <input
             value={newFeatureName}
             onChange={(event) => setNewFeatureName(event.target.value)}
+            maxLength={FEATURE_NAME_MAX_LENGTH}
             placeholder="새 기능 이름을 입력하세요"
             className="flex-1 rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
           />
@@ -533,31 +643,47 @@ export default function PMDashboard({
                   >
                     <div className="flex flex-col gap-2">
                       <div className="flex items-start gap-2 min-w-0">
-                        <button
-                          onClick={() => toggleFeatureExpand(feature.id)}
-                          className="mt-0.5 shrink-0"
+                        <div
+                          className="min-w-0 flex-1 cursor-pointer rounded-lg px-1 py-1 hover:bg-gray-50"
+                          onClick={() => {
+                            if (editingFeatureId === feature.id) return;
+                            toggleFeatureExpand(feature.id);
+                          }}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(event) => {
+                            if (editingFeatureId === feature.id) return;
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              toggleFeatureExpand(feature.id);
+                            }
+                          }}
                         >
-                          {isExpanded ? (
-                            <ChevronUp className="h-4 w-4 text-indigo-500" />
-                          ) : (
-                            <ChevronDown className="h-4 w-4 text-indigo-500" />
-                          )}
-                        </button>
+                          <div className="flex items-start gap-2 min-w-0">
+                            {isExpanded ? (
+                              <ChevronUp className="h-4 w-4 text-indigo-500 mt-0.5 shrink-0" />
+                            ) : (
+                              <ChevronDown className="h-4 w-4 text-indigo-500 mt-0.5 shrink-0" />
+                            )}
 
-                        <div className="min-w-0 flex-1">
-                          {editingFeatureId === feature.id ? (
-                            <input
-                              value={editingFeatureName}
-                              onChange={(event) =>
-                                setEditingFeatureName(event.target.value)
-                              }
-                              className="w-full rounded-lg border border-gray-300 px-2.5 py-1.5 text-sm"
-                            />
-                          ) : (
-                            <h4 className="font-semibold text-gray-900 truncate">
-                              {feature.name}
-                            </h4>
-                          )}
+                            <div className="min-w-0 flex-1">
+                              {editingFeatureId === feature.id ? (
+                                <input
+                                  value={editingFeatureName}
+                                  maxLength={FEATURE_NAME_MAX_LENGTH}
+                                  onClick={(event) => event.stopPropagation()}
+                                  onChange={(event) =>
+                                    setEditingFeatureName(event.target.value)
+                                  }
+                                  className="w-full rounded-lg border border-gray-300 px-2.5 py-1.5 text-sm"
+                                />
+                              ) : (
+                                <h4 className="font-semibold text-gray-900 break-words leading-snug">
+                                  {feature.name}
+                                </h4>
+                              )}
+                            </div>
+                          </div>
                         </div>
                       </div>
 
@@ -625,36 +751,156 @@ export default function PMDashboard({
                           </p>
                         )}
 
-                        {feature.tasks.map((task) => (
-                          <label
-                            key={task.id}
-                            className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 flex items-center justify-between gap-2"
-                          >
-                            <div className="min-w-0">
-                              <p className="text-xs font-medium text-gray-800 truncate">
-                                {task.title}
-                              </p>
-                              <p className="text-[11px] text-gray-500 mt-0.5">
-                                {task.devChecked
-                                  ? "DEV 체크 완료"
-                                  : "DEV 체크 대기"}
-                              </p>
-                            </div>
-                            <input
-                              type="checkbox"
-                              checked={task.pmConfirmed}
-                              disabled={!task.devChecked}
-                              onChange={() =>
-                                onTogglePmTaskConfirm(feature.id, task.id)
+                        {feature.tasks.map((task) => {
+                          const isTaskEditing =
+                            editingTaskKey ===
+                            getTaskEditKey(feature.id, task.id);
+                          const currentTaskKey = getTaskEditKey(
+                            feature.id,
+                            task.id,
+                          );
+                          const isTaskDragOver =
+                            dragOverTaskKey === currentTaskKey &&
+                            draggingTask !== null &&
+                            draggingTask.taskId !== task.id;
+
+                          return (
+                            <div
+                              key={task.id}
+                              draggable={!isTaskEditing}
+                              onDragStart={() =>
+                                setDraggingTask({
+                                  featureId: feature.id,
+                                  taskId: task.id,
+                                })
                               }
-                              className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                            />
-                          </label>
-                        ))}
+                              onDragOver={(event) => {
+                                if (
+                                  draggingTask === null ||
+                                  draggingTask.featureId !== feature.id
+                                ) {
+                                  return;
+                                }
+                                event.preventDefault();
+                                if (dragOverTaskKey !== currentTaskKey) {
+                                  setDragOverTaskKey(currentTaskKey);
+                                }
+                              }}
+                              onDrop={(event) => {
+                                event.preventDefault();
+                                if (
+                                  draggingTask === null ||
+                                  draggingTask.featureId !== feature.id
+                                ) {
+                                  return;
+                                }
+                                reorderTasks(
+                                  feature.id,
+                                  draggingTask.taskId,
+                                  task.id,
+                                );
+                                setDraggingTask(null);
+                                setDragOverTaskKey(null);
+                              }}
+                              onDragEnd={() => {
+                                setDraggingTask(null);
+                                setDragOverTaskKey(null);
+                              }}
+                              className={`rounded-lg border bg-gray-50 px-3 py-2 transition-all ${
+                                isTaskDragOver
+                                  ? "border-indigo-300 ring-1 ring-indigo-200"
+                                  : "border-gray-200"
+                              } ${
+                                draggingTask?.taskId === task.id
+                                  ? "opacity-60"
+                                  : ""
+                              }`}
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0 flex-1">
+                                  {isTaskEditing ? (
+                                    <input
+                                      value={editingTaskTitle}
+                                      maxLength={TASK_TITLE_MAX_LENGTH}
+                                      onChange={(event) =>
+                                        setEditingTaskTitle(event.target.value)
+                                      }
+                                      className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs"
+                                    />
+                                  ) : (
+                                    <>
+                                      <p className="text-xs font-medium text-gray-800 whitespace-normal break-words leading-snug">
+                                        {task.title}
+                                      </p>
+                                      <p className="text-[11px] text-gray-500 mt-0.5">
+                                        {task.devChecked
+                                          ? "DEV 체크 완료"
+                                          : "DEV 체크 대기"}
+                                      </p>
+                                    </>
+                                  )}
+                                </div>
+
+                                <input
+                                  type="checkbox"
+                                  checked={task.pmConfirmed}
+                                  disabled={!task.devChecked}
+                                  onChange={() =>
+                                    onTogglePmTaskConfirm(feature.id, task.id)
+                                  }
+                                  className="mt-0.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                />
+                              </div>
+
+                              <div className="mt-2 flex items-center justify-end gap-1">
+                                {isTaskEditing ? (
+                                  <>
+                                    <button
+                                      onClick={() =>
+                                        saveTaskEdit(feature.id, task.id)
+                                      }
+                                      className="rounded-md bg-indigo-600 px-2 py-1 text-[11px] font-semibold text-white"
+                                    >
+                                      저장
+                                    </button>
+                                    <button
+                                      onClick={cancelTaskEdit}
+                                      className="rounded-md border border-gray-300 px-2 py-1 text-[11px] font-semibold text-gray-600"
+                                    >
+                                      취소
+                                    </button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <button
+                                      onClick={() =>
+                                        startEditTask(feature.id, task)
+                                      }
+                                      className="rounded-md border border-gray-200 p-1 text-gray-500 hover:bg-gray-100"
+                                      title="세부작업 수정"
+                                    >
+                                      <Pencil className="h-3 w-3" />
+                                    </button>
+                                    <button
+                                      onClick={() =>
+                                        deleteTask(feature.id, task.id)
+                                      }
+                                      className="rounded-md border border-red-200 p-1 text-red-500 hover:bg-red-50"
+                                      title="세부작업 삭제"
+                                    >
+                                      <Trash2 className="h-3 w-3" />
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
 
                         <div className="flex items-center gap-2 pt-1">
                           <input
                             value={taskDrafts[feature.id] ?? ""}
+                            maxLength={TASK_TITLE_MAX_LENGTH}
                             onChange={(event) =>
                               setTaskDrafts((prev) => ({
                                 ...prev,
@@ -733,10 +979,10 @@ export default function PMDashboard({
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="text-xs font-semibold text-indigo-700 truncate">
+                    <p className="text-xs font-semibold text-indigo-700 break-words leading-snug">
                       {question.featureName}
                     </p>
-                    <p className="text-[11px] text-gray-500 mt-0.5 truncate">
+                    <p className="text-[11px] text-gray-500 mt-0.5 break-words leading-snug">
                       {question.taskTitle ?? "기능 전체"}
                     </p>
                   </div>
@@ -750,7 +996,7 @@ export default function PMDashboard({
                     {question.pmConfirmed ? "컨펌 대기" : "대화중"}
                   </span>
                 </div>
-                <p className="mt-2 text-xs text-gray-700 line-clamp-2">
+                <p className="mt-2 text-xs text-gray-700 whitespace-pre-wrap break-words leading-relaxed">
                   {firstMessage}
                 </p>
               </button>
@@ -824,6 +1070,7 @@ export default function PMDashboard({
                           <textarea
                             rows={3}
                             value={editingMessageInput}
+                            maxLength={TIMELINE_MESSAGE_MAX_LENGTH}
                             onChange={(event) =>
                               setEditingMessageInput(event.target.value)
                             }
@@ -862,6 +1109,7 @@ export default function PMDashboard({
               <div className="flex gap-2">
                 <input
                   value={newMessageInput}
+                  maxLength={TIMELINE_MESSAGE_MAX_LENGTH}
                   onChange={(event) => setNewMessageInput(event.target.value)}
                   disabled={selectedQuestion.pmConfirmed}
                   onKeyDown={(event) => {
