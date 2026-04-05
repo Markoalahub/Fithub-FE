@@ -1,356 +1,569 @@
-import React, { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
-  ArrowDown,
-  ArrowRightLeft,
-  Check,
+  ArrowRight,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   GitPullRequest,
-  Github,
   MessageSquare,
+  Pencil,
   Send,
-  Sparkles,
+  Trash2,
 } from "lucide-react";
-import type { Feature, TimelineMessage } from "../../types/index";
+import type { Feature, FeatureQuestion, Task } from "../../types/index";
 
 interface DevDashboardProps {
   section: "pipeline" | "feedback";
   features: Feature[];
-  setFeatures: React.Dispatch<React.SetStateAction<Feature[]>>;
-  timelineEvents: TimelineMessage[];
-  setTimelineEvents: React.Dispatch<React.SetStateAction<TimelineMessage[]>>;
-  proposalStatus: "discussing" | "dev_confirmed" | "pm_confirmed";
-  setProposalStatus: React.Dispatch<
-    React.SetStateAction<"discussing" | "dev_confirmed" | "pm_confirmed">
-  >;
+  featureQuestions: FeatureQuestion[];
+  onToggleDevTaskCheck: (featureId: number, taskId: string) => void;
+  onAddQuestionMessage: (questionId: string, content: string) => void;
+  onUpdateQuestionMessage: (
+    questionId: string,
+    messageId: string,
+    content: string,
+  ) => void;
+  onDeleteQuestionMessage: (questionId: string, messageId: string) => void;
+  onConfirmQuestionByDev: (questionId: string) => void;
 }
 
 export default function DevDashboard({
   section,
   features,
-  setFeatures,
-  timelineEvents,
-  setTimelineEvents,
-  proposalStatus,
-  setProposalStatus,
+  featureQuestions,
+  onToggleDevTaskCheck,
+  onAddQuestionMessage,
+  onUpdateQuestionMessage,
+  onDeleteQuestionMessage,
+  onConfirmQuestionByDev,
 }: DevDashboardProps) {
-  const [isGithubConnected, setIsGithubConnected] = useState(true);
-  const [replyInput, setReplyInput] = useState("");
+  const [expandedFeatureIds, setExpandedFeatureIds] = useState<number[]>(
+    features[0] ? [features[0].id] : [],
+  );
 
-  const calculateProgress = (tasks: Feature["tasks"]) => {
-    if (tasks.length === 0) return 0;
-    const completed = tasks.filter((t) => t.completed).length;
-    return Math.round((completed / tasks.length) * 100);
+  const [selectedQuestionId, setSelectedQuestionId] = useState<string | null>(
+    null,
+  );
+  const [newMessageInput, setNewMessageInput] = useState("");
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editingMessageInput, setEditingMessageInput] = useState("");
+
+  const activeQuestions = useMemo(
+    () => featureQuestions.filter((question) => !question.closed),
+    [featureQuestions],
+  );
+
+  const selectedQuestion = useMemo(() => {
+    if (activeQuestions.length === 0) return null;
+    if (!selectedQuestionId) return activeQuestions[0];
+    return (
+      activeQuestions.find((question) => question.id === selectedQuestionId) ??
+      activeQuestions[0]
+    );
+  }, [activeQuestions, selectedQuestionId]);
+
+  useEffect(() => {
+    if (!selectedQuestion) {
+      setSelectedQuestionId(null);
+      return;
+    }
+    if (selectedQuestionId !== selectedQuestion.id) {
+      setSelectedQuestionId(selectedQuestion.id);
+    }
+  }, [selectedQuestion, selectedQuestionId]);
+
+  const toggleFeatureExpand = (featureId: number) => {
+    setExpandedFeatureIds((prev) =>
+      prev.includes(featureId)
+        ? prev.filter((id) => id !== featureId)
+        : [...prev, featureId],
+    );
   };
 
-  const totalCompletedTasks = features.reduce(
-    (acc, f) => acc + f.tasks.filter((t) => t.completed).length,
+  const submitNewMessage = () => {
+    if (!selectedQuestion || !newMessageInput.trim()) return;
+    onAddQuestionMessage(selectedQuestion.id, newMessageInput);
+    setNewMessageInput("");
+  };
+
+  const startEditMessage = (messageId: string, content: string) => {
+    setEditingMessageId(messageId);
+    setEditingMessageInput(content);
+  };
+
+  const saveEditedMessage = () => {
+    if (!selectedQuestion || !editingMessageId || !editingMessageInput.trim())
+      return;
+    onUpdateQuestionMessage(
+      selectedQuestion.id,
+      editingMessageId,
+      editingMessageInput,
+    );
+    setEditingMessageId(null);
+    setEditingMessageInput("");
+  };
+
+  const removeMessage = (messageId: string) => {
+    if (!selectedQuestion) return;
+    onDeleteQuestionMessage(selectedQuestion.id, messageId);
+    if (editingMessageId === messageId) {
+      setEditingMessageId(null);
+      setEditingMessageInput("");
+    }
+  };
+
+  const calculateProgress = (tasks: Task[]) => {
+    if (tasks.length === 0) {
+      return { dev: 0, pm: 0 };
+    }
+
+    const devCheckedCount = tasks.filter((task) => task.devChecked).length;
+    const pmConfirmedCount = tasks.filter((task) => task.pmConfirmed).length;
+
+    return {
+      dev: Math.round((devCheckedCount / tasks.length) * 100),
+      pm: Math.round((pmConfirmedCount / tasks.length) * 100),
+    };
+  };
+
+  const totalTasks = features.reduce(
+    (acc, feature) => acc + feature.tasks.length,
     0,
   );
-  const totalTasks = features.reduce((acc, f) => acc + f.tasks.length, 0);
-  const totalProgress =
-    totalTasks === 0 ? 0 : Math.round((totalCompletedTasks / totalTasks) * 100);
-
-  const toggleTask = (featureId: number, taskId: string) => {
-    setFeatures((prev) =>
-      prev.map((f) => {
-        if (f.id !== featureId) return f;
-        return {
-          ...f,
-          tasks: f.tasks.map((t) =>
-            t.id === taskId ? { ...t, completed: !t.completed } : t,
-          ),
-        };
-      }),
-    );
-  };
-
-  const suggestGithubTasks = (featureId: number) => {
-    setFeatures((prev) =>
-      prev.map((f) => {
-        if (f.id !== featureId) return f;
-        const newTaskId = `${f.id}-${Date.now()}`;
-        return {
-          ...f,
-          tasks: [
-            ...f.tasks,
-            {
-              id: newTaskId,
-              title: `[AI 추천] GitHub Issue #${Math.floor(Math.random() * 100) + 10} 연동 작업`,
-              completed: false,
-              isAiSuggested: true,
-            },
-          ],
-        };
-      }),
-    );
-  };
-
-  const handleSendReply = () => {
-    if (!replyInput.trim()) return;
-
-    const newMessage: TimelineMessage = {
-      id: Date.now().toString(),
-      role: "dev",
-      content: replyInput,
-      aiTranslation: `[AI 요약] ${replyInput.substring(0, 20)}... 관련 기술적 검토 및 일정 공유.`,
-      time: new Date().toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-    };
-
-    setTimelineEvents((prev) => [...prev, newMessage]);
-    setReplyInput("");
-  };
-
-  const handleFinalConfirm = () => {
-    setProposalStatus("dev_confirmed");
-  };
+  const totalDevChecked = features.reduce(
+    (acc, feature) =>
+      acc + feature.tasks.filter((task) => task.devChecked).length,
+    0,
+  );
+  const totalPmConfirmed = features.reduce(
+    (acc, feature) =>
+      acc + feature.tasks.filter((task) => task.pmConfirmed).length,
+    0,
+  );
+  const totalDevProgress =
+    totalTasks === 0 ? 0 : Math.round((totalDevChecked / totalTasks) * 100);
+  const totalPmProgress =
+    totalTasks === 0 ? 0 : Math.round((totalPmConfirmed / totalTasks) * 100);
 
   if (section === "pipeline") {
     return (
-      <section className="rounded-3xl border border-gray-200 bg-white shadow-sm p-6 min-h-[620px]">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <h3 className="font-semibold text-gray-800 flex items-center gap-2">
-            <Activity className="w-5 h-5" /> 전체 개발 파이프라인 (동기화됨)
+      <section className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm min-h-[620px] space-y-6">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+            <Activity className="h-5 w-5" /> 기능 그래프 파이프라인
           </h3>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setIsGithubConnected(!isGithubConnected)}
-              className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition-colors ${
-                isGithubConnected
-                  ? "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                  : "bg-gray-900 text-white hover:bg-gray-800"
-              }`}
-            >
-              <Github className="h-4 w-4" />
-              {isGithubConnected ? "GitHub 연동됨" : "GitHub 연동하기"}
-            </button>
-            <div className="inline-flex items-center gap-3 bg-indigo-50 px-4 py-2 rounded-xl border border-indigo-100">
-              <span className="text-sm font-medium text-indigo-900">
-                총 진행률
-              </span>
-              <span className="text-2xl font-bold text-indigo-600">
-                {totalProgress}%
-              </span>
+
+          <div className="flex items-center gap-2 text-xs">
+            <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 font-semibold text-emerald-700">
+              DEV 체크 {totalDevProgress}%
+            </div>
+            <div className="rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 font-semibold text-indigo-700">
+              PM 확인 {totalPmProgress}%
             </div>
           </div>
         </div>
 
-        <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {features.map((feat) => {
-            const progress = calculateProgress(feat.tasks);
-            const status =
-              progress === 100
-                ? "completed"
-                : progress > 0
-                  ? "in-progress"
-                  : "pending";
+        <div className="overflow-x-auto pb-2">
+          <div className="inline-flex items-start gap-3 min-w-full">
+            {features.map((feature, index) => {
+              const isExpanded = expandedFeatureIds.includes(feature.id);
+              const progress = calculateProgress(feature.tasks);
 
-            return (
-              <article
-                key={feat.id}
-                className={`rounded-2xl border p-4 flex flex-col min-h-[260px] ${
-                  status === "completed"
-                    ? "bg-gray-50 border-gray-200"
-                    : status === "in-progress"
-                      ? "bg-white border-indigo-300 ring-2 ring-indigo-50"
-                      : "bg-white border-gray-200"
-                }`}
-              >
-                <div className="flex items-start justify-between gap-3 mb-3">
-                  <h4
-                    className={`font-semibold text-sm ${
-                      status === "completed" ? "text-gray-500" : "text-gray-800"
-                    }`}
-                  >
-                    {feat.name}
-                  </h4>
-                  <button
-                    onClick={() => suggestGithubTasks(feat.id)}
-                    className="text-[10px] inline-flex items-center gap-1 bg-indigo-50 text-indigo-600 px-2 py-1 rounded hover:bg-indigo-100 transition-colors"
-                    title="GitHub 이슈 기반 작업 추천"
-                  >
-                    <Sparkles className="w-3 h-3" /> 추천
-                  </button>
-                </div>
-
-                <div className="flex justify-between items-end">
-                  <span className="text-2xl font-bold text-indigo-600">
-                    {progress}%
-                  </span>
-                  {status === "completed" && (
-                    <CheckCircle2 className="w-5 h-5 text-green-500" />
-                  )}
-                </div>
-
-                <div className="w-full bg-gray-100 rounded-full h-2 mt-2">
-                  <div
-                    className={`h-2 rounded-full ${
-                      status === "completed"
-                        ? "bg-green-500"
-                        : status === "in-progress"
-                          ? "bg-indigo-500"
-                          : "bg-gray-300"
-                    }`}
-                    style={{ width: `${progress}%` }}
-                  ></div>
-                </div>
-
-                <div className="mt-4 space-y-2 overflow-y-auto pr-1">
-                  {feat.tasks.map((task) => (
-                    <label
-                      key={task.id}
-                      className="flex items-start gap-2 text-xs cursor-pointer group"
+              return (
+                <div key={feature.id} className="inline-flex items-start gap-3">
+                  <article className="w-[320px] rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+                    <button
+                      onClick={() => toggleFeatureExpand(feature.id)}
+                      className="inline-flex items-center gap-2"
                     >
-                      <input
-                        type="checkbox"
-                        checked={task.completed}
-                        onChange={() => toggleTask(feat.id, task.id)}
-                        className="mt-0.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                      />
-                      <span
-                        className={`flex-1 ${task.completed ? "text-gray-400 line-through" : "text-gray-700 group-hover:text-gray-900"}`}
-                      >
-                        {task.isAiSuggested && (
-                          <span className="text-[10px] bg-purple-100 text-purple-700 px-1 rounded mr-1">
-                            AI
-                          </span>
+                      {isExpanded ? (
+                        <ChevronUp className="h-4 w-4 text-indigo-500" />
+                      ) : (
+                        <ChevronDown className="h-4 w-4 text-indigo-500" />
+                      )}
+                      <h4 className="font-semibold text-gray-900">
+                        {feature.name}
+                      </h4>
+                    </button>
+
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                      <div className="rounded-lg border border-emerald-100 bg-emerald-50 px-2 py-1.5">
+                        DEV 체크 {progress.dev}%
+                      </div>
+                      <div className="rounded-lg border border-indigo-100 bg-indigo-50 px-2 py-1.5">
+                        PM 확인 {progress.pm}%
+                      </div>
+                    </div>
+
+                    {isExpanded && (
+                      <div className="mt-4 space-y-2">
+                        {feature.tasks.length === 0 && (
+                          <p className="text-xs text-gray-400">
+                            등록된 세부작업이 없습니다.
+                          </p>
                         )}
-                        {task.title}
-                      </span>
-                    </label>
-                  ))}
-                  {feat.tasks.length === 0 && (
-                    <span className="text-xs text-gray-400">
-                      등록된 세부 작업 없음
-                    </span>
+
+                        {feature.tasks.map((task) => (
+                          <label
+                            key={task.id}
+                            className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 flex items-center justify-between gap-2"
+                          >
+                            <div className="min-w-0">
+                              <p className="text-xs font-medium text-gray-800 truncate">
+                                {task.title}
+                              </p>
+                              <p className="text-[11px] text-gray-500 mt-0.5">
+                                {task.pmConfirmed
+                                  ? "PM 확인 완료"
+                                  : "PM 확인 대기"}
+                              </p>
+                            </div>
+                            <input
+                              type="checkbox"
+                              checked={task.devChecked}
+                              onChange={() =>
+                                onToggleDevTaskCheck(feature.id, task.id)
+                              }
+                              className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                            />
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </article>
+
+                  {index < features.length - 1 && (
+                    <div className="pt-16">
+                      <ArrowRight className="h-5 w-5 text-gray-300" />
+                    </div>
                   )}
                 </div>
-              </article>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       </section>
     );
   }
 
+  const selectedSummary = selectedQuestion
+    ? {
+        messageCount: selectedQuestion.messages.length,
+        pmCount: selectedQuestion.messages.filter(
+          (message) => message.role === "pm",
+        ).length,
+        devCount: selectedQuestion.messages.filter(
+          (message) => message.role === "dev",
+        ).length,
+      }
+    : null;
+
   return (
-    <section className="grid grid-cols-1 xl:grid-cols-3 gap-5">
-      <div className="xl:col-span-2 rounded-3xl border border-gray-200 bg-white shadow-sm flex flex-col h-[620px]">
-        <div className="p-5 border-b border-gray-100">
-          <h3 className="font-semibold text-gray-800 flex items-center gap-2">
-            <MessageSquare className="w-5 h-5" /> 기획자 피드백 타임라인
-          </h3>
+    <section className="grid grid-cols-1 xl:grid-cols-[280px_1fr_320px] gap-5">
+      <div className="rounded-3xl border border-gray-200 bg-white shadow-sm min-h-[620px] flex flex-col">
+        <div className="p-4 border-b border-gray-100">
+          <h3 className="text-sm font-semibold text-gray-900">질문 리스트</h3>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5 relative">
-          <div className="absolute left-[30px] top-8 bottom-8 w-0.5 bg-gray-100"></div>
+        <div className="flex-1 overflow-y-auto p-3 space-y-2">
+          {activeQuestions.length === 0 && (
+            <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-4 text-center text-xs text-gray-500">
+              진행중인 질문이 없습니다.
+            </div>
+          )}
 
-          {timelineEvents.map((event) => (
-            <div key={event.id} className="relative pl-12">
-              <div
-                className={`absolute left-0 top-1.5 w-8 h-8 rounded-full flex items-center justify-center border-4 border-white ${
-                  event.role === "pm"
-                    ? "bg-blue-100 text-blue-600"
-                    : "bg-indigo-100 text-indigo-600"
+          {activeQuestions.map((question) => {
+            const firstMessage =
+              question.messages[0]?.content ?? "(메시지 없음)";
+            const selected = selectedQuestion?.id === question.id;
+            return (
+              <button
+                key={question.id}
+                onClick={() => setSelectedQuestionId(question.id)}
+                className={`w-full rounded-xl border p-3 text-left ${
+                  selected
+                    ? "border-indigo-300 bg-indigo-50"
+                    : "border-gray-200 bg-white hover:bg-gray-50"
                 }`}
               >
-                <span className="text-[10px] font-bold">
-                  {event.role === "pm" ? "PM" : "DEV"}
-                </span>
-              </div>
-
-              <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
-                <div className="flex justify-between items-start mb-2">
-                  <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                    {event.role === "pm" ? "기획자 요청" : "개발자 답변"}
-                  </span>
-                  <span className="text-xs text-gray-400">{event.time}</span>
-                </div>
-                <p className="text-gray-900 text-sm mb-3 leading-relaxed">
-                  {event.content}
-                </p>
-
-                <div className="bg-white p-3 rounded-lg border border-gray-200">
-                  <div className="flex items-center gap-2 text-indigo-500 mb-1">
-                    <ArrowRightLeft className="w-3 h-3" />
-                    <span className="text-[10px] font-semibold uppercase tracking-wider">
-                      AI 기술적 해석
-                    </span>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-indigo-700 truncate">
+                      {question.featureName}
+                    </p>
+                    <p className="text-[11px] text-gray-500 mt-0.5 truncate">
+                      {question.taskTitle ?? "기능 전체"}
+                    </p>
                   </div>
-                  <p className="text-gray-700 font-mono text-xs leading-relaxed">
-                    {event.aiTranslation}
-                  </p>
+                  <span
+                    className={`text-[10px] px-2 py-1 rounded-full font-semibold ${
+                      question.pmConfirmed
+                        ? "bg-amber-100 text-amber-700"
+                        : "bg-emerald-100 text-emerald-700"
+                    }`}
+                  >
+                    {question.pmConfirmed ? "닫기 확인" : "대화중"}
+                  </span>
                 </div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="p-5 border-t border-gray-100">
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={replyInput}
-              onChange={(e) => setReplyInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSendReply()}
-              placeholder="기획자에게 전달할 피드백을 작성하세요..."
-              className="flex-1 px-4 py-2.5 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
-            />
-            <button
-              onClick={handleSendReply}
-              className="p-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors"
-            >
-              <Send className="w-5 h-5" />
-            </button>
-          </div>
+                <p className="mt-2 text-xs text-gray-700 line-clamp-2">
+                  {firstMessage}
+                </p>
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      <div className="rounded-3xl border border-gray-200 bg-white shadow-sm p-6 flex flex-col h-[620px]">
-        <h3 className="font-semibold text-gray-800 flex items-center gap-2 mb-5">
-          <GitPullRequest className="w-5 h-5" /> AI 요약 플로우차트
+      <div className="rounded-3xl border border-gray-200 bg-white shadow-sm min-h-[620px] flex flex-col">
+        <div className="p-5 border-b border-gray-100">
+          <h3 className="font-semibold text-gray-800 flex items-center gap-2">
+            <MessageSquare className="h-5 w-5" /> 기능 질문 타임라인
+          </h3>
+        </div>
+
+        {!selectedQuestion && (
+          <div className="flex-1 flex items-center justify-center text-sm text-gray-500">
+            질문 리스트에서 항목을 선택해주세요.
+          </div>
+        )}
+
+        {selectedQuestion && (
+          <>
+            <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/60">
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <span className="rounded-full bg-indigo-100 px-2.5 py-1 font-semibold text-indigo-700">
+                  {selectedQuestion.featureName}
+                </span>
+                <span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold text-slate-700">
+                  {selectedQuestion.taskTitle ?? "기능 전체"}
+                </span>
+                <span className="text-gray-500">
+                  생성 {selectedQuestion.createdAt}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+              {selectedQuestion.messages.map((message) => {
+                const isDev = message.role === "dev";
+                const isEditing = editingMessageId === message.id;
+
+                return (
+                  <div
+                    key={message.id}
+                    className={`flex ${isDev ? "justify-end" : "justify-start"}`}
+                  >
+                    <div
+                      className={`max-w-[85%] rounded-2xl border px-3 py-2 ${
+                        isDev
+                          ? "bg-emerald-600 text-white border-emerald-600"
+                          : "bg-white border-gray-200 text-gray-800"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <p
+                          className={`text-[11px] font-semibold ${isDev ? "text-emerald-100" : "text-gray-500"}`}
+                        >
+                          {isDev ? "DEV" : "PM"} · {message.createdAt}
+                        </p>
+                        {isDev && !selectedQuestion.pmConfirmed && (
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() =>
+                                startEditMessage(message.id, message.content)
+                              }
+                              className="rounded-md p-1 hover:bg-white/20"
+                              title="메시지 수정"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              onClick={() => removeMessage(message.id)}
+                              className="rounded-md p-1 hover:bg-white/20"
+                              title="메시지 삭제"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      {isEditing ? (
+                        <div className="mt-2 space-y-2">
+                          <textarea
+                            rows={3}
+                            value={editingMessageInput}
+                            onChange={(event) =>
+                              setEditingMessageInput(event.target.value)
+                            }
+                            className="w-full rounded-lg border border-white/50 bg-white text-gray-800 px-2.5 py-2 text-sm"
+                          />
+                          <div className="flex justify-end gap-2">
+                            <button
+                              onClick={() => {
+                                setEditingMessageId(null);
+                                setEditingMessageInput("");
+                              }}
+                              className="rounded-lg border border-white/70 px-2.5 py-1 text-xs"
+                            >
+                              취소
+                            </button>
+                            <button
+                              onClick={saveEditedMessage}
+                              className="rounded-lg bg-white text-emerald-700 px-2.5 py-1 text-xs font-semibold"
+                            >
+                              저장
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="mt-1 text-sm whitespace-pre-wrap">
+                          {message.content}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="p-4 border-t border-gray-100 space-y-3">
+              {selectedQuestion.pmConfirmed ? (
+                <div className="space-y-3">
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
+                    PM이 컨펌했습니다. 최종 확인을 누르면 질문이 닫힙니다.
+                  </div>
+                  <div className="flex justify-end">
+                    <button
+                      onClick={() =>
+                        onConfirmQuestionByDev(selectedQuestion.id)
+                      }
+                      className="inline-flex items-center gap-2 rounded-xl bg-green-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-green-700"
+                    >
+                      <CheckCircle2 className="h-4 w-4" /> 개발 최종확인 후 질문
+                      닫기
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <input
+                    value={newMessageInput}
+                    onChange={(event) => setNewMessageInput(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter") return;
+                      if (event.nativeEvent.isComposing) return;
+                      event.preventDefault();
+                      submitNewMessage();
+                    }}
+                    placeholder="추가 답변을 입력하세요"
+                    className="flex-1 rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:border-emerald-400 focus:outline-none"
+                  />
+                  <button
+                    onClick={submitNewMessage}
+                    className="inline-flex items-center justify-center rounded-xl bg-emerald-600 px-3 text-white hover:bg-emerald-700"
+                  >
+                    <Send className="h-4 w-4" />
+                  </button>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+
+      <div className="rounded-3xl border border-gray-200 bg-white shadow-sm p-5 min-h-[620px]">
+        <h3 className="font-semibold text-gray-800 flex items-center gap-2 mb-4">
+          <GitPullRequest className="h-5 w-5" /> 요약 타임라인
         </h3>
 
-        <div className="flex-1 flex flex-col items-center justify-center space-y-2 py-6">
-          <div className="w-full bg-slate-800 text-white p-3 rounded-lg text-center text-sm shadow-sm">
-            [API] PortOne Webhook 수신 엔드포인트 생성
-          </div>
-          <ArrowDown className="w-5 h-5 text-gray-400" />
-          <div className="w-full bg-slate-800 text-white p-3 rounded-lg text-center text-sm shadow-sm">
-            [Logic] 결제 금액 및 위변조 검증
-          </div>
-          <ArrowDown className="w-5 h-5 text-gray-400" />
-          <div className="w-full border-2 border-dashed border-indigo-400 bg-indigo-50 text-indigo-900 p-3 rounded-lg text-center text-sm font-medium">
-            [Logic] 결제 실패/오류 예외 처리 (추가 필요)
-          </div>
-          <ArrowDown className="w-5 h-5 text-gray-400" />
-          <div className="w-full bg-slate-800 text-white p-3 rounded-lg text-center text-sm shadow-sm">
-            [DB] 결제 상태 업데이트 트랜잭션
-          </div>
-        </div>
+        {!selectedQuestion && (
+          <p className="text-sm text-gray-500">선택된 질문이 없습니다.</p>
+        )}
 
-        <div className="mt-auto pt-5 border-t border-gray-100">
-          {proposalStatus === "discussing" ? (
-            <button
-              onClick={handleFinalConfirm}
-              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-green-600 text-white text-sm font-bold rounded-xl hover:bg-green-700 transition-all shadow-sm hover:shadow-md"
-            >
-              <Check className="w-5 h-5" /> 최종 Confirm (기획자에게 전달)
-            </button>
-          ) : proposalStatus === "dev_confirmed" ? (
-            <div className="w-full text-center p-3 bg-amber-50 text-amber-700 rounded-xl border border-amber-200 text-sm font-medium">
-              기획자의 최종 승인을 대기 중입니다...
+        {selectedQuestion && selectedSummary && (
+          <div className="space-y-4">
+            <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
+              <p className="font-semibold text-gray-900">
+                {selectedQuestion.featureName}
+              </p>
+              <p className="text-xs mt-1">
+                {selectedQuestion.taskTitle ?? "기능 전체"}
+              </p>
             </div>
-          ) : (
-            <div className="w-full text-center p-3 bg-green-50 text-green-700 rounded-xl border border-green-200 text-sm font-medium flex items-center justify-center gap-2">
-              <CheckCircle2 className="w-5 h-5" /> 기획자 승인 완료 (파이프라인
-              반영됨)
+
+            <div className="grid grid-cols-3 gap-2 text-center text-xs">
+              <div className="rounded-lg bg-indigo-50 border border-indigo-100 px-2 py-2">
+                <p className="font-semibold text-indigo-700">총 메시지</p>
+                <p className="text-lg font-bold text-indigo-900 mt-1">
+                  {selectedSummary.messageCount}
+                </p>
+              </div>
+              <div className="rounded-lg bg-blue-50 border border-blue-100 px-2 py-2">
+                <p className="font-semibold text-blue-700">PM</p>
+                <p className="text-lg font-bold text-blue-900 mt-1">
+                  {selectedSummary.pmCount}
+                </p>
+              </div>
+              <div className="rounded-lg bg-emerald-50 border border-emerald-100 px-2 py-2">
+                <p className="font-semibold text-emerald-700">DEV</p>
+                <p className="text-lg font-bold text-emerald-900 mt-1">
+                  {selectedSummary.devCount}
+                </p>
+              </div>
             </div>
-          )}
-        </div>
+
+            <div className="space-y-2">
+              {selectedQuestion.messages.slice(-6).map((message) => (
+                <div
+                  key={message.id}
+                  className="rounded-lg border border-gray-200 px-3 py-2 text-xs"
+                >
+                  <p className="font-semibold text-gray-600">
+                    {message.role.toUpperCase()} · {message.createdAt}
+                  </p>
+                  <p className="mt-1 text-gray-800 line-clamp-2">
+                    {message.content}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            <div className="rounded-xl border border-gray-200 p-3 text-xs space-y-1">
+              <p className="flex items-center justify-between">
+                <span className="text-gray-500">PM 컨펌</span>
+                <span
+                  className={
+                    selectedQuestion.pmConfirmed
+                      ? "text-green-600"
+                      : "text-gray-400"
+                  }
+                >
+                  {selectedQuestion.pmConfirmed ? "완료" : "대기"}
+                </span>
+              </p>
+              <p className="flex items-center justify-between">
+                <span className="text-gray-500">DEV 최종확인</span>
+                <span
+                  className={
+                    selectedQuestion.devConfirmed
+                      ? "text-green-600"
+                      : "text-gray-400"
+                  }
+                >
+                  {selectedQuestion.devConfirmed ? "완료" : "대기"}
+                </span>
+              </p>
+              <p className="flex items-center justify-between">
+                <span className="text-gray-500">질문 상태</span>
+                <span className="inline-flex items-center gap-1 font-semibold text-indigo-700">
+                  <CheckCircle2 className="h-3.5 w-3.5" /> 진행중
+                </span>
+              </p>
+            </div>
+          </div>
+        )}
       </div>
     </section>
   );

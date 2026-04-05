@@ -1,45 +1,108 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import PMDashboard from "./pages/PM/PMDashboard.tsx";
 import DevDashboard from "./pages/Dev/DevDashboard.tsx";
 import AdminDashboard from "./pages/Admin/AdminDashboard.tsx";
 import LoginScreen from "./pages/Auth/LoginScreen.tsx";
 import {
   Activity,
-  Bot,
   FolderGit2,
   GitPullRequest,
   LogOut,
+  MessageSquare,
   UploadCloud,
   Users,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import type { AuthUser, Feature, TimelineMessage } from "./types/index";
+import type {
+  AuthUser,
+  Feature,
+  FeatureQuestion,
+  QuestionMessage,
+} from "./types/index";
+
+const createId = () =>
+  `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+const getNowTimeLabel = () =>
+  new Date().toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+const createQuestionMessage = (
+  role: "pm" | "dev",
+  content: string,
+): QuestionMessage => ({
+  id: createId(),
+  role,
+  content: content.trim(),
+  createdAt: getNowTimeLabel(),
+});
 
 const initialFeatures: Feature[] = [
   {
     id: 1,
     name: "소셜 로그인 연동",
     tasks: [
-      { id: "1-1", title: "카카오 API 키 발급", completed: true },
-      { id: "1-2", title: "OAuth 콜백 라우트 구현", completed: true },
-      { id: "1-3", title: "DB 유저 정보 연동", completed: true },
+      {
+        id: "1-1",
+        title: "카카오 API 키 발급",
+        devChecked: true,
+        pmConfirmed: true,
+      },
+      {
+        id: "1-2",
+        title: "OAuth 콜백 라우트 구현",
+        devChecked: true,
+        pmConfirmed: true,
+      },
+      {
+        id: "1-3",
+        title: "DB 유저 정보 연동",
+        devChecked: true,
+        pmConfirmed: true,
+      },
     ],
   },
   {
     id: 2,
     name: "결제 모듈 연동",
     tasks: [
-      { id: "2-1", title: "PortOne SDK 설치", completed: true },
-      { id: "2-2", title: "결제창 호출 UI 구현", completed: true },
-      { id: "2-3", title: "Webhook 검증 로직 작성", completed: false },
+      {
+        id: "2-1",
+        title: "PortOne SDK 설치",
+        devChecked: true,
+        pmConfirmed: true,
+      },
+      {
+        id: "2-2",
+        title: "결제창 호출 UI 구현",
+        devChecked: true,
+        pmConfirmed: false,
+      },
+      {
+        id: "2-3",
+        title: "Webhook 검증 로직 작성",
+        devChecked: false,
+        pmConfirmed: false,
+      },
     ],
   },
   {
     id: 3,
     name: "관리자 통계 페이지",
     tasks: [
-      { id: "3-1", title: "일별 매출 집계 쿼리", completed: false },
-      { id: "3-2", title: "차트 UI 컴포넌트 개발", completed: false },
+      {
+        id: "3-1",
+        title: "일별 매출 집계 쿼리",
+        devChecked: false,
+        pmConfirmed: false,
+      },
+      {
+        id: "3-2",
+        title: "차트 UI 컴포넌트 개발",
+        devChecked: false,
+        pmConfirmed: false,
+      },
     ],
   },
   {
@@ -51,27 +114,6 @@ const initialFeatures: Feature[] = [
     id: 5,
     name: "검색 최적화",
     tasks: [],
-  },
-];
-
-const initialTimeline: TimelineMessage[] = [
-  {
-    id: "1",
-    role: "pm",
-    content:
-      "결제 기능 언제 되나요? 테스트 해보고 싶은데요. 예외 처리도 꼼꼼히 부탁드려요.",
-    aiTranslation:
-      "결제 API 연동 완료 일정 문의. Staging 환경 E2E 테스트 가능 시점 확인 및 결제 실패 예외 처리 로직 구현 요청.",
-    time: "10:00 AM",
-  },
-  {
-    id: "2",
-    role: "dev",
-    content:
-      "Webhook 검증 로직 작성 중입니다. 예외 처리(결제 실패, 금액 불일치 등) 로직 추가 후 내일 오후에 Staging 배포하겠습니다.",
-    aiTranslation:
-      "결제 실패 및 금액 불일치 예외 처리 로직 구현 후 내일 오후 Staging 배포 예정. 이후 테스트 가능.",
-    time: "10:30 AM",
   },
 ];
 
@@ -95,11 +137,11 @@ type SidebarGroup = {
 };
 
 const pmFeatureItems: SidebarGroup["items"] = [
-  { id: "pm-ai", label: "AI 질문", icon: Bot },
+  { id: "pm-ai", label: "기능 질문", icon: MessageSquare },
   { id: "pm-pipeline", label: "전체 개발 파이프라인", icon: Activity },
   {
     id: "pm-review",
-    label: "타임라인 & 플로우차트",
+    label: "타임라인 & 파이프라인",
     icon: GitPullRequest,
   },
 ];
@@ -114,7 +156,7 @@ const devItems: SidebarGroup["items"] = [
   { id: "dev-pipeline", label: "전체 개발 파이프라인", icon: Activity },
   {
     id: "dev-feedback",
-    label: "피드백 타임라인 & 플로우차트",
+    label: "기능 질문 타임라인",
     icon: GitPullRequest,
   },
 ];
@@ -123,11 +165,12 @@ export default function App() {
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [currentSection, setCurrentSection] = useState<SidebarSection>("pm-ai");
   const [features, setFeatures] = useState<Feature[]>(initialFeatures);
-  const [timelineEvents, setTimelineEvents] =
-    useState<TimelineMessage[]>(initialTimeline);
-  const [proposalStatus, setProposalStatus] = useState<
-    "discussing" | "dev_confirmed" | "pm_confirmed"
-  >("discussing");
+  const [featureQuestions, setFeatureQuestions] = useState<FeatureQuestion[]>(
+    [],
+  );
+  const lastMessageFingerprintRef = useRef<{ key: string; at: number } | null>(
+    null,
+  );
 
   const sidebarGroups = useMemo<SidebarGroup[]>(() => {
     if (!authUser) return [];
@@ -148,6 +191,224 @@ export default function App() {
   const handleLogout = () => {
     setAuthUser(null);
     setCurrentSection("pm-ai");
+  };
+
+  useEffect(() => {
+    setFeatureQuestions((prev) =>
+      prev.reduce<FeatureQuestion[]>((acc, question) => {
+        const matchedFeature = features.find(
+          (feature) => feature.id === question.featureId,
+        );
+        if (!matchedFeature) return acc;
+
+        const matchedTask = question.taskId
+          ? matchedFeature.tasks.find((task) => task.id === question.taskId)
+          : undefined;
+
+        acc.push({
+          ...question,
+          featureName: matchedFeature.name,
+          taskId: matchedTask?.id,
+          taskTitle: matchedTask?.title,
+        });
+        return acc;
+      }, []),
+    );
+  }, [features]);
+
+  const createFeatureQuestion = ({
+    featureId,
+    taskId,
+    content,
+  }: {
+    featureId: number;
+    taskId?: string;
+    content: string;
+  }) => {
+    const matchedFeature = features.find((feature) => feature.id === featureId);
+    if (!matchedFeature || !content.trim()) return;
+
+    const matchedTask = taskId
+      ? matchedFeature.tasks.find((task) => task.id === taskId)
+      : undefined;
+
+    const initialMessage = createQuestionMessage("pm", content);
+
+    const nextQuestion: FeatureQuestion = {
+      id: createId(),
+      featureId,
+      featureName: matchedFeature.name,
+      taskId: matchedTask?.id,
+      taskTitle: matchedTask?.title,
+      messages: [initialMessage],
+      createdAt: initialMessage.createdAt,
+      pmConfirmed: false,
+      devConfirmed: false,
+      closed: false,
+    };
+
+    setFeatureQuestions((prev) => [nextQuestion, ...prev]);
+  };
+
+  const addQuestionMessage = (
+    questionId: string,
+    role: "pm" | "dev",
+    content: string,
+  ) => {
+    const trimmed = content.trim();
+    if (!trimmed) return;
+
+    const fingerprint = `${questionId}|${role}|${trimmed}`;
+    const now = Date.now();
+    const last = lastMessageFingerprintRef.current;
+    if (last && last.key === fingerprint && now - last.at < 800) return;
+    lastMessageFingerprintRef.current = { key: fingerprint, at: now };
+
+    setFeatureQuestions((prev) =>
+      prev.map((question) => {
+        if (question.id !== questionId) return question;
+        if (question.closed || question.pmConfirmed) return question;
+
+        return {
+          ...question,
+          messages: [
+            ...question.messages,
+            createQuestionMessage(role, trimmed),
+          ],
+        };
+      }),
+    );
+  };
+
+  const updateQuestionMessage = (
+    questionId: string,
+    messageId: string,
+    role: "pm" | "dev",
+    content: string,
+  ) => {
+    if (!content.trim()) return;
+
+    setFeatureQuestions((prev) =>
+      prev.map((question) => {
+        if (question.id !== questionId) return question;
+        if (question.closed || question.pmConfirmed) return question;
+
+        return {
+          ...question,
+          messages: question.messages.map((message) =>
+            message.id === messageId && message.role === role
+              ? {
+                  ...message,
+                  content: content.trim(),
+                }
+              : message,
+          ),
+        };
+      }),
+    );
+  };
+
+  const deleteQuestionMessage = (
+    questionId: string,
+    messageId: string,
+    role: "pm" | "dev",
+  ) => {
+    setFeatureQuestions((prev) =>
+      prev.flatMap((question) => {
+        if (question.id !== questionId) return [question];
+        if (question.closed || question.pmConfirmed) return [question];
+
+        const nextMessages = question.messages.filter(
+          (message) => !(message.id === messageId && message.role === role),
+        );
+
+        if (nextMessages.length === 0) return [];
+
+        return [{ ...question, messages: nextMessages }];
+      }),
+    );
+  };
+
+  const deleteFeatureQuestion = (questionId: string) => {
+    setFeatureQuestions((prev) =>
+      prev.filter((question) => question.id !== questionId),
+    );
+  };
+
+  const confirmQuestionByPm = (questionId: string) => {
+    setFeatureQuestions((prev) =>
+      prev.map((question) =>
+        question.id === questionId && !question.closed
+          ? {
+              ...question,
+              pmConfirmed: true,
+            }
+          : question,
+      ),
+    );
+  };
+
+  const confirmQuestionByDev = (questionId: string) => {
+    setFeatureQuestions((prev) =>
+      prev.map((question) => {
+        if (question.id !== questionId) return question;
+        if (question.closed || !question.pmConfirmed) return question;
+
+        return {
+          ...question,
+          devConfirmed: true,
+          closed: true,
+          closedAt: getNowTimeLabel(),
+        };
+      }),
+    );
+  };
+
+  const toggleDevTaskCheck = (featureId: number, taskId: string) => {
+    setFeatures((prev) =>
+      prev.map((feature) => {
+        if (feature.id !== featureId) return feature;
+
+        return {
+          ...feature,
+          tasks: feature.tasks.map((task) => {
+            if (task.id !== taskId) return task;
+
+            const nextDevChecked = !task.devChecked;
+            const nextPmConfirmed = nextDevChecked ? task.pmConfirmed : false;
+            return {
+              ...task,
+              completed: nextDevChecked && nextPmConfirmed,
+              devChecked: nextDevChecked,
+              pmConfirmed: nextPmConfirmed,
+            };
+          }),
+        };
+      }),
+    );
+  };
+
+  const togglePmTaskConfirm = (featureId: number, taskId: string) => {
+    setFeatures((prev) =>
+      prev.map((feature) => {
+        if (feature.id !== featureId) return feature;
+
+        return {
+          ...feature,
+          tasks: feature.tasks.map((task) => {
+            if (task.id !== taskId) return task;
+            if (!task.devChecked) return task;
+
+            const nextPmConfirmed = !task.pmConfirmed;
+            return {
+              ...task,
+              completed: task.devChecked && nextPmConfirmed,
+              pmConfirmed: nextPmConfirmed,
+            };
+          }),
+        };
+      }),
+    );
   };
 
   if (!authUser) {
@@ -225,10 +486,21 @@ export default function App() {
               section={pmSection}
               features={features}
               setFeatures={setFeatures}
-              timelineEvents={timelineEvents}
-              setTimelineEvents={setTimelineEvents}
-              proposalStatus={proposalStatus}
-              setProposalStatus={setProposalStatus}
+              featureQuestions={featureQuestions}
+              onCreateFeatureQuestion={createFeatureQuestion}
+              onAddQuestionMessage={(questionId, content) =>
+                addQuestionMessage(questionId, "pm", content)
+              }
+              onUpdateQuestionMessage={(questionId, messageId, content) =>
+                updateQuestionMessage(questionId, messageId, "pm", content)
+              }
+              onDeleteQuestionMessage={(questionId, messageId) =>
+                deleteQuestionMessage(questionId, messageId, "pm")
+              }
+              onDeleteQuestion={deleteFeatureQuestion}
+              onConfirmQuestionByPm={confirmQuestionByPm}
+              onTogglePmTaskConfirm={togglePmTaskConfirm}
+              onMoveSection={(next) => setCurrentSection(next)}
             />
           )}
 
@@ -240,11 +512,18 @@ export default function App() {
             <DevDashboard
               section={devSection}
               features={features}
-              setFeatures={setFeatures}
-              timelineEvents={timelineEvents}
-              setTimelineEvents={setTimelineEvents}
-              proposalStatus={proposalStatus}
-              setProposalStatus={setProposalStatus}
+              featureQuestions={featureQuestions}
+              onToggleDevTaskCheck={toggleDevTaskCheck}
+              onAddQuestionMessage={(questionId, content) =>
+                addQuestionMessage(questionId, "dev", content)
+              }
+              onUpdateQuestionMessage={(questionId, messageId, content) =>
+                updateQuestionMessage(questionId, messageId, "dev", content)
+              }
+              onDeleteQuestionMessage={(questionId, messageId) =>
+                deleteQuestionMessage(questionId, messageId, "dev")
+              }
+              onConfirmQuestionByDev={confirmQuestionByDev}
             />
           )}
         </main>
