@@ -17,6 +17,8 @@ import type {
   AuthUser,
   Feature,
   FeatureQuestion,
+  PipelineProposal,
+  PipelineProposalAction,
   QuestionMessage,
 } from "./types/index";
 
@@ -37,6 +39,240 @@ const createQuestionMessage = (
   content: content.trim(),
   createdAt: getNowTimeLabel(),
 });
+
+const proposalNeedsValue = (action: PipelineProposalAction) =>
+  action === "add-feature" ||
+  action === "edit-feature" ||
+  action === "add-task" ||
+  action === "edit-task";
+
+const buildPipelineProposalIntroMessage = ({
+  action,
+  featureName,
+  taskTitle,
+  proposedValue,
+}: {
+  action: PipelineProposalAction;
+  featureName?: string;
+  taskTitle?: string;
+  proposedValue?: string;
+}) => {
+  switch (action) {
+    case "add-feature":
+      return `신규 기능을 제안합니다: ${proposedValue ?? "-"}`;
+    case "edit-feature":
+      return `기능명을 수정 제안합니다. 대상: ${featureName ?? "-"} / 수정안: ${proposedValue ?? "-"}`;
+    case "delete-feature":
+      return `기능 삭제를 제안합니다. 대상: ${featureName ?? "-"}`;
+    case "add-task":
+      return `세부작업 추가를 제안합니다. 기능: ${featureName ?? "-"} / 제안: ${proposedValue ?? "-"}`;
+    case "edit-task":
+      return `세부작업 수정을 제안합니다. 기능: ${featureName ?? "-"} / 대상: ${taskTitle ?? "-"} / 수정안: ${proposedValue ?? "-"}`;
+    case "delete-task":
+      return `세부작업 삭제를 제안합니다. 기능: ${featureName ?? "-"} / 대상: ${taskTitle ?? "-"}`;
+    default:
+      return "기능 제안을 시작합니다.";
+  }
+};
+
+const makeTaskId = (featureId: number) =>
+  `${featureId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+
+const applyPipelineProposal = (
+  prevFeatures: Feature[],
+  proposal: PipelineProposal,
+): { nextFeatures: Feature[]; applied: boolean; resultMessage: string } => {
+  const fail = (resultMessage: string) => ({
+    nextFeatures: prevFeatures,
+    applied: false,
+    resultMessage,
+  });
+
+  switch (proposal.action) {
+    case "add-feature": {
+      const nextFeatureName = proposal.proposedValue?.trim();
+      if (!nextFeatureName) {
+        return fail("기능명이 비어 있어 적용할 수 없습니다.");
+      }
+
+      const nextId =
+        prevFeatures.length === 0
+          ? 1
+          : Math.max(...prevFeatures.map((feature) => feature.id)) + 1;
+
+      return {
+        nextFeatures: [
+          ...prevFeatures,
+          {
+            id: nextId,
+            name: nextFeatureName,
+            tasks: [],
+          },
+        ],
+        applied: true,
+        resultMessage: "기능이 추가되었습니다.",
+      };
+    }
+
+    case "edit-feature": {
+      if (proposal.featureId === undefined) {
+        return fail("수정할 기능을 찾을 수 없습니다.");
+      }
+
+      const nextFeatureName = proposal.proposedValue?.trim();
+      if (!nextFeatureName) {
+        return fail("기능명이 비어 있어 적용할 수 없습니다.");
+      }
+
+      let applied = false;
+      const nextFeatures = prevFeatures.map((feature) => {
+        if (feature.id !== proposal.featureId) return feature;
+        applied = true;
+        return { ...feature, name: nextFeatureName };
+      });
+
+      if (!applied) {
+        return fail("수정할 기능이 이미 삭제되었습니다.");
+      }
+
+      return {
+        nextFeatures,
+        applied: true,
+        resultMessage: "기능명이 수정되었습니다.",
+      };
+    }
+
+    case "delete-feature": {
+      if (proposal.featureId === undefined) {
+        return fail("삭제할 기능을 찾을 수 없습니다.");
+      }
+
+      const nextFeatures = prevFeatures.filter(
+        (feature) => feature.id !== proposal.featureId,
+      );
+      if (nextFeatures.length === prevFeatures.length) {
+        return fail("삭제할 기능이 이미 없습니다.");
+      }
+
+      return {
+        nextFeatures,
+        applied: true,
+        resultMessage: "기능이 삭제되었습니다.",
+      };
+    }
+
+    case "add-task": {
+      if (proposal.featureId === undefined) {
+        return fail("세부작업을 추가할 기능이 없습니다.");
+      }
+
+      const nextTaskTitle = proposal.proposedValue?.trim();
+      if (!nextTaskTitle) {
+        return fail("세부작업명이 비어 있어 적용할 수 없습니다.");
+      }
+
+      let applied = false;
+      const nextFeatures = prevFeatures.map((feature) => {
+        if (feature.id !== proposal.featureId) return feature;
+
+        applied = true;
+        return {
+          ...feature,
+          tasks: [
+            ...feature.tasks,
+            {
+              id: makeTaskId(feature.id),
+              title: nextTaskTitle,
+              devChecked: false,
+              pmConfirmed: false,
+            },
+          ],
+        };
+      });
+
+      if (!applied) {
+        return fail("세부작업을 추가할 기능이 이미 삭제되었습니다.");
+      }
+
+      return {
+        nextFeatures,
+        applied: true,
+        resultMessage: "세부작업이 추가되었습니다.",
+      };
+    }
+
+    case "edit-task": {
+      if (proposal.featureId === undefined || !proposal.taskId) {
+        return fail("수정할 세부작업을 찾을 수 없습니다.");
+      }
+
+      const nextTaskTitle = proposal.proposedValue?.trim();
+      if (!nextTaskTitle) {
+        return fail("세부작업명이 비어 있어 적용할 수 없습니다.");
+      }
+
+      let applied = false;
+      const nextFeatures = prevFeatures.map((feature) => {
+        if (feature.id !== proposal.featureId) return feature;
+
+        return {
+          ...feature,
+          tasks: feature.tasks.map((task) => {
+            if (task.id !== proposal.taskId) return task;
+            applied = true;
+            return { ...task, title: nextTaskTitle };
+          }),
+        };
+      });
+
+      if (!applied) {
+        return fail("수정할 세부작업이 이미 삭제되었습니다.");
+      }
+
+      return {
+        nextFeatures,
+        applied: true,
+        resultMessage: "세부작업이 수정되었습니다.",
+      };
+    }
+
+    case "delete-task": {
+      if (proposal.featureId === undefined || !proposal.taskId) {
+        return fail("삭제할 세부작업을 찾을 수 없습니다.");
+      }
+
+      let applied = false;
+      const nextFeatures = prevFeatures.map((feature) => {
+        if (feature.id !== proposal.featureId) return feature;
+
+        const nextTasks = feature.tasks.filter(
+          (task) => task.id !== proposal.taskId,
+        );
+        if (nextTasks.length !== feature.tasks.length) {
+          applied = true;
+        }
+
+        return {
+          ...feature,
+          tasks: nextTasks,
+        };
+      });
+
+      if (!applied) {
+        return fail("삭제할 세부작업이 이미 없습니다.");
+      }
+
+      return {
+        nextFeatures,
+        applied: true,
+        resultMessage: "세부작업이 삭제되었습니다.",
+      };
+    }
+
+    default:
+      return fail("알 수 없는 제안 타입입니다.");
+  }
+};
 
 const initialFeatures: Feature[] = [
   {
@@ -165,6 +401,9 @@ export default function App() {
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [currentSection, setCurrentSection] = useState<SidebarSection>("pm-ai");
   const [features, setFeatures] = useState<Feature[]>(initialFeatures);
+  const [pipelineProposals, setPipelineProposals] = useState<
+    PipelineProposal[]
+  >([]);
   const [featureQuestions, setFeatureQuestions] = useState<FeatureQuestion[]>(
     [],
   );
@@ -213,6 +452,31 @@ export default function App() {
         });
         return acc;
       }, []),
+    );
+  }, [features]);
+
+  useEffect(() => {
+    setPipelineProposals((prev) =>
+      prev.map((proposal) => {
+        if (proposal.featureId === undefined || proposal.status !== "pending") {
+          return proposal;
+        }
+
+        const matchedFeature = features.find(
+          (feature) => feature.id === proposal.featureId,
+        );
+        if (!matchedFeature) return proposal;
+
+        const matchedTask = proposal.taskId
+          ? matchedFeature.tasks.find((task) => task.id === proposal.taskId)
+          : undefined;
+
+        return {
+          ...proposal,
+          featureName: matchedFeature.name,
+          taskTitle: matchedTask?.title,
+        };
+      }),
     );
   }, [features]);
 
@@ -377,6 +641,261 @@ export default function App() {
     );
   };
 
+  const createPipelineProposal = ({
+    action,
+    featureId,
+    taskId,
+    proposedValue,
+  }: {
+    action: PipelineProposalAction;
+    featureId?: number;
+    taskId?: string;
+    proposedValue?: string;
+  }) => {
+    const nextValue = proposedValue?.trim();
+    if (proposalNeedsValue(action) && !nextValue) return;
+
+    const matchedFeature =
+      featureId === undefined
+        ? undefined
+        : features.find((feature) => feature.id === featureId);
+    const needsFeature =
+      action === "edit-feature" ||
+      action === "delete-feature" ||
+      action === "add-task" ||
+      action === "edit-task" ||
+      action === "delete-task";
+    if (needsFeature && !matchedFeature) return;
+
+    const matchedTask =
+      taskId && matchedFeature
+        ? matchedFeature.tasks.find((task) => task.id === taskId)
+        : undefined;
+    const needsTask = action === "edit-task" || action === "delete-task";
+    if (needsTask && !matchedTask) return;
+
+    const nextProposal: PipelineProposal = {
+      id: createId(),
+      action,
+      featureId: matchedFeature?.id,
+      featureName: matchedFeature?.name,
+      taskId: matchedTask?.id,
+      taskTitle: matchedTask?.title,
+      proposedValue: nextValue,
+      messages: [
+        createQuestionMessage(
+          "pm",
+          buildPipelineProposalIntroMessage({
+            action,
+            featureName: matchedFeature?.name,
+            taskTitle: matchedTask?.title,
+            proposedValue: nextValue,
+          }),
+        ),
+      ],
+      createdAt: getNowTimeLabel(),
+      status: "pending",
+      pmConfirmed: false,
+      devConfirmed: false,
+    };
+
+    setPipelineProposals((prev) => [nextProposal, ...prev]);
+  };
+
+  const addPipelineProposalMessage = (
+    proposalId: string,
+    role: "pm" | "dev",
+    content: string,
+  ) => {
+    const trimmed = content.trim();
+    if (!trimmed) return;
+
+    const fingerprint = `${proposalId}|proposal|${role}|${trimmed}`;
+    const now = Date.now();
+    const last = lastMessageFingerprintRef.current;
+    if (last && last.key === fingerprint && now - last.at < 800) return;
+    lastMessageFingerprintRef.current = { key: fingerprint, at: now };
+
+    setPipelineProposals((prev) =>
+      prev.map((proposal) => {
+        if (proposal.id !== proposalId) return proposal;
+        if (proposal.status !== "pending") return proposal;
+
+        return {
+          ...proposal,
+          messages: [
+            ...proposal.messages,
+            createQuestionMessage(role, trimmed),
+          ],
+          pmConfirmed: false,
+          devConfirmed: false,
+          resultMessage: undefined,
+        };
+      }),
+    );
+  };
+
+  const updatePipelineProposalMessage = (
+    proposalId: string,
+    messageId: string,
+    role: "pm" | "dev",
+    content: string,
+  ) => {
+    const trimmed = content.trim();
+    if (!trimmed) return;
+
+    setPipelineProposals((prev) =>
+      prev.map((proposal) => {
+        if (proposal.id !== proposalId) return proposal;
+        if (proposal.status !== "pending") return proposal;
+
+        return {
+          ...proposal,
+          messages: proposal.messages.map((message) =>
+            message.id === messageId && message.role === role
+              ? { ...message, content: trimmed }
+              : message,
+          ),
+          pmConfirmed: false,
+          devConfirmed: false,
+          resultMessage: undefined,
+        };
+      }),
+    );
+  };
+
+  const deletePipelineProposalMessage = (
+    proposalId: string,
+    messageId: string,
+    role: "pm" | "dev",
+  ) => {
+    setPipelineProposals((prev) =>
+      prev.map((proposal) => {
+        if (proposal.id !== proposalId) return proposal;
+        if (proposal.status !== "pending") return proposal;
+
+        const nextMessages = proposal.messages.filter(
+          (message) => !(message.id === messageId && message.role === role),
+        );
+
+        if (nextMessages.length === 0) return proposal;
+
+        return {
+          ...proposal,
+          messages: nextMessages,
+          pmConfirmed: false,
+          devConfirmed: false,
+          resultMessage: undefined,
+        };
+      }),
+    );
+  };
+
+  const updatePipelineProposalValue = (
+    proposalId: string,
+    proposedValue: string,
+  ) => {
+    const trimmed = proposedValue.trim();
+
+    setPipelineProposals((prev) =>
+      prev.map((proposal) => {
+        if (proposal.id !== proposalId) return proposal;
+        if (proposal.status !== "pending") return proposal;
+        if (proposalNeedsValue(proposal.action) && !trimmed) return proposal;
+
+        const nextValue = trimmed || undefined;
+        if (proposal.proposedValue === nextValue) return proposal;
+
+        return {
+          ...proposal,
+          proposedValue: nextValue,
+          pmConfirmed: false,
+          devConfirmed: false,
+          resultMessage: undefined,
+        };
+      }),
+    );
+  };
+
+  const togglePipelineProposalConfirm = (
+    proposalId: string,
+    role: "pm" | "dev",
+  ) => {
+    const targetProposal = pipelineProposals.find(
+      (proposal) => proposal.id === proposalId && proposal.status === "pending",
+    );
+    if (!targetProposal) return;
+
+    const nextProposal = {
+      ...targetProposal,
+      pmConfirmed:
+        role === "pm"
+          ? !targetProposal.pmConfirmed
+          : targetProposal.pmConfirmed,
+      devConfirmed:
+        role === "dev"
+          ? !targetProposal.devConfirmed
+          : targetProposal.devConfirmed,
+      resultMessage: undefined,
+    };
+
+    if (!(nextProposal.pmConfirmed && nextProposal.devConfirmed)) {
+      setPipelineProposals((prev) =>
+        prev.map((proposal) =>
+          proposal.id === proposalId && proposal.status === "pending"
+            ? nextProposal
+            : proposal,
+        ),
+      );
+      return;
+    }
+
+    if (
+      proposalNeedsValue(nextProposal.action) &&
+      !nextProposal.proposedValue
+    ) {
+      setPipelineProposals((prev) =>
+        prev.map((proposal) =>
+          proposal.id === proposalId && proposal.status === "pending"
+            ? {
+                ...nextProposal,
+                pmConfirmed: false,
+                devConfirmed: false,
+                resultMessage: "최종안 값이 비어 있어 확정할 수 없습니다.",
+              }
+            : proposal,
+        ),
+      );
+      return;
+    }
+
+    const applyResult = applyPipelineProposal(features, nextProposal);
+    if (applyResult.applied) {
+      setFeatures(applyResult.nextFeatures);
+    }
+
+    setPipelineProposals((prev) =>
+      prev.map((proposal) =>
+        proposal.id === proposalId && proposal.status === "pending"
+          ? {
+              ...nextProposal,
+              status: applyResult.applied ? "approved" : "rejected",
+              closedAt: getNowTimeLabel(),
+              resultMessage: applyResult.resultMessage,
+            }
+          : proposal,
+      ),
+    );
+  };
+
+  const togglePipelineProposalConfirmByPm = (proposalId: string) => {
+    togglePipelineProposalConfirm(proposalId, "pm");
+  };
+
+  const togglePipelineProposalConfirmByDev = (proposalId: string) => {
+    togglePipelineProposalConfirm(proposalId, "dev");
+  };
+
   const toggleDevTaskCheck = (featureId: number, taskId: string) => {
     setFeatures((prev) =>
       prev.map((feature) => {
@@ -499,8 +1018,32 @@ export default function App() {
               section={pmSection}
               features={features}
               setFeatures={setFeatures}
+              pipelineProposals={pipelineProposals}
               featureQuestions={featureQuestions}
               onCreateFeatureQuestion={createFeatureQuestion}
+              onCreatePipelineProposal={createPipelineProposal}
+              onAddPipelineProposalMessage={(proposalId, content) =>
+                addPipelineProposalMessage(proposalId, "pm", content)
+              }
+              onUpdatePipelineProposalMessage={(
+                proposalId,
+                messageId,
+                content,
+              ) =>
+                updatePipelineProposalMessage(
+                  proposalId,
+                  messageId,
+                  "pm",
+                  content,
+                )
+              }
+              onDeletePipelineProposalMessage={(proposalId, messageId) =>
+                deletePipelineProposalMessage(proposalId, messageId, "pm")
+              }
+              onUpdatePipelineProposalValue={updatePipelineProposalValue}
+              onTogglePipelineProposalConfirmByPm={
+                togglePipelineProposalConfirmByPm
+              }
               onAddQuestionMessage={(questionId, content) =>
                 addQuestionMessage(questionId, "pm", content)
               }
@@ -526,8 +1069,31 @@ export default function App() {
             <DevDashboard
               section={devSection}
               features={features}
+              pipelineProposals={pipelineProposals}
               featureQuestions={featureQuestions}
               onToggleDevTaskCheck={toggleDevTaskCheck}
+              onAddPipelineProposalMessage={(proposalId, content) =>
+                addPipelineProposalMessage(proposalId, "dev", content)
+              }
+              onUpdatePipelineProposalMessage={(
+                proposalId,
+                messageId,
+                content,
+              ) =>
+                updatePipelineProposalMessage(
+                  proposalId,
+                  messageId,
+                  "dev",
+                  content,
+                )
+              }
+              onDeletePipelineProposalMessage={(proposalId, messageId) =>
+                deletePipelineProposalMessage(proposalId, messageId, "dev")
+              }
+              onUpdatePipelineProposalValue={updatePipelineProposalValue}
+              onTogglePipelineProposalConfirmByDev={
+                togglePipelineProposalConfirmByDev
+              }
               onAddQuestionMessage={(questionId, content) =>
                 addQuestionMessage(questionId, "dev", content)
               }

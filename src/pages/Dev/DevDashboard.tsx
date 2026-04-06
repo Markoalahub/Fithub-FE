@@ -11,13 +11,35 @@ import {
   Send,
   Trash2,
 } from "lucide-react";
-import type { Feature, FeatureQuestion, Task } from "../../types/index";
+import type {
+  Feature,
+  FeatureQuestion,
+  PipelineProposal,
+  PipelineProposalAction,
+  Task,
+} from "../../types/index";
 
 interface DevDashboardProps {
   section: "pipeline" | "feedback";
   features: Feature[];
+  pipelineProposals: PipelineProposal[];
   featureQuestions: FeatureQuestion[];
   onToggleDevTaskCheck: (featureId: number, taskId: string) => void;
+  onAddPipelineProposalMessage: (proposalId: string, content: string) => void;
+  onUpdatePipelineProposalMessage: (
+    proposalId: string,
+    messageId: string,
+    content: string,
+  ) => void;
+  onDeletePipelineProposalMessage: (
+    proposalId: string,
+    messageId: string,
+  ) => void;
+  onUpdatePipelineProposalValue: (
+    proposalId: string,
+    proposedValue: string,
+  ) => void;
+  onTogglePipelineProposalConfirmByDev: (proposalId: string) => void;
   onAddQuestionMessage: (questionId: string, content: string) => void;
   onUpdateQuestionMessage: (
     questionId: string,
@@ -28,11 +50,67 @@ interface DevDashboardProps {
   onConfirmQuestionByDev: (questionId: string) => void;
 }
 
+const PROPOSAL_MESSAGE_MAX_LENGTH = 260;
+const PROPOSAL_DRAFT_MAX_LENGTH = 90;
+
+const proposalNeedsValue = (action: PipelineProposalAction) =>
+  action === "add-feature" ||
+  action === "edit-feature" ||
+  action === "add-task" ||
+  action === "edit-task";
+
+const getProposalActionLabel = (action: PipelineProposalAction) => {
+  switch (action) {
+    case "add-feature":
+      return "기능 추가";
+    case "edit-feature":
+      return "기능 수정";
+    case "delete-feature":
+      return "기능 삭제";
+    case "add-task":
+      return "세부작업 추가";
+    case "edit-task":
+      return "세부작업 수정";
+    case "delete-task":
+      return "세부작업 삭제";
+    default:
+      return "기능 제안";
+  }
+};
+
+const getProposalTargetText = (proposal: PipelineProposal) => {
+  const featureName = proposal.featureName ?? "-";
+  const taskTitle = proposal.taskTitle ?? "-";
+
+  switch (proposal.action) {
+    case "add-feature":
+      return `신규 기능: ${proposal.proposedValue ?? "-"}`;
+    case "edit-feature":
+      return `${featureName} -> ${proposal.proposedValue ?? "-"}`;
+    case "delete-feature":
+      return `${featureName}`;
+    case "add-task":
+      return `${featureName} / 신규 세부작업: ${proposal.proposedValue ?? "-"}`;
+    case "edit-task":
+      return `${featureName} / ${taskTitle} -> ${proposal.proposedValue ?? "-"}`;
+    case "delete-task":
+      return `${featureName} / ${taskTitle}`;
+    default:
+      return "-";
+  }
+};
+
 export default function DevDashboard({
   section,
   features,
+  pipelineProposals,
   featureQuestions,
   onToggleDevTaskCheck,
+  onAddPipelineProposalMessage,
+  onUpdatePipelineProposalMessage,
+  onDeletePipelineProposalMessage,
+  onUpdatePipelineProposalValue,
+  onTogglePipelineProposalConfirmByDev,
   onAddQuestionMessage,
   onUpdateQuestionMessage,
   onDeleteQuestionMessage,
@@ -48,6 +126,16 @@ export default function DevDashboard({
   const [newMessageInput, setNewMessageInput] = useState("");
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editingMessageInput, setEditingMessageInput] = useState("");
+  const [selectedProposalId, setSelectedProposalId] = useState<string | null>(
+    null,
+  );
+  const [newProposalMessageInput, setNewProposalMessageInput] = useState("");
+  const [editingProposalMessageId, setEditingProposalMessageId] = useState<
+    string | null
+  >(null);
+  const [editingProposalMessageInput, setEditingProposalMessageInput] =
+    useState("");
+  const [proposalDraftInput, setProposalDraftInput] = useState("");
 
   const activeQuestions = useMemo(
     () => featureQuestions.filter((question) => !question.closed),
@@ -72,6 +160,32 @@ export default function DevDashboard({
       setSelectedQuestionId(selectedQuestion.id);
     }
   }, [selectedQuestion, selectedQuestionId]);
+
+  const selectedProposal = useMemo(() => {
+    if (pipelineProposals.length === 0) return null;
+    if (!selectedProposalId) return pipelineProposals[0];
+    return (
+      pipelineProposals.find(
+        (proposal) => proposal.id === selectedProposalId,
+      ) ?? pipelineProposals[0]
+    );
+  }, [pipelineProposals, selectedProposalId]);
+
+  useEffect(() => {
+    if (!selectedProposal) {
+      setSelectedProposalId(null);
+      setProposalDraftInput("");
+      return;
+    }
+
+    if (selectedProposalId !== selectedProposal.id) {
+      setSelectedProposalId(selectedProposal.id);
+    }
+  }, [selectedProposal, selectedProposalId]);
+
+  useEffect(() => {
+    setProposalDraftInput(selectedProposal?.proposedValue ?? "");
+  }, [selectedProposal?.id, selectedProposal?.proposedValue]);
 
   const toggleFeatureExpand = (featureId: number) => {
     setExpandedFeatureIds((prev) =>
@@ -113,6 +227,57 @@ export default function DevDashboard({
     }
   };
 
+  const submitProposalMessage = () => {
+    const trimmedMessage = newProposalMessageInput
+      .trim()
+      .slice(0, PROPOSAL_MESSAGE_MAX_LENGTH);
+    if (!selectedProposal || selectedProposal.status !== "pending") return;
+    if (!trimmedMessage) return;
+
+    onAddPipelineProposalMessage(selectedProposal.id, trimmedMessage);
+    setNewProposalMessageInput("");
+  };
+
+  const startEditProposalMessage = (messageId: string, content: string) => {
+    setEditingProposalMessageId(messageId);
+    setEditingProposalMessageInput(content);
+  };
+
+  const saveEditedProposalMessage = () => {
+    const trimmedMessage = editingProposalMessageInput
+      .trim()
+      .slice(0, PROPOSAL_MESSAGE_MAX_LENGTH);
+    if (!selectedProposal || selectedProposal.status !== "pending") return;
+    if (!editingProposalMessageId || !trimmedMessage) return;
+
+    onUpdatePipelineProposalMessage(
+      selectedProposal.id,
+      editingProposalMessageId,
+      trimmedMessage,
+    );
+    setEditingProposalMessageId(null);
+    setEditingProposalMessageInput("");
+  };
+
+  const removeProposalMessage = (messageId: string) => {
+    if (!selectedProposal || selectedProposal.status !== "pending") return;
+    onDeletePipelineProposalMessage(selectedProposal.id, messageId);
+    if (editingProposalMessageId === messageId) {
+      setEditingProposalMessageId(null);
+      setEditingProposalMessageInput("");
+    }
+  };
+
+  const saveProposalDraft = () => {
+    if (!selectedProposal || selectedProposal.status !== "pending") return;
+    const trimmedDraft = proposalDraftInput
+      .trim()
+      .slice(0, PROPOSAL_DRAFT_MAX_LENGTH);
+    if (proposalNeedsValue(selectedProposal.action) && !trimmedDraft) return;
+
+    onUpdatePipelineProposalValue(selectedProposal.id, trimmedDraft);
+  };
+
   const calculateProgress = (tasks: Task[]) => {
     if (tasks.length === 0) {
       return { dev: 0, pm: 0 };
@@ -146,6 +311,19 @@ export default function DevDashboard({
   const totalPmProgress =
     totalTasks === 0 ? 0 : Math.round((totalPmConfirmed / totalTasks) * 100);
 
+  const pendingPipelineProposals = useMemo(
+    () => pipelineProposals.filter((proposal) => proposal.status === "pending"),
+    [pipelineProposals],
+  );
+
+  const reviewedPipelineProposals = useMemo(
+    () =>
+      pipelineProposals
+        .filter((proposal) => proposal.status !== "pending")
+        .slice(0, 6),
+    [pipelineProposals],
+  );
+
   if (section === "pipeline") {
     return (
       <section className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm min-h-[620px] space-y-6">
@@ -162,6 +340,382 @@ export default function DevDashboard({
               PM 확인 {totalPmProgress}%
             </div>
           </div>
+        </div>
+
+        <div className="rounded-2xl border border-gray-200 bg-white p-4 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h4 className="text-sm font-semibold text-gray-900">
+              기능 제안 현황
+            </h4>
+            <div className="flex items-center gap-2 text-[11px]">
+              <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 font-semibold text-amber-700">
+                대기 {pendingPipelineProposals.length}
+              </span>
+              <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 font-semibold text-emerald-700">
+                완료{" "}
+                {
+                  reviewedPipelineProposals.filter(
+                    (proposal) => proposal.status === "approved",
+                  ).length
+                }
+              </span>
+            </div>
+          </div>
+
+          {pipelineProposals.length === 0 && (
+            <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-3 text-xs text-gray-500">
+              기획 제안이 아직 없습니다.
+            </div>
+          )}
+
+          {pipelineProposals.slice(0, 6).map((proposal) => (
+            <div
+              key={proposal.id}
+              className="rounded-xl border border-gray-200 px-3 py-2 text-xs space-y-1"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <p className="font-semibold text-gray-800">
+                  {getProposalActionLabel(proposal.action)}
+                </p>
+                <span
+                  className={`rounded-full px-2 py-0.5 font-semibold ${
+                    proposal.status === "pending"
+                      ? "bg-amber-100 text-amber-700"
+                      : proposal.status === "approved"
+                        ? "bg-emerald-100 text-emerald-700"
+                        : "bg-rose-100 text-rose-700"
+                  }`}
+                >
+                  {proposal.status === "pending"
+                    ? "대화중"
+                    : proposal.status === "approved"
+                      ? "반영완료"
+                      : "중단"}
+                </span>
+              </div>
+              <p className="text-gray-600 break-words leading-snug">
+                {getProposalTargetText(proposal)}
+              </p>
+              <p className="text-[11px] text-gray-500">
+                요청 {proposal.createdAt}
+                {proposal.closedAt ? ` · 종료 ${proposal.closedAt}` : ""}
+                {proposal.resultMessage ? ` · ${proposal.resultMessage}` : ""}
+              </p>
+            </div>
+          ))}
+        </div>
+
+        <div className="rounded-2xl border border-gray-200 bg-white p-4 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <h4 className="text-sm font-semibold text-gray-900">
+              기능 제안 채팅
+            </h4>
+            <span className="text-[11px] text-gray-500">
+              PM/DEV 상호확인 후 기능 반영
+            </span>
+          </div>
+
+          {pipelineProposals.length === 0 && (
+            <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-4 text-xs text-gray-500">
+              채팅할 제안이 없습니다.
+            </div>
+          )}
+
+          {pipelineProposals.length > 0 && (
+            <div className="grid grid-cols-1 xl:grid-cols-[260px_1fr_280px] gap-3">
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-2 space-y-2 max-h-[420px] overflow-y-auto">
+                {pipelineProposals.map((proposal) => {
+                  const isSelected = selectedProposal?.id === proposal.id;
+                  return (
+                    <button
+                      key={proposal.id}
+                      onClick={() => setSelectedProposalId(proposal.id)}
+                      className={`w-full rounded-lg border px-2.5 py-2 text-left text-xs space-y-1 ${
+                        isSelected
+                          ? "border-emerald-300 bg-emerald-50"
+                          : "border-gray-200 bg-white hover:bg-gray-50"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="font-semibold text-gray-800">
+                          {getProposalActionLabel(proposal.action)}
+                        </p>
+                        <span
+                          className={`rounded-full px-2 py-0.5 font-semibold ${
+                            proposal.status === "pending"
+                              ? "bg-amber-100 text-amber-700"
+                              : proposal.status === "approved"
+                                ? "bg-emerald-100 text-emerald-700"
+                                : "bg-rose-100 text-rose-700"
+                          }`}
+                        >
+                          {proposal.status === "pending"
+                            ? "대화중"
+                            : proposal.status === "approved"
+                              ? "반영완료"
+                              : "중단"}
+                        </span>
+                      </div>
+                      <p className="text-gray-600 break-words leading-snug">
+                        {getProposalTargetText(proposal)}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="rounded-xl border border-gray-200 bg-white flex flex-col min-h-[420px]">
+                {!selectedProposal && (
+                  <div className="flex-1 flex items-center justify-center text-sm text-gray-500">
+                    선택된 제안이 없습니다.
+                  </div>
+                )}
+
+                {selectedProposal && (
+                  <>
+                    <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
+                      <p className="text-xs font-semibold text-gray-700">
+                        {getProposalActionLabel(selectedProposal.action)}
+                      </p>
+                      <p className="mt-1 text-xs text-gray-600 break-words">
+                        {getProposalTargetText(selectedProposal)}
+                      </p>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
+                      {(selectedProposal.messages ?? []).map((message) => {
+                        const isDev = message.role === "dev";
+                        const isEditing =
+                          editingProposalMessageId === message.id;
+                        return (
+                          <div
+                            key={message.id}
+                            className={`flex ${isDev ? "justify-end" : "justify-start"}`}
+                          >
+                            <div
+                              className={`max-w-[85%] rounded-xl border px-2.5 py-2 ${
+                                isDev
+                                  ? "bg-emerald-600 text-white border-emerald-600"
+                                  : "bg-white border-gray-200 text-gray-800"
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <p
+                                  className={`text-[11px] font-semibold ${
+                                    isDev ? "text-emerald-100" : "text-gray-500"
+                                  }`}
+                                >
+                                  {isDev ? "DEV" : "PM"} · {message.createdAt}
+                                </p>
+                                {isDev &&
+                                  selectedProposal.status === "pending" && (
+                                    <div className="flex items-center gap-1">
+                                      <button
+                                        onClick={() =>
+                                          startEditProposalMessage(
+                                            message.id,
+                                            message.content,
+                                          )
+                                        }
+                                        className="rounded p-1 hover:bg-white/20"
+                                      >
+                                        <Pencil className="h-3 w-3" />
+                                      </button>
+                                      <button
+                                        onClick={() =>
+                                          removeProposalMessage(message.id)
+                                        }
+                                        className="rounded p-1 hover:bg-white/20"
+                                      >
+                                        <Trash2 className="h-3 w-3" />
+                                      </button>
+                                    </div>
+                                  )}
+                              </div>
+
+                              {isEditing ? (
+                                <div className="mt-2 space-y-2">
+                                  <textarea
+                                    rows={3}
+                                    maxLength={PROPOSAL_MESSAGE_MAX_LENGTH}
+                                    value={editingProposalMessageInput}
+                                    onChange={(event) =>
+                                      setEditingProposalMessageInput(
+                                        event.target.value,
+                                      )
+                                    }
+                                    className="w-full rounded-lg border border-white/50 bg-white text-gray-800 px-2 py-1.5 text-xs"
+                                  />
+                                  <div className="flex justify-end gap-2">
+                                    <button
+                                      onClick={() => {
+                                        setEditingProposalMessageId(null);
+                                        setEditingProposalMessageInput("");
+                                      }}
+                                      className="rounded border border-white/70 px-2 py-1 text-[11px]"
+                                    >
+                                      취소
+                                    </button>
+                                    <button
+                                      onClick={saveEditedProposalMessage}
+                                      className="rounded bg-white px-2 py-1 text-[11px] font-semibold text-emerald-700"
+                                    >
+                                      저장
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <p className="mt-1 text-xs whitespace-pre-wrap break-words">
+                                  {message.content}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div className="p-3 border-t border-gray-100">
+                      <div className="flex gap-2">
+                        <input
+                          value={newProposalMessageInput}
+                          maxLength={PROPOSAL_MESSAGE_MAX_LENGTH}
+                          onChange={(event) =>
+                            setNewProposalMessageInput(event.target.value)
+                          }
+                          disabled={selectedProposal.status !== "pending"}
+                          onKeyDown={(event) => {
+                            if (event.key !== "Enter") return;
+                            if (event.nativeEvent.isComposing) return;
+                            event.preventDefault();
+                            submitProposalMessage();
+                          }}
+                          placeholder={
+                            selectedProposal.status === "pending"
+                              ? "기능 상세 협의 내용을 입력하세요"
+                              : "종료된 제안입니다"
+                          }
+                          className="flex-1 rounded-lg border border-gray-300 px-2.5 py-2 text-xs"
+                        />
+                        <button
+                          onClick={submitProposalMessage}
+                          disabled={selectedProposal.status !== "pending"}
+                          className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-2.5 text-white hover:bg-emerald-700 disabled:bg-gray-300"
+                        >
+                          <Send className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 space-y-3">
+                {!selectedProposal && (
+                  <p className="text-xs text-gray-500">
+                    선택된 제안이 없습니다.
+                  </p>
+                )}
+
+                {selectedProposal && (
+                  <>
+                    <div className="rounded-lg border border-gray-200 bg-white p-2.5 text-xs space-y-1">
+                      <p className="text-gray-500">제안 상태</p>
+                      <p className="font-semibold text-gray-800">
+                        {selectedProposal.status === "pending"
+                          ? "대화중"
+                          : selectedProposal.status === "approved"
+                            ? "반영완료"
+                            : "중단"}
+                      </p>
+                      <p className="text-[11px] text-gray-500">
+                        생성 {selectedProposal.createdAt}
+                        {selectedProposal.closedAt
+                          ? ` · 종료 ${selectedProposal.closedAt}`
+                          : ""}
+                      </p>
+                    </div>
+
+                    {proposalNeedsValue(selectedProposal.action) && (
+                      <div className="rounded-lg border border-gray-200 bg-white p-2.5 text-xs space-y-2">
+                        <p className="text-gray-500">최종안</p>
+                        <input
+                          value={proposalDraftInput}
+                          maxLength={PROPOSAL_DRAFT_MAX_LENGTH}
+                          disabled={selectedProposal.status !== "pending"}
+                          onChange={(event) =>
+                            setProposalDraftInput(event.target.value)
+                          }
+                          className="w-full rounded-md border border-gray-300 px-2 py-1.5"
+                        />
+                        <div className="flex justify-end">
+                          <button
+                            onClick={saveProposalDraft}
+                            disabled={selectedProposal.status !== "pending"}
+                            className="rounded-md border border-gray-300 px-2 py-1 text-[11px] font-semibold text-gray-700 disabled:opacity-60"
+                          >
+                            최종안 업데이트
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="rounded-lg border border-gray-200 bg-white p-2.5 text-xs space-y-2">
+                      <p className="text-gray-500">상호확인</p>
+                      <p className="flex items-center justify-between">
+                        <span>기획 확인</span>
+                        <span
+                          className={
+                            selectedProposal.pmConfirmed
+                              ? "text-green-600"
+                              : "text-gray-400"
+                          }
+                        >
+                          {selectedProposal.pmConfirmed ? "완료" : "대기"}
+                        </span>
+                      </p>
+                      <p className="flex items-center justify-between">
+                        <span>개발 확인</span>
+                        <span
+                          className={
+                            selectedProposal.devConfirmed
+                              ? "text-green-600"
+                              : "text-gray-400"
+                          }
+                        >
+                          {selectedProposal.devConfirmed ? "완료" : "대기"}
+                        </span>
+                      </p>
+                      {selectedProposal.status === "pending" && (
+                        <button
+                          onClick={() =>
+                            onTogglePipelineProposalConfirmByDev(
+                              selectedProposal.id,
+                            )
+                          }
+                          disabled={
+                            proposalNeedsValue(selectedProposal.action) &&
+                            !selectedProposal.proposedValue?.trim()
+                          }
+                          className="mt-1 w-full rounded-lg bg-emerald-600 px-2.5 py-2 text-[11px] font-semibold text-white hover:bg-emerald-700 disabled:bg-gray-300"
+                        >
+                          {selectedProposal.devConfirmed
+                            ? "개발 확인 취소"
+                            : "개발 최종안 확인"}
+                        </button>
+                      )}
+                    </div>
+
+                    {selectedProposal.resultMessage && (
+                      <div className="rounded-lg border border-emerald-100 bg-emerald-50 px-2.5 py-2 text-[11px] text-emerald-800">
+                        {selectedProposal.resultMessage}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="overflow-x-auto pb-2">
