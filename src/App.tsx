@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import PMDashboard from "./pages/PM/PMDashboard.tsx";
-import DevDashboard from "./pages/Dev/DevDashboard.tsx";
+import DevDashboard from "@/src/pages/Dev/DevDashboard";
 import AdminDashboard from "./pages/Admin/AdminDashboard.tsx";
 import LoginScreen from "./pages/Auth/LoginScreen.tsx";
 import {
@@ -1411,10 +1411,15 @@ export default function App() {
             pipelineProposals={pipelineProposals}
             featureQuestions={featureQuestions}
             onToggleDevTaskCheck={toggleDevTaskCheck}
-            onAddPipelineProposalMessage={(proposalId, content) =>
-              addPipelineProposalMessage(proposalId, "dev", content)
-            }
-            onUpdatePipelineProposalMessage={(proposalId, messageId, content) =>
+            onAddPipelineProposalMessage={(
+              proposalId: string,
+              content: string,
+            ) => addPipelineProposalMessage(proposalId, "dev", content)}
+            onUpdatePipelineProposalMessage={(
+              proposalId: string,
+              messageId: string,
+              content: string,
+            ) =>
               updatePipelineProposalMessage(
                 proposalId,
                 messageId,
@@ -1422,20 +1427,23 @@ export default function App() {
                 content,
               )
             }
-            onDeletePipelineProposalMessage={(proposalId, messageId) =>
-              deletePipelineProposalMessage(proposalId, messageId, "dev")
-            }
+            onDeletePipelineProposalMessage={(
+              proposalId: string,
+              messageId: string,
+            ) => deletePipelineProposalMessage(proposalId, messageId, "dev")}
             onUpdatePipelineProposalValue={updatePipelineProposalValue}
             onTogglePipelineProposalConfirmByDev={
               togglePipelineProposalConfirmByDev
             }
-            onAddQuestionMessage={(questionId, content) =>
+            onAddQuestionMessage={(questionId: string, content: string) =>
               addQuestionMessage(questionId, "dev", content)
             }
-            onUpdateQuestionMessage={(questionId, messageId, content) =>
-              updateQuestionMessage(questionId, messageId, "dev", content)
-            }
-            onDeleteQuestionMessage={(questionId, messageId) =>
+            onUpdateQuestionMessage={(
+              questionId: string,
+              messageId: string,
+              content: string,
+            ) => updateQuestionMessage(questionId, messageId, "dev", content)}
+            onDeleteQuestionMessage={(questionId: string, messageId: string) =>
               deleteQuestionMessage(questionId, messageId, "dev")
             }
             onConfirmQuestionByDev={confirmQuestionByDev}
