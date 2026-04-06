@@ -69,6 +69,13 @@ interface PMDashboardProps {
   onMoveSection: (section: "pm-ai" | "pm-pipeline" | "pm-review") => void;
 }
 
+type ProposalCreatePayload = {
+  action: PipelineProposalAction;
+  featureId?: number;
+  taskId?: string;
+  proposedValue?: string;
+};
+
 const FEATURE_NAME_MAX_LENGTH = 40;
 const TASK_TITLE_MAX_LENGTH = 90;
 const QUESTION_TEXT_MAX_LENGTH = 280;
@@ -81,6 +88,21 @@ const FLOATING_PANEL_MAX_HEIGHT = 620;
 
 const clampNumber = (value: number, min: number, max: number) =>
   Math.min(Math.max(value, min), max);
+
+const getViewportSize = () => {
+  if (typeof window === "undefined") {
+    return { width: 1200, height: 800 };
+  }
+  return { width: window.innerWidth, height: window.innerHeight };
+};
+
+const getInitialFloatingButtonPosition = () => {
+  const { width, height } = getViewportSize();
+  return {
+    x: Math.max(12, width - FLOATING_BUTTON_SIZE - 12),
+    y: Math.max(12, height - FLOATING_BUTTON_SIZE - 12),
+  };
+};
 
 type ProposalWidgetTab = "chat" | "status" | "compose";
 
@@ -189,14 +211,12 @@ export default function PMDashboard({
   const [isProposalWidgetOpen, setIsProposalWidgetOpen] = useState(false);
   const [proposalWidgetTab, setProposalWidgetTab] =
     useState<ProposalWidgetTab>("chat");
-  const [viewportSize, setViewportSize] = useState({
-    width: 1200,
-    height: 800,
-  });
-  const [floatingButtonPosition, setFloatingButtonPosition] = useState({
-    x: 24,
-    y: 24,
-  });
+  const [viewportSize, setViewportSize] = useState(getViewportSize);
+  const [floatingButtonPosition, setFloatingButtonPosition] = useState(
+    getInitialFloatingButtonPosition,
+  );
+  const [isDraggingFloatingButton, setIsDraggingFloatingButton] =
+    useState(false);
   const [draggingFeatureId, setDraggingFeatureId] = useState<number | null>(
     null,
   );
@@ -217,6 +237,10 @@ export default function PMDashboard({
     originY: number;
     moved: boolean;
   } | null>(null);
+  const floatingButtonRafRef = useRef<number | null>(null);
+  const pendingFloatingPositionRef = useRef<{ x: number; y: number } | null>(
+    null,
+  );
 
   const activeQuestions = useMemo(
     () => featureQuestions.filter((question) => !question.closed),
@@ -333,6 +357,16 @@ export default function PMDashboard({
     return () => window.removeEventListener("resize", syncViewport);
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (floatingButtonRafRef.current !== null) {
+        cancelAnimationFrame(floatingButtonRafRef.current);
+        floatingButtonRafRef.current = null;
+      }
+      pendingFloatingPositionRef.current = null;
+    };
+  }, []);
+
   const proposalPanelWidth = Math.min(
     FLOATING_PANEL_MAX_WIDTH,
     Math.max(320, viewportSize.width - 24),
@@ -357,6 +391,7 @@ export default function PMDashboard({
   ) => {
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
+    setIsDraggingFloatingButton(true);
     floatingButtonDragRef.current = {
       pointerId: event.pointerId,
       startX: event.clientX,
@@ -381,10 +416,18 @@ export default function PMDashboard({
 
     const maxX = Math.max(12, viewportSize.width - FLOATING_BUTTON_SIZE - 12);
     const maxY = Math.max(12, viewportSize.height - FLOATING_BUTTON_SIZE - 12);
-
-    setFloatingButtonPosition({
+    pendingFloatingPositionRef.current = {
       x: clampNumber(dragState.originX + dx, 12, maxX),
       y: clampNumber(dragState.originY + dy, 12, maxY),
+    };
+
+    if (floatingButtonRafRef.current !== null) return;
+
+    floatingButtonRafRef.current = window.requestAnimationFrame(() => {
+      floatingButtonRafRef.current = null;
+      const nextPosition = pendingFloatingPositionRef.current;
+      if (!nextPosition) return;
+      setFloatingButtonPosition(nextPosition);
     });
   };
 
@@ -398,7 +441,17 @@ export default function PMDashboard({
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
 
+    if (floatingButtonRafRef.current !== null) {
+      cancelAnimationFrame(floatingButtonRafRef.current);
+      floatingButtonRafRef.current = null;
+    }
+    if (pendingFloatingPositionRef.current) {
+      setFloatingButtonPosition(pendingFloatingPositionRef.current);
+      pendingFloatingPositionRef.current = null;
+    }
+
     floatingButtonDragRef.current = null;
+    setIsDraggingFloatingButton(false);
     if (!dragState.moved) {
       setIsProposalWidgetOpen((prev) => !prev);
     }
@@ -413,7 +466,13 @@ export default function PMDashboard({
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
+    if (floatingButtonRafRef.current !== null) {
+      cancelAnimationFrame(floatingButtonRafRef.current);
+      floatingButtonRafRef.current = null;
+    }
+    pendingFloatingPositionRef.current = null;
     floatingButtonDragRef.current = null;
+    setIsDraggingFloatingButton(false);
   };
 
   const toggleFeatureExpand = (featureId: number) => {
@@ -478,14 +537,32 @@ export default function PMDashboard({
     );
   };
 
+  const confirmAndCreateProposal = (
+    confirmMessage: string,
+    payload: ProposalCreatePayload,
+  ) => {
+    const confirmed = window.confirm(confirmMessage);
+    if (!confirmed) return false;
+
+    onCreatePipelineProposal(payload);
+    setProposalWidgetTab("chat");
+    setIsProposalWidgetOpen(true);
+    return true;
+  };
+
   const createFeature = () => {
     const trimmed = newFeatureName.trim().slice(0, FEATURE_NAME_MAX_LENGTH);
     if (!trimmed) return;
 
-    onCreatePipelineProposal({
-      action: "add-feature",
-      proposedValue: trimmed,
-    });
+    const created = confirmAndCreateProposal(
+      `'${trimmed}' 기능 추가 제안을 등록할까요?`,
+      {
+        action: "add-feature",
+        proposedValue: trimmed,
+      },
+    );
+    if (!created) return;
+
     setNewFeatureName("");
   };
 
@@ -509,20 +586,31 @@ export default function PMDashboard({
       return;
     }
 
-    onCreatePipelineProposal({
-      action: "edit-feature",
-      featureId: editingFeatureId,
-      proposedValue: trimmed,
-    });
+    const created = confirmAndCreateProposal(
+      `'${matchedFeature.name}' 기능을 '${trimmed}'(으)로 수정 제안을 등록할까요?`,
+      {
+        action: "edit-feature",
+        featureId: editingFeatureId,
+        proposedValue: trimmed,
+      },
+    );
+    if (!created) return;
+
     setEditingFeatureId(null);
     setEditingFeatureName("");
   };
 
   const deleteFeature = (featureId: number) => {
-    onCreatePipelineProposal({
-      action: "delete-feature",
-      featureId,
-    });
+    const matchedFeature = features.find((feature) => feature.id === featureId);
+    const created = confirmAndCreateProposal(
+      `'${matchedFeature?.name ?? "선택한 기능"}' 삭제 제안을 등록할까요?`,
+      {
+        action: "delete-feature",
+        featureId,
+      },
+    );
+    if (!created) return;
+
     if (editingFeatureId === featureId) {
       setEditingFeatureId(null);
       setEditingFeatureName("");
@@ -535,11 +623,15 @@ export default function PMDashboard({
       .slice(0, TASK_TITLE_MAX_LENGTH);
     if (!draft) return;
 
-    onCreatePipelineProposal({
-      action: "add-task",
-      featureId,
-      proposedValue: draft,
-    });
+    const created = confirmAndCreateProposal(
+      `'${draft}' 세부작업 추가 제안을 등록할까요?`,
+      {
+        action: "add-task",
+        featureId,
+        proposedValue: draft,
+      },
+    );
+    if (!created) return;
 
     setTaskDrafts((prev) => ({ ...prev, [featureId]: "" }));
   };
@@ -574,22 +666,35 @@ export default function PMDashboard({
       return;
     }
 
-    onCreatePipelineProposal({
-      action: "edit-task",
-      featureId,
-      taskId,
-      proposedValue: trimmed,
-    });
+    const created = confirmAndCreateProposal(
+      `'${matchedTask.title}' 세부작업을 '${trimmed}'(으)로 수정 제안을 등록할까요?`,
+      {
+        action: "edit-task",
+        featureId,
+        taskId,
+        proposedValue: trimmed,
+      },
+    );
+    if (!created) return;
 
     cancelTaskEdit();
   };
 
   const deleteTask = (featureId: number, taskId: string) => {
-    onCreatePipelineProposal({
-      action: "delete-task",
-      featureId,
-      taskId,
-    });
+    const matchedFeature = features.find((feature) => feature.id === featureId);
+    const matchedTask = matchedFeature?.tasks.find(
+      (task) => task.id === taskId,
+    );
+    const created = confirmAndCreateProposal(
+      `'${matchedTask?.title ?? "선택한 세부작업"}' 삭제 제안을 등록할까요?`,
+      {
+        action: "delete-task",
+        featureId,
+        taskId,
+      },
+    );
+    if (!created) return;
+
     if (editingTaskKey === getTaskEditKey(featureId, taskId)) {
       cancelTaskEdit();
     }
@@ -983,424 +1088,433 @@ export default function PMDashboard({
           </div>
         </div>
 
-        {isProposalWidgetOpen && (
-          <div
-            className="fixed z-40 rounded-2xl border border-gray-200 bg-white shadow-2xl overflow-hidden"
-            style={{
-              left: proposalPanelLeft,
-              top: proposalPanelTop,
-              width: proposalPanelWidth,
-              height: proposalPanelHeight,
-            }}
-          >
-            <div className="px-3 py-2.5 border-b border-gray-100 bg-gray-50 flex items-center justify-between gap-2">
-              <p className="text-sm font-semibold text-gray-900">
-                기능 제안 협업 패널
-              </p>
-              <button
-                onClick={() => setIsProposalWidgetOpen(false)}
-                className="rounded-md border border-gray-300 p-1 text-gray-500 hover:bg-gray-100"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
+        <div
+          aria-hidden={!isProposalWidgetOpen}
+          className={`fixed z-40 rounded-2xl border border-gray-200 bg-white shadow-2xl overflow-hidden ${
+            isProposalWidgetOpen
+              ? "pointer-events-auto opacity-100 translate-y-0 scale-100"
+              : "pointer-events-none opacity-0 translate-y-2 scale-95"
+          } ${
+            isDraggingFloatingButton
+              ? "transition-none"
+              : "transition-all duration-300 ease-in-out"
+          }`}
+          style={{
+            left: proposalPanelLeft,
+            top: proposalPanelTop,
+            width: proposalPanelWidth,
+            height: proposalPanelHeight,
+          }}
+        >
+          <div className="px-3 py-2.5 border-b border-gray-100 bg-gray-50 flex items-center justify-between gap-2">
+            <p className="text-sm font-semibold text-gray-900">
+              기능 제안 협업 패널
+            </p>
+            <button
+              onClick={() => setIsProposalWidgetOpen(false)}
+              className="rounded-md border border-gray-300 p-1 text-gray-500 hover:bg-gray-100"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
 
-            <div className="px-3 py-2 border-b border-gray-100 bg-white flex items-center gap-1">
-              <button
-                onClick={() => setProposalWidgetTab("chat")}
-                className={`rounded-md px-2.5 py-1 text-xs font-semibold ${
-                  proposalWidgetTab === "chat"
-                    ? "bg-indigo-600 text-white"
-                    : "border border-gray-300 text-gray-600 hover:bg-gray-50"
-                }`}
-              >
-                제안 채팅
-              </button>
-              <button
-                onClick={() => setProposalWidgetTab("status")}
-                className={`rounded-md px-2.5 py-1 text-xs font-semibold ${
-                  proposalWidgetTab === "status"
-                    ? "bg-indigo-600 text-white"
-                    : "border border-gray-300 text-gray-600 hover:bg-gray-50"
-                }`}
-              >
-                제안 현황
-              </button>
-              <button
-                onClick={() => setProposalWidgetTab("compose")}
-                className={`rounded-md px-2.5 py-1 text-xs font-semibold ${
-                  proposalWidgetTab === "compose"
-                    ? "bg-indigo-600 text-white"
-                    : "border border-gray-300 text-gray-600 hover:bg-gray-50"
-                }`}
-              >
-                기능 추가 제안
-              </button>
-            </div>
+          <div className="px-3 py-2 border-b border-gray-100 bg-white flex items-center gap-1">
+            <button
+              onClick={() => setProposalWidgetTab("chat")}
+              className={`rounded-md px-2.5 py-1 text-xs font-semibold ${
+                proposalWidgetTab === "chat"
+                  ? "bg-indigo-600 text-white"
+                  : "border border-gray-300 text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              제안 채팅
+            </button>
+            <button
+              onClick={() => setProposalWidgetTab("status")}
+              className={`rounded-md px-2.5 py-1 text-xs font-semibold ${
+                proposalWidgetTab === "status"
+                  ? "bg-indigo-600 text-white"
+                  : "border border-gray-300 text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              제안 현황
+            </button>
+            <button
+              onClick={() => setProposalWidgetTab("compose")}
+              className={`rounded-md px-2.5 py-1 text-xs font-semibold ${
+                proposalWidgetTab === "compose"
+                  ? "bg-indigo-600 text-white"
+                  : "border border-gray-300 text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              기능 추가 제안
+            </button>
+          </div>
 
-            {proposalWidgetTab === "chat" && (
-              <div className="h-[calc(100%-88px)] grid grid-cols-[180px_1fr] gap-2 p-3">
-                <div className="rounded-lg border border-gray-200 bg-gray-50 p-2 space-y-2 overflow-y-auto">
-                  {pipelineProposals.length === 0 && (
-                    <p className="text-[11px] text-gray-500">
-                      제안이 없습니다.
-                    </p>
-                  )}
-                  {pipelineProposals.map((proposal) => {
-                    const isSelected = selectedProposal?.id === proposal.id;
-                    return (
-                      <button
-                        key={proposal.id}
-                        onClick={() => setSelectedProposalId(proposal.id)}
-                        className={`w-full rounded-lg border px-2 py-1.5 text-left text-[11px] space-y-1 ${
-                          isSelected
-                            ? "border-indigo-300 bg-indigo-50"
-                            : "border-gray-200 bg-white hover:bg-gray-50"
-                        }`}
-                      >
-                        <p className="font-semibold text-gray-800">
-                          {getProposalActionLabel(proposal.action)}
-                        </p>
-                        <p className="text-gray-600 break-words leading-snug">
-                          {getProposalTargetText(proposal)}
-                        </p>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <div className="rounded-lg border border-gray-200 bg-white flex flex-col min-h-0">
-                  {!selectedProposal && (
-                    <div className="flex-1 flex items-center justify-center text-xs text-gray-500">
-                      선택된 제안이 없습니다.
-                    </div>
-                  )}
-
-                  {selectedProposal && (
-                    <>
-                      <div className="px-3 py-2 border-b border-gray-100 bg-gray-50">
-                        <p className="text-xs font-semibold text-gray-700">
-                          {getProposalActionLabel(selectedProposal.action)}
-                        </p>
-                        <p className="mt-1 text-[11px] text-gray-600 break-words">
-                          {getProposalTargetText(selectedProposal)}
-                        </p>
-                      </div>
-
-                      <div className="flex-1 overflow-y-auto px-3 py-2 space-y-2">
-                        {(selectedProposal.messages ?? []).map((message) => {
-                          const isPm = message.role === "pm";
-                          const isEditing =
-                            editingProposalMessageId === message.id;
-                          return (
-                            <div
-                              key={message.id}
-                              className={`flex ${isPm ? "justify-end" : "justify-start"}`}
-                            >
-                              <div
-                                className={`max-w-[88%] rounded-xl border px-2 py-1.5 ${
-                                  isPm
-                                    ? "bg-indigo-600 text-white border-indigo-600"
-                                    : "bg-white border-gray-200 text-gray-800"
-                                }`}
-                              >
-                                <div className="flex items-center justify-between gap-2">
-                                  <p
-                                    className={`text-[10px] font-semibold ${
-                                      isPm ? "text-indigo-100" : "text-gray-500"
-                                    }`}
-                                  >
-                                    {isPm ? "PM" : "DEV"} · {message.createdAt}
-                                  </p>
-                                  {isPm &&
-                                    selectedProposal.status === "pending" && (
-                                      <div className="flex items-center gap-1">
-                                        <button
-                                          onClick={() =>
-                                            startEditProposalMessage(
-                                              message.id,
-                                              message.content,
-                                            )
-                                          }
-                                          className="rounded p-0.5 hover:bg-white/20"
-                                        >
-                                          <Pencil className="h-3 w-3" />
-                                        </button>
-                                        <button
-                                          onClick={() =>
-                                            removeProposalMessage(message.id)
-                                          }
-                                          className="rounded p-0.5 hover:bg-white/20"
-                                        >
-                                          <Trash2 className="h-3 w-3" />
-                                        </button>
-                                      </div>
-                                    )}
-                                </div>
-
-                                {isEditing ? (
-                                  <div className="mt-1.5 space-y-1.5">
-                                    <textarea
-                                      rows={2}
-                                      maxLength={PROPOSAL_MESSAGE_MAX_LENGTH}
-                                      value={editingProposalMessageInput}
-                                      onChange={(event) =>
-                                        setEditingProposalMessageInput(
-                                          event.target.value,
-                                        )
-                                      }
-                                      className="w-full rounded-md border border-white/50 bg-white text-gray-800 px-2 py-1 text-[11px]"
-                                    />
-                                    <div className="flex justify-end gap-1.5">
-                                      <button
-                                        onClick={() => {
-                                          setEditingProposalMessageId(null);
-                                          setEditingProposalMessageInput("");
-                                        }}
-                                        className="rounded border border-white/70 px-2 py-0.5 text-[10px]"
-                                      >
-                                        취소
-                                      </button>
-                                      <button
-                                        onClick={saveEditedProposalMessage}
-                                        className="rounded bg-white px-2 py-0.5 text-[10px] font-semibold text-indigo-700"
-                                      >
-                                        저장
-                                      </button>
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <p className="mt-1 text-[11px] whitespace-pre-wrap break-words">
-                                    {message.content}
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      <div className="p-2 border-t border-gray-100 space-y-2">
-                        <div className="flex gap-1.5">
-                          <input
-                            value={newProposalMessageInput}
-                            maxLength={PROPOSAL_MESSAGE_MAX_LENGTH}
-                            onChange={(event) =>
-                              setNewProposalMessageInput(event.target.value)
-                            }
-                            disabled={selectedProposal.status !== "pending"}
-                            onKeyDown={(event) => {
-                              if (event.key !== "Enter") return;
-                              if (event.nativeEvent.isComposing) return;
-                              event.preventDefault();
-                              submitProposalMessage();
-                            }}
-                            placeholder="협의 내용을 입력하세요"
-                            className="flex-1 rounded-md border border-gray-300 px-2 py-1.5 text-[11px]"
-                          />
-                          <button
-                            onClick={submitProposalMessage}
-                            disabled={selectedProposal.status !== "pending"}
-                            className="inline-flex items-center justify-center rounded-md bg-indigo-600 px-2 text-white hover:bg-indigo-700 disabled:bg-gray-300"
-                          >
-                            <Send className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-
-                        {proposalNeedsValue(selectedProposal.action) && (
-                          <div className="flex gap-1.5">
-                            <input
-                              value={proposalDraftInput}
-                              maxLength={PROPOSAL_DRAFT_MAX_LENGTH}
-                              disabled={selectedProposal.status !== "pending"}
-                              onChange={(event) =>
-                                setProposalDraftInput(event.target.value)
-                              }
-                              className="flex-1 rounded-md border border-gray-300 px-2 py-1.5 text-[11px]"
-                              placeholder="최종안"
-                            />
-                            <button
-                              onClick={saveProposalDraft}
-                              disabled={selectedProposal.status !== "pending"}
-                              className="rounded-md border border-gray-300 px-2 py-1 text-[11px] font-semibold text-gray-700 disabled:opacity-60"
-                            >
-                              업데이트
-                            </button>
-                          </div>
-                        )}
-
-                        <div className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5 text-[11px] space-y-1">
-                          <p className="flex items-center justify-between">
-                            <span>기획 확인</span>
-                            <span
-                              className={
-                                selectedProposal.pmConfirmed
-                                  ? "text-green-600"
-                                  : "text-gray-400"
-                              }
-                            >
-                              {selectedProposal.pmConfirmed ? "완료" : "대기"}
-                            </span>
-                          </p>
-                          <p className="flex items-center justify-between">
-                            <span>개발 확인</span>
-                            <span
-                              className={
-                                selectedProposal.devConfirmed
-                                  ? "text-green-600"
-                                  : "text-gray-400"
-                              }
-                            >
-                              {selectedProposal.devConfirmed ? "완료" : "대기"}
-                            </span>
-                          </p>
-                        </div>
-
-                        {selectedProposal.status === "pending" && (
-                          <button
-                            onClick={() =>
-                              onTogglePipelineProposalConfirmByPm(
-                                selectedProposal.id,
-                              )
-                            }
-                            disabled={
-                              proposalNeedsValue(selectedProposal.action) &&
-                              !selectedProposal.proposedValue?.trim()
-                            }
-                            className="w-full rounded-md bg-indigo-600 px-2 py-1.5 text-[11px] font-semibold text-white hover:bg-indigo-700 disabled:bg-gray-300"
-                          >
-                            {selectedProposal.pmConfirmed
-                              ? "기획 확인 취소"
-                              : "기획 최종안 확인"}
-                          </button>
-                        )}
-
-                        {selectedProposal.resultMessage && (
-                          <div className="rounded-md border border-indigo-100 bg-indigo-50 px-2 py-1 text-[11px] text-indigo-800">
-                            {selectedProposal.resultMessage}
-                          </div>
-                        )}
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {proposalWidgetTab === "status" && (
-              <div className="h-[calc(100%-88px)] overflow-y-auto p-3 space-y-2">
-                <div className="flex flex-wrap items-center gap-2 text-[11px]">
-                  <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 font-semibold text-amber-700">
-                    대기 {pendingProposalCount}
-                  </span>
-                  <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 font-semibold text-emerald-700">
-                    승인 {approvedProposalCount}
-                  </span>
-                  <span className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 font-semibold text-rose-700">
-                    반려 {rejectedProposalCount}
-                  </span>
-                </div>
-
+          {proposalWidgetTab === "chat" && (
+            <div className="h-[calc(100%-88px)] grid grid-cols-[180px_1fr] gap-2 p-3">
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-2 space-y-2 overflow-y-auto">
                 {pipelineProposals.length === 0 && (
-                  <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-3 text-xs text-gray-500">
-                    등록된 제안이 없습니다.
-                  </div>
+                  <p className="text-[11px] text-gray-500">제안이 없습니다.</p>
                 )}
-
-                {pipelineProposals.map((proposal) => (
-                  <button
-                    key={proposal.id}
-                    onClick={() => {
-                      setSelectedProposalId(proposal.id);
-                      setProposalWidgetTab("chat");
-                    }}
-                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-left text-xs space-y-1 hover:bg-gray-50"
-                  >
-                    <div className="flex items-center justify-between gap-2">
+                {pipelineProposals.map((proposal) => {
+                  const isSelected = selectedProposal?.id === proposal.id;
+                  return (
+                    <button
+                      key={proposal.id}
+                      onClick={() => setSelectedProposalId(proposal.id)}
+                      className={`w-full rounded-lg border px-2 py-1.5 text-left text-[11px] space-y-1 ${
+                        isSelected
+                          ? "border-indigo-300 bg-indigo-50"
+                          : "border-gray-200 bg-white hover:bg-gray-50"
+                      }`}
+                    >
                       <p className="font-semibold text-gray-800">
                         {getProposalActionLabel(proposal.action)}
                       </p>
-                      <span
-                        className={`rounded-full px-2 py-0.5 font-semibold ${
-                          proposal.status === "pending"
-                            ? "bg-amber-100 text-amber-700"
-                            : proposal.status === "approved"
-                              ? "bg-emerald-100 text-emerald-700"
-                              : "bg-rose-100 text-rose-700"
-                        }`}
-                      >
-                        {proposal.status === "pending"
-                          ? "대화중"
-                          : proposal.status === "approved"
-                            ? "반영완료"
-                            : "중단"}
-                      </span>
-                    </div>
-                    <p className="text-gray-600 break-words leading-snug">
-                      {getProposalTargetText(proposal)}
-                    </p>
-                    <p className="text-[11px] text-gray-500">
-                      요청 {proposal.createdAt}
-                      {proposal.closedAt ? ` · 종료 ${proposal.closedAt}` : ""}
-                    </p>
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {proposalWidgetTab === "compose" && (
-              <div className="h-[calc(100%-88px)] overflow-y-auto p-3 space-y-3">
-                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-2">
-                  <p className="text-xs font-semibold text-gray-700">
-                    신규 기능 추가 제안
-                  </p>
-                  <div className="flex gap-2">
-                    <input
-                      value={newFeatureName}
-                      onChange={(event) =>
-                        setNewFeatureName(event.target.value)
-                      }
-                      maxLength={FEATURE_NAME_MAX_LENGTH}
-                      placeholder="기능 이름"
-                      className="flex-1 rounded-md border border-gray-300 bg-white px-2.5 py-2 text-xs"
-                    />
-                    <button
-                      onClick={createFeature}
-                      className="inline-flex items-center gap-1 rounded-md bg-indigo-600 px-2.5 py-2 text-xs font-semibold text-white hover:bg-indigo-700"
-                    >
-                      <Plus className="h-3.5 w-3.5" /> 제안
+                      <p className="text-gray-600 break-words leading-snug">
+                        {getProposalTargetText(proposal)}
+                      </p>
                     </button>
-                  </div>
-                </div>
+                  );
+                })}
+              </div>
 
-                <div className="rounded-lg border border-indigo-100 bg-indigo-50 p-3 text-xs text-indigo-800 space-y-1">
-                  <p className="font-semibold">기존 기능/세부작업 수정 제안</p>
-                  <p>
-                    파이프라인 카드의 수정/삭제/추가 버튼을 사용하면 해당 제안이
-                    자동으로 채팅 목록에 생성됩니다.
+              <div className="rounded-lg border border-gray-200 bg-white flex flex-col min-h-0">
+                {!selectedProposal && (
+                  <div className="flex-1 flex items-center justify-center text-xs text-gray-500">
+                    선택된 제안이 없습니다.
+                  </div>
+                )}
+
+                {selectedProposal && (
+                  <>
+                    <div className="px-3 py-2 border-b border-gray-100 bg-gray-50">
+                      <p className="text-xs font-semibold text-gray-700">
+                        {getProposalActionLabel(selectedProposal.action)}
+                      </p>
+                      <p className="mt-1 text-[11px] text-gray-600 break-words">
+                        {getProposalTargetText(selectedProposal)}
+                      </p>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto px-3 py-2 space-y-2">
+                      {(selectedProposal.messages ?? []).map((message) => {
+                        const isPm = message.role === "pm";
+                        const isEditing =
+                          editingProposalMessageId === message.id;
+                        return (
+                          <div
+                            key={message.id}
+                            className={`flex ${isPm ? "justify-end" : "justify-start"}`}
+                          >
+                            <div
+                              className={`max-w-[88%] rounded-xl border px-2 py-1.5 ${
+                                isPm
+                                  ? "bg-indigo-600 text-white border-indigo-600"
+                                  : "bg-white border-gray-200 text-gray-800"
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <p
+                                  className={`text-[10px] font-semibold ${
+                                    isPm ? "text-indigo-100" : "text-gray-500"
+                                  }`}
+                                >
+                                  {isPm ? "PM" : "DEV"} · {message.createdAt}
+                                </p>
+                                {isPm &&
+                                  selectedProposal.status === "pending" && (
+                                    <div className="flex items-center gap-1">
+                                      <button
+                                        onClick={() =>
+                                          startEditProposalMessage(
+                                            message.id,
+                                            message.content,
+                                          )
+                                        }
+                                        className="rounded p-0.5 hover:bg-white/20"
+                                      >
+                                        <Pencil className="h-3 w-3" />
+                                      </button>
+                                      <button
+                                        onClick={() =>
+                                          removeProposalMessage(message.id)
+                                        }
+                                        className="rounded p-0.5 hover:bg-white/20"
+                                      >
+                                        <Trash2 className="h-3 w-3" />
+                                      </button>
+                                    </div>
+                                  )}
+                              </div>
+
+                              {isEditing ? (
+                                <div className="mt-1.5 space-y-1.5">
+                                  <textarea
+                                    rows={2}
+                                    maxLength={PROPOSAL_MESSAGE_MAX_LENGTH}
+                                    value={editingProposalMessageInput}
+                                    onChange={(event) =>
+                                      setEditingProposalMessageInput(
+                                        event.target.value,
+                                      )
+                                    }
+                                    className="w-full rounded-md border border-white/50 bg-white text-gray-800 px-2 py-1 text-[11px]"
+                                  />
+                                  <div className="flex justify-end gap-1.5">
+                                    <button
+                                      onClick={() => {
+                                        setEditingProposalMessageId(null);
+                                        setEditingProposalMessageInput("");
+                                      }}
+                                      className="rounded border border-white/70 px-2 py-0.5 text-[10px]"
+                                    >
+                                      취소
+                                    </button>
+                                    <button
+                                      onClick={saveEditedProposalMessage}
+                                      className="rounded bg-white px-2 py-0.5 text-[10px] font-semibold text-indigo-700"
+                                    >
+                                      저장
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <p className="mt-1 text-[11px] whitespace-pre-wrap break-words">
+                                  {message.content}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div className="p-2 border-t border-gray-100 space-y-2">
+                      <div className="flex gap-1.5">
+                        <input
+                          value={newProposalMessageInput}
+                          maxLength={PROPOSAL_MESSAGE_MAX_LENGTH}
+                          onChange={(event) =>
+                            setNewProposalMessageInput(event.target.value)
+                          }
+                          disabled={selectedProposal.status !== "pending"}
+                          onKeyDown={(event) => {
+                            if (event.key !== "Enter") return;
+                            if (event.nativeEvent.isComposing) return;
+                            event.preventDefault();
+                            submitProposalMessage();
+                          }}
+                          placeholder="협의 내용을 입력하세요"
+                          className="flex-1 rounded-md border border-gray-300 px-2 py-1.5 text-[11px]"
+                        />
+                        <button
+                          onClick={submitProposalMessage}
+                          disabled={selectedProposal.status !== "pending"}
+                          className="inline-flex items-center justify-center rounded-md bg-indigo-600 px-2 text-white hover:bg-indigo-700 disabled:bg-gray-300"
+                        >
+                          <Send className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+
+                      {proposalNeedsValue(selectedProposal.action) && (
+                        <div className="flex gap-1.5">
+                          <input
+                            value={proposalDraftInput}
+                            maxLength={PROPOSAL_DRAFT_MAX_LENGTH}
+                            disabled={selectedProposal.status !== "pending"}
+                            onChange={(event) =>
+                              setProposalDraftInput(event.target.value)
+                            }
+                            className="flex-1 rounded-md border border-gray-300 px-2 py-1.5 text-[11px]"
+                            placeholder="최종안"
+                          />
+                          <button
+                            onClick={saveProposalDraft}
+                            disabled={selectedProposal.status !== "pending"}
+                            className="rounded-md border border-gray-300 px-2 py-1 text-[11px] font-semibold text-gray-700 disabled:opacity-60"
+                          >
+                            업데이트
+                          </button>
+                        </div>
+                      )}
+
+                      <div className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5 text-[11px] space-y-1">
+                        <p className="flex items-center justify-between">
+                          <span>기획 확인</span>
+                          <span
+                            className={
+                              selectedProposal.pmConfirmed
+                                ? "text-green-600"
+                                : "text-gray-400"
+                            }
+                          >
+                            {selectedProposal.pmConfirmed ? "완료" : "대기"}
+                          </span>
+                        </p>
+                        <p className="flex items-center justify-between">
+                          <span>개발 확인</span>
+                          <span
+                            className={
+                              selectedProposal.devConfirmed
+                                ? "text-green-600"
+                                : "text-gray-400"
+                            }
+                          >
+                            {selectedProposal.devConfirmed ? "완료" : "대기"}
+                          </span>
+                        </p>
+                      </div>
+
+                      {selectedProposal.status === "pending" && (
+                        <button
+                          onClick={() =>
+                            onTogglePipelineProposalConfirmByPm(
+                              selectedProposal.id,
+                            )
+                          }
+                          disabled={
+                            proposalNeedsValue(selectedProposal.action) &&
+                            !selectedProposal.proposedValue?.trim()
+                          }
+                          className="w-full rounded-md bg-indigo-600 px-2 py-1.5 text-[11px] font-semibold text-white hover:bg-indigo-700 disabled:bg-gray-300"
+                        >
+                          {selectedProposal.pmConfirmed
+                            ? "기획 확인 취소"
+                            : "기획 최종안 확인"}
+                        </button>
+                      )}
+
+                      {selectedProposal.resultMessage && (
+                        <div className="rounded-md border border-indigo-100 bg-indigo-50 px-2 py-1 text-[11px] text-indigo-800">
+                          {selectedProposal.resultMessage}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
+          {proposalWidgetTab === "status" && (
+            <div className="h-[calc(100%-88px)] overflow-y-auto p-3 space-y-2">
+              <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 font-semibold text-amber-700">
+                  대기 {pendingProposalCount}
+                </span>
+                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 font-semibold text-emerald-700">
+                  승인 {approvedProposalCount}
+                </span>
+                <span className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 font-semibold text-rose-700">
+                  반려 {rejectedProposalCount}
+                </span>
+              </div>
+
+              {pipelineProposals.length === 0 && (
+                <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-3 text-xs text-gray-500">
+                  등록된 제안이 없습니다.
+                </div>
+              )}
+
+              {pipelineProposals.map((proposal) => (
+                <button
+                  key={proposal.id}
+                  onClick={() => {
+                    setSelectedProposalId(proposal.id);
+                    setProposalWidgetTab("chat");
+                  }}
+                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-left text-xs space-y-1 hover:bg-gray-50"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-semibold text-gray-800">
+                      {getProposalActionLabel(proposal.action)}
+                    </p>
+                    <span
+                      className={`rounded-full px-2 py-0.5 font-semibold ${
+                        proposal.status === "pending"
+                          ? "bg-amber-100 text-amber-700"
+                          : proposal.status === "approved"
+                            ? "bg-emerald-100 text-emerald-700"
+                            : "bg-rose-100 text-rose-700"
+                      }`}
+                    >
+                      {proposal.status === "pending"
+                        ? "대화중"
+                        : proposal.status === "approved"
+                          ? "반영완료"
+                          : "중단"}
+                    </span>
+                  </div>
+                  <p className="text-gray-600 break-words leading-snug">
+                    {getProposalTargetText(proposal)}
                   </p>
+                  <p className="text-[11px] text-gray-500">
+                    요청 {proposal.createdAt}
+                    {proposal.closedAt ? ` · 종료 ${proposal.closedAt}` : ""}
+                  </p>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {proposalWidgetTab === "compose" && (
+            <div className="h-[calc(100%-88px)] overflow-y-auto p-3 space-y-3">
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-2">
+                <p className="text-xs font-semibold text-gray-700">
+                  신규 기능 추가 제안
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    value={newFeatureName}
+                    onChange={(event) => setNewFeatureName(event.target.value)}
+                    maxLength={FEATURE_NAME_MAX_LENGTH}
+                    placeholder="기능 이름"
+                    className="flex-1 rounded-md border border-gray-300 bg-white px-2.5 py-2 text-xs"
+                  />
+                  <button
+                    onClick={createFeature}
+                    className="inline-flex items-center gap-1 rounded-md bg-indigo-600 px-2.5 py-2 text-xs font-semibold text-white hover:bg-indigo-700"
+                  >
+                    <Plus className="h-3.5 w-3.5" /> 제안
+                  </button>
                 </div>
               </div>
-            )}
-          </div>
-        )}
 
-        <button
-          onPointerDown={handleFloatingButtonPointerDown}
-          onPointerMove={handleFloatingButtonPointerMove}
-          onPointerUp={handleFloatingButtonPointerUp}
-          onPointerCancel={handleFloatingButtonPointerCancel}
-          className="fixed z-40 inline-flex h-14 w-14 items-center justify-center rounded-full bg-indigo-600 text-white shadow-xl hover:bg-indigo-700 active:cursor-grabbing"
-          style={{
-            left: floatingButtonPosition.x,
-            top: floatingButtonPosition.y,
-            touchAction: "none",
-            userSelect: "none",
-          }}
-          aria-label="기능 제안 협업 패널 열기"
-        >
-          <MessageSquare className="h-6 w-6" />
-        </button>
+              <div className="rounded-lg border border-indigo-100 bg-indigo-50 p-3 text-xs text-indigo-800 space-y-1">
+                <p className="font-semibold">기존 기능/세부작업 수정 제안</p>
+                <p>
+                  파이프라인 카드의 수정/삭제/추가 버튼을 사용하면 해당 제안이
+                  자동으로 채팅 목록에 생성됩니다.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {!isProposalWidgetOpen && (
+          <button
+            onPointerDown={handleFloatingButtonPointerDown}
+            onPointerMove={handleFloatingButtonPointerMove}
+            onPointerUp={handleFloatingButtonPointerUp}
+            onPointerCancel={handleFloatingButtonPointerCancel}
+            className={`fixed z-40 inline-flex h-14 w-14 items-center justify-center rounded-full bg-indigo-600 text-white hover:bg-indigo-700 active:cursor-grabbing ${
+              isDraggingFloatingButton
+                ? "shadow-2xl scale-105 transition-none"
+                : "shadow-xl transition-[background-color,box-shadow,transform] duration-200 ease-out"
+            }`}
+            style={{
+              left: floatingButtonPosition.x,
+              top: floatingButtonPosition.y,
+              touchAction: "none",
+              userSelect: "none",
+            }}
+            aria-label="기능 제안 협업 패널 열기"
+          >
+            <MessageSquare className="h-6 w-6" />
+          </button>
+        )}
 
         <div className="overflow-x-auto pb-2">
           <div className="inline-flex items-start gap-3 min-w-full">

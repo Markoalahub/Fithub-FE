@@ -8,9 +8,8 @@ import {
   FolderGit2,
   GitPullRequest,
   LogOut,
+  Menu,
   MessageSquare,
-  PanelLeftClose,
-  PanelLeftOpen,
   UploadCloud,
   Users,
 } from "lucide-react";
@@ -47,6 +46,9 @@ const proposalNeedsValue = (action: PipelineProposalAction) =>
   action === "edit-feature" ||
   action === "add-task" ||
   action === "edit-task";
+
+const normalizeProposalValue = (value?: string) =>
+  (value ?? "").trim().replace(/\s+/g, " ");
 
 const buildPipelineProposalIntroMessage = ({
   action,
@@ -374,6 +376,14 @@ type SidebarGroup = {
   }>;
 };
 
+type ToastTone = "success" | "info" | "warning";
+
+type ToastItem = {
+  id: string;
+  message: string;
+  tone: ToastTone;
+};
+
 const pmFeatureItems: SidebarGroup["items"] = [
   { id: "pm-ai", label: "기능 질문", icon: MessageSquare },
   { id: "pm-pipeline", label: "전체 개발 파이프라인", icon: Activity },
@@ -410,9 +420,25 @@ export default function App() {
   const [featureQuestions, setFeatureQuestions] = useState<FeatureQuestion[]>(
     [],
   );
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
   const lastMessageFingerprintRef = useRef<{ key: string; at: number } | null>(
     null,
   );
+  const toastTimeoutIdsRef = useRef<number[]>([]);
+
+  const pushToast = (message: string, tone: ToastTone = "info") => {
+    const id = createId();
+    setToasts((prev) => [...prev.slice(-3), { id, message, tone }]);
+
+    const timeoutId = window.setTimeout(() => {
+      setToasts((prev) => prev.filter((toast) => toast.id !== id));
+      toastTimeoutIdsRef.current = toastTimeoutIdsRef.current.filter(
+        (savedId) => savedId !== timeoutId,
+      );
+    }, 2600);
+
+    toastTimeoutIdsRef.current.push(timeoutId);
+  };
 
   const sidebarGroups = useMemo<SidebarGroup[]>(() => {
     if (!authUser) return [];
@@ -425,14 +451,28 @@ export default function App() {
     return [{ title: "개발자 기능", items: devItems }];
   }, [authUser]);
 
+  useEffect(() => {
+    return () => {
+      toastTimeoutIdsRef.current.forEach((timeoutId) => {
+        window.clearTimeout(timeoutId);
+      });
+      toastTimeoutIdsRef.current = [];
+    };
+  }, []);
+
   const handleLogin = (user: AuthUser) => {
     setAuthUser(user);
     setCurrentSection(user.role === "pm" ? "pm-ai" : "dev-pipeline");
+    pushToast(
+      `${user.role === "pm" ? "기획자" : "개발자"} 계정으로 로그인했습니다.`,
+      "success",
+    );
   };
 
   const handleLogout = () => {
     setAuthUser(null);
     setCurrentSection("pm-ai");
+    pushToast("로그아웃 되었습니다.", "info");
   };
 
   useEffect(() => {
@@ -493,7 +533,10 @@ export default function App() {
     content: string;
   }) => {
     const matchedFeature = features.find((feature) => feature.id === featureId);
-    if (!matchedFeature || !content.trim()) return;
+    if (!matchedFeature || !content.trim()) {
+      pushToast("질문을 등록하려면 기능과 내용을 확인해 주세요.", "warning");
+      return;
+    }
 
     const matchedTask = taskId
       ? matchedFeature.tasks.find((task) => task.id === taskId)
@@ -515,6 +558,7 @@ export default function App() {
     };
 
     setFeatureQuestions((prev) => [nextQuestion, ...prev]);
+    pushToast("질문을 등록했습니다.", "success");
   };
 
   const addQuestionMessage = (
@@ -523,12 +567,30 @@ export default function App() {
     content: string,
   ) => {
     const trimmed = content.trim();
-    if (!trimmed) return;
+    if (!trimmed) {
+      pushToast("메시지를 입력해 주세요.", "warning");
+      return;
+    }
+
+    const targetQuestion = featureQuestions.find(
+      (question) => question.id === questionId,
+    );
+    if (
+      !targetQuestion ||
+      targetQuestion.closed ||
+      targetQuestion.pmConfirmed
+    ) {
+      pushToast("현재 질문에는 메시지를 추가할 수 없습니다.", "warning");
+      return;
+    }
 
     const fingerprint = `${questionId}|${role}|${trimmed}`;
     const now = Date.now();
     const last = lastMessageFingerprintRef.current;
-    if (last && last.key === fingerprint && now - last.at < 800) return;
+    if (last && last.key === fingerprint && now - last.at < 800) {
+      pushToast("동일 메시지 중복 전송이 방지되었습니다.", "info");
+      return;
+    }
     lastMessageFingerprintRef.current = { key: fingerprint, at: now };
 
     setFeatureQuestions((prev) =>
@@ -545,6 +607,7 @@ export default function App() {
         };
       }),
     );
+    pushToast("질문 채팅 메시지를 보냈습니다.", "success");
   };
 
   const updateQuestionMessage = (
@@ -553,7 +616,27 @@ export default function App() {
     role: "pm" | "dev",
     content: string,
   ) => {
-    if (!content.trim()) return;
+    const trimmed = content.trim();
+    if (!trimmed) {
+      pushToast("빈 메시지로 수정할 수 없습니다.", "warning");
+      return;
+    }
+
+    const targetQuestion = featureQuestions.find(
+      (question) => question.id === questionId,
+    );
+    const targetMessage = targetQuestion?.messages.find(
+      (message) => message.id === messageId && message.role === role,
+    );
+    if (
+      !targetQuestion ||
+      targetQuestion.closed ||
+      targetQuestion.pmConfirmed ||
+      !targetMessage
+    ) {
+      pushToast("수정 가능한 메시지를 찾을 수 없습니다.", "warning");
+      return;
+    }
 
     setFeatureQuestions((prev) =>
       prev.map((question) => {
@@ -566,13 +649,14 @@ export default function App() {
             message.id === messageId && message.role === role
               ? {
                   ...message,
-                  content: content.trim(),
+                  content: trimmed,
                 }
               : message,
           ),
         };
       }),
     );
+    pushToast("질문 메시지를 수정했습니다.", "success");
   };
 
   const deleteQuestionMessage = (
@@ -580,6 +664,24 @@ export default function App() {
     messageId: string,
     role: "pm" | "dev",
   ) => {
+    const targetQuestion = featureQuestions.find(
+      (question) => question.id === questionId,
+    );
+    const targetMessage = targetQuestion?.messages.find(
+      (message) => message.id === messageId && message.role === role,
+    );
+    if (
+      !targetQuestion ||
+      targetQuestion.closed ||
+      targetQuestion.pmConfirmed ||
+      !targetMessage
+    ) {
+      pushToast("삭제 가능한 메시지를 찾을 수 없습니다.", "warning");
+      return;
+    }
+
+    const willRemoveQuestion = targetQuestion.messages.length === 1;
+
     setFeatureQuestions((prev) =>
       prev.flatMap((question) => {
         if (question.id !== questionId) return [question];
@@ -594,15 +696,38 @@ export default function App() {
         return [{ ...question, messages: nextMessages }];
       }),
     );
-  };
-
-  const deleteFeatureQuestion = (questionId: string) => {
-    setFeatureQuestions((prev) =>
-      prev.filter((question) => question.id !== questionId),
+    pushToast(
+      willRemoveQuestion
+        ? "마지막 메시지를 삭제해 질문이 함께 정리되었습니다."
+        : "질문 메시지를 삭제했습니다.",
+      "info",
     );
   };
 
+  const deleteFeatureQuestion = (questionId: string) => {
+    const targetQuestion = featureQuestions.find(
+      (question) => question.id === questionId,
+    );
+    if (!targetQuestion) {
+      pushToast("삭제할 질문을 찾을 수 없습니다.", "warning");
+      return;
+    }
+
+    setFeatureQuestions((prev) =>
+      prev.filter((question) => question.id !== questionId),
+    );
+    pushToast("질문이 삭제되었습니다.", "info");
+  };
+
   const confirmQuestionByPm = (questionId: string) => {
+    const targetQuestion = featureQuestions.find(
+      (question) => question.id === questionId,
+    );
+    if (!targetQuestion || targetQuestion.closed) {
+      pushToast("기획 확인할 질문을 찾을 수 없습니다.", "warning");
+      return;
+    }
+
     setFeatureQuestions((prev) =>
       prev.map((question) =>
         question.id === questionId && !question.closed
@@ -613,9 +738,18 @@ export default function App() {
           : question,
       ),
     );
+    pushToast("질문에 기획 확인을 등록했습니다.", "success");
   };
 
   const cancelQuestionConfirmByPm = (questionId: string) => {
+    const targetQuestion = featureQuestions.find(
+      (question) => question.id === questionId,
+    );
+    if (!targetQuestion || targetQuestion.closed) {
+      pushToast("취소할 기획 확인 상태를 찾을 수 없습니다.", "warning");
+      return;
+    }
+
     setFeatureQuestions((prev) =>
       prev.map((question) =>
         question.id === questionId && !question.closed
@@ -626,9 +760,22 @@ export default function App() {
           : question,
       ),
     );
+    pushToast("질문의 기획 확인을 취소했습니다.", "info");
   };
 
   const confirmQuestionByDev = (questionId: string) => {
+    const targetQuestion = featureQuestions.find(
+      (question) => question.id === questionId,
+    );
+    if (
+      !targetQuestion ||
+      targetQuestion.closed ||
+      !targetQuestion.pmConfirmed
+    ) {
+      pushToast("개발 최종확인 가능한 질문이 아닙니다.", "warning");
+      return;
+    }
+
     setFeatureQuestions((prev) =>
       prev.map((question) => {
         if (question.id !== questionId) return question;
@@ -642,6 +789,7 @@ export default function App() {
         };
       }),
     );
+    pushToast("질문을 개발 최종확인으로 완료했습니다.", "success");
   };
 
   const createPipelineProposal = ({
@@ -656,7 +804,10 @@ export default function App() {
     proposedValue?: string;
   }) => {
     const nextValue = proposedValue?.trim();
-    if (proposalNeedsValue(action) && !nextValue) return;
+    if (proposalNeedsValue(action) && !nextValue) {
+      pushToast("제안 내용을 입력해 주세요.", "warning");
+      return;
+    }
 
     const matchedFeature =
       featureId === undefined
@@ -668,14 +819,38 @@ export default function App() {
       action === "add-task" ||
       action === "edit-task" ||
       action === "delete-task";
-    if (needsFeature && !matchedFeature) return;
+    if (needsFeature && !matchedFeature) {
+      pushToast("대상 기능을 찾을 수 없습니다.", "warning");
+      return;
+    }
 
     const matchedTask =
       taskId && matchedFeature
         ? matchedFeature.tasks.find((task) => task.id === taskId)
         : undefined;
     const needsTask = action === "edit-task" || action === "delete-task";
-    if (needsTask && !matchedTask) return;
+    if (needsTask && !matchedTask) {
+      pushToast("대상 세부작업을 찾을 수 없습니다.", "warning");
+      return;
+    }
+
+    const duplicatePendingProposal = pipelineProposals.find(
+      (proposal) =>
+        proposal.status === "pending" &&
+        proposal.action === action &&
+        (proposal.featureId ?? null) === (matchedFeature?.id ?? null) &&
+        (proposal.taskId ?? null) === (matchedTask?.id ?? null) &&
+        normalizeProposalValue(proposal.proposedValue) ===
+          normalizeProposalValue(nextValue),
+    );
+
+    if (duplicatePendingProposal) {
+      pushToast(
+        "같은 제안이 이미 대기 중입니다. 기존 제안 채팅에서 이어서 소통해 주세요.",
+        "warning",
+      );
+      return;
+    }
 
     const nextProposal: PipelineProposal = {
       id: createId(),
@@ -703,6 +878,7 @@ export default function App() {
     };
 
     setPipelineProposals((prev) => [nextProposal, ...prev]);
+    pushToast("기능 제안을 등록했습니다.", "success");
   };
 
   const addPipelineProposalMessage = (
@@ -711,12 +887,26 @@ export default function App() {
     content: string,
   ) => {
     const trimmed = content.trim();
-    if (!trimmed) return;
+    if (!trimmed) {
+      pushToast("메시지를 입력해 주세요.", "warning");
+      return;
+    }
+
+    const targetProposal = pipelineProposals.find(
+      (proposal) => proposal.id === proposalId,
+    );
+    if (!targetProposal || targetProposal.status !== "pending") {
+      pushToast("현재 제안에는 메시지를 추가할 수 없습니다.", "warning");
+      return;
+    }
 
     const fingerprint = `${proposalId}|proposal|${role}|${trimmed}`;
     const now = Date.now();
     const last = lastMessageFingerprintRef.current;
-    if (last && last.key === fingerprint && now - last.at < 800) return;
+    if (last && last.key === fingerprint && now - last.at < 800) {
+      pushToast("동일 메시지 중복 전송이 방지되었습니다.", "info");
+      return;
+    }
     lastMessageFingerprintRef.current = { key: fingerprint, at: now };
 
     setPipelineProposals((prev) =>
@@ -736,6 +926,7 @@ export default function App() {
         };
       }),
     );
+    pushToast("제안 채팅 메시지를 보냈습니다.", "success");
   };
 
   const updatePipelineProposalMessage = (
@@ -745,7 +936,25 @@ export default function App() {
     content: string,
   ) => {
     const trimmed = content.trim();
-    if (!trimmed) return;
+    if (!trimmed) {
+      pushToast("빈 메시지로 수정할 수 없습니다.", "warning");
+      return;
+    }
+
+    const targetProposal = pipelineProposals.find(
+      (proposal) => proposal.id === proposalId,
+    );
+    const targetMessage = targetProposal?.messages.find(
+      (message) => message.id === messageId && message.role === role,
+    );
+    if (
+      !targetProposal ||
+      targetProposal.status !== "pending" ||
+      !targetMessage
+    ) {
+      pushToast("수정 가능한 제안 메시지를 찾을 수 없습니다.", "warning");
+      return;
+    }
 
     setPipelineProposals((prev) =>
       prev.map((proposal) => {
@@ -765,6 +974,7 @@ export default function App() {
         };
       }),
     );
+    pushToast("제안 메시지를 수정했습니다.", "success");
   };
 
   const deletePipelineProposalMessage = (
@@ -772,6 +982,21 @@ export default function App() {
     messageId: string,
     role: "pm" | "dev",
   ) => {
+    const targetProposal = pipelineProposals.find(
+      (proposal) => proposal.id === proposalId,
+    );
+    const targetMessage = targetProposal?.messages.find(
+      (message) => message.id === messageId && message.role === role,
+    );
+    if (
+      !targetProposal ||
+      targetProposal.status !== "pending" ||
+      !targetMessage
+    ) {
+      pushToast("삭제 가능한 제안 메시지를 찾을 수 없습니다.", "warning");
+      return;
+    }
+
     setPipelineProposals((prev) =>
       prev.map((proposal) => {
         if (proposal.id !== proposalId) return proposal;
@@ -792,6 +1017,7 @@ export default function App() {
         };
       }),
     );
+    pushToast("제안 메시지를 삭제했습니다.", "info");
   };
 
   const updatePipelineProposalValue = (
@@ -800,14 +1026,29 @@ export default function App() {
   ) => {
     const trimmed = proposedValue.trim();
 
+    const targetProposal = pipelineProposals.find(
+      (proposal) => proposal.id === proposalId,
+    );
+    if (!targetProposal || targetProposal.status !== "pending") {
+      pushToast("최종안을 업데이트할 수 없는 제안입니다.", "warning");
+      return;
+    }
+    if (proposalNeedsValue(targetProposal.action) && !trimmed) {
+      pushToast("최종안이 비어 있어 업데이트할 수 없습니다.", "warning");
+      return;
+    }
+
+    const nextValue = trimmed || undefined;
+    if (targetProposal.proposedValue === nextValue) {
+      pushToast("변경된 최종안이 없습니다.", "info");
+      return;
+    }
+
     setPipelineProposals((prev) =>
       prev.map((proposal) => {
         if (proposal.id !== proposalId) return proposal;
         if (proposal.status !== "pending") return proposal;
         if (proposalNeedsValue(proposal.action) && !trimmed) return proposal;
-
-        const nextValue = trimmed || undefined;
-        if (proposal.proposedValue === nextValue) return proposal;
 
         return {
           ...proposal,
@@ -818,6 +1059,7 @@ export default function App() {
         };
       }),
     );
+    pushToast("제안 최종안을 업데이트했습니다.", "success");
   };
 
   const togglePipelineProposalConfirm = (
@@ -827,7 +1069,10 @@ export default function App() {
     const targetProposal = pipelineProposals.find(
       (proposal) => proposal.id === proposalId && proposal.status === "pending",
     );
-    if (!targetProposal) return;
+    if (!targetProposal) {
+      pushToast("확인할 제안을 찾을 수 없습니다.", "warning");
+      return;
+    }
 
     const nextProposal = {
       ...targetProposal,
@@ -850,6 +1095,21 @@ export default function App() {
             : proposal,
         ),
       );
+      if (role === "pm") {
+        pushToast(
+          nextProposal.pmConfirmed
+            ? "기획 확인을 완료했습니다."
+            : "기획 확인을 취소했습니다.",
+          "info",
+        );
+      } else {
+        pushToast(
+          nextProposal.devConfirmed
+            ? "개발 확인을 완료했습니다."
+            : "개발 확인을 취소했습니다.",
+          "info",
+        );
+      }
       return;
     }
 
@@ -869,6 +1129,7 @@ export default function App() {
             : proposal,
         ),
       );
+      pushToast("최종안 값이 비어 있어 확정할 수 없습니다.", "warning");
       return;
     }
 
@@ -889,6 +1150,11 @@ export default function App() {
           : proposal,
       ),
     );
+
+    pushToast(
+      applyResult.resultMessage,
+      applyResult.applied ? "success" : "warning",
+    );
   };
 
   const togglePipelineProposalConfirmByPm = (proposalId: string) => {
@@ -900,6 +1166,17 @@ export default function App() {
   };
 
   const toggleDevTaskCheck = (featureId: number, taskId: string) => {
+    const matchedFeature = features.find((feature) => feature.id === featureId);
+    const matchedTask = matchedFeature?.tasks.find(
+      (task) => task.id === taskId,
+    );
+    if (!matchedTask) {
+      pushToast("개발 체크할 세부작업을 찾을 수 없습니다.", "warning");
+      return;
+    }
+
+    const nextDevChecked = !matchedTask.devChecked;
+
     setFeatures((prev) =>
       prev.map((feature) => {
         if (feature.id !== featureId) return feature;
@@ -921,9 +1198,31 @@ export default function App() {
         };
       }),
     );
+
+    pushToast(
+      nextDevChecked
+        ? "세부작업에 개발 체크를 등록했습니다."
+        : "세부작업 개발 체크를 해제했습니다.",
+      "info",
+    );
   };
 
   const togglePmTaskConfirm = (featureId: number, taskId: string) => {
+    const matchedFeature = features.find((feature) => feature.id === featureId);
+    const matchedTask = matchedFeature?.tasks.find(
+      (task) => task.id === taskId,
+    );
+    if (!matchedTask) {
+      pushToast("PM 확인할 세부작업을 찾을 수 없습니다.", "warning");
+      return;
+    }
+    if (!matchedTask.devChecked) {
+      pushToast("개발 체크가 먼저 완료되어야 PM 확인이 가능합니다.", "warning");
+      return;
+    }
+
+    const nextPmConfirmed = !matchedTask.pmConfirmed;
+
     setFeatures((prev) =>
       prev.map((feature) => {
         if (feature.id !== featureId) return feature;
@@ -943,6 +1242,13 @@ export default function App() {
           }),
         };
       }),
+    );
+
+    pushToast(
+      nextPmConfirmed
+        ? "세부작업 PM 확인을 완료했습니다."
+        : "세부작업 PM 확인을 취소했습니다.",
+      "info",
     );
   };
 
@@ -969,17 +1275,15 @@ export default function App() {
 
   return (
     <div className="h-screen bg-slate-100 text-slate-900 relative overflow-hidden">
-      <button
-        onClick={() => setIsSidebarOpen((prev) => !prev)}
-        className="fixed top-4 left-4 z-50 inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-slate-600 shadow-sm hover:bg-slate-50"
-        aria-label={isSidebarOpen ? "사이드바 닫기" : "사이드바 열기"}
-      >
-        {isSidebarOpen ? (
-          <PanelLeftClose className="h-4 w-4" />
-        ) : (
-          <PanelLeftOpen className="h-4 w-4" />
-        )}
-      </button>
+      {!isSidebarOpen && (
+        <button
+          onClick={() => setIsSidebarOpen(true)}
+          className="fixed top-4 left-4 z-50 inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-slate-600 shadow-sm transition-colors duration-300 ease-in-out hover:bg-slate-50"
+          aria-label="사이드바 열기"
+        >
+          <Menu className="h-4 w-4" />
+        </button>
+      )}
 
       {isSidebarOpen && (
         <button
@@ -990,12 +1294,21 @@ export default function App() {
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-40 w-[280px] border-r border-slate-200 bg-white/95 backdrop-blur px-4 py-4 md:px-5 md:py-6 flex flex-col transition-transform duration-300 ${
+        className={`fixed inset-y-0 left-0 z-40 w-[280px] border-r border-slate-200 bg-white/95 backdrop-blur px-4 py-4 md:px-5 md:py-6 flex flex-col transition-transform duration-300 ease-in-out ${
           isSidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 px-2 mb-3">
-          메뉴
+        <div className="mb-3 flex items-center justify-between px-2">
+          <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            메뉴
+          </div>
+          <button
+            onClick={() => setIsSidebarOpen(false)}
+            className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-1.5 text-slate-600 transition-colors duration-300 ease-in-out hover:bg-slate-50"
+            aria-label="사이드바 닫기"
+          >
+            <Menu className="h-4 w-4" />
+          </button>
         </div>
 
         <div className="space-y-5 overflow-y-auto">
@@ -1039,7 +1352,7 @@ export default function App() {
       </aside>
 
       <main
-        className={`h-full overflow-y-auto p-4 md:p-6 pt-20 transition-all duration-300 ${
+        className={`h-full overflow-y-auto p-4 md:p-6 pt-20 transition-all duration-300 ease-in-out ${
           isSidebarOpen ? "md:pl-[304px]" : "md:pl-6"
         }`}
       >
@@ -1129,6 +1442,23 @@ export default function App() {
           />
         )}
       </main>
+
+      <div className="pointer-events-none fixed right-4 top-4 z-[70] flex w-[min(92vw,360px)] flex-col gap-2">
+        {toasts.map((toast) => (
+          <div
+            key={toast.id}
+            className={`rounded-xl border px-3 py-2 text-sm font-medium shadow-lg backdrop-blur transition-all duration-200 ease-out ${
+              toast.tone === "success"
+                ? "border-emerald-200 bg-emerald-50/95 text-emerald-800"
+                : toast.tone === "warning"
+                  ? "border-amber-200 bg-amber-50/95 text-amber-800"
+                  : "border-slate-200 bg-white/95 text-slate-700"
+            }`}
+          >
+            {toast.message}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
