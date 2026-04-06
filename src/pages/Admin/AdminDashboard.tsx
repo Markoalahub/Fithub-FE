@@ -84,9 +84,7 @@ export default function AdminDashboard({
               ? "PDF 분석 중입니다. 잠시만 기다려 주세요"
               : "클릭해서 PRD(PDF) 업로드"}
           </p>
-          <p className="text-xs text-gray-500 mt-1">
-            PDF 지원 (최대 50MB)
-          </p>
+          <p className="text-xs text-gray-500 mt-1">PDF 지원 (최대 50MB)</p>
         </button>
 
         <div className="space-y-3">
@@ -96,7 +94,8 @@ export default function AdminDashboard({
 
           {knowledgeDocs.length === 0 && (
             <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4 text-sm text-gray-500">
-              업로드된 문서가 없습니다. PDF를 올리면 AI 파이프라인 생성에 사용됩니다.
+              업로드된 문서가 없습니다. PDF를 올리면 AI 파이프라인 생성에
+              사용됩니다.
             </div>
           )}
 
