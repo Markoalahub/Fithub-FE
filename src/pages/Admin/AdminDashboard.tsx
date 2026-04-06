@@ -1,13 +1,14 @@
+import { useRef } from "react";
 import { FileText, FolderGit2, Plus, UploadCloud, Users } from "lucide-react";
+import type { ChangeEvent } from "react";
+import type { KnowledgeDocument } from "../../types/index";
 
 interface AdminDashboardProps {
   section: "knowledge" | "project" | "team";
+  knowledgeDocs: KnowledgeDocument[];
+  isGeneratingPipeline: boolean;
+  onUploadKnowledgePdf: (file: File) => Promise<void>;
 }
-
-const mockDocs = [
-  { name: "v1.0_요구사항_정의서.pdf", date: "2023.10.01" },
-  { name: "10월_1주차_주간회의록.docx", date: "2023.10.05" },
-];
 
 const mockMembers = [
   {
@@ -30,7 +31,27 @@ const mockMembers = [
   },
 ];
 
-export default function AdminDashboard({ section }: AdminDashboardProps) {
+export default function AdminDashboard({
+  section,
+  knowledgeDocs,
+  isGeneratingPipeline,
+  onUploadKnowledgePdf,
+}: AdminDashboardProps) {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const openFilePicker = () => {
+    if (isGeneratingPipeline) return;
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = event.target.files?.[0];
+    event.target.value = "";
+    if (!selectedFile) return;
+
+    void onUploadKnowledgePdf(selectedFile);
+  };
+
   if (section === "knowledge") {
     return (
       <section className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm min-h-[620px]">
@@ -42,24 +63,47 @@ export default function AdminDashboard({ section }: AdminDashboardProps) {
           제공합니다.
         </p>
 
-        <div className="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center hover:bg-gray-50 transition-colors cursor-pointer mb-6">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf,application/pdf"
+          className="hidden"
+          onChange={handleFileChange}
+          disabled={isGeneratingPipeline}
+        />
+
+        <button
+          type="button"
+          onClick={openFilePicker}
+          disabled={isGeneratingPipeline}
+          className="w-full border-2 border-dashed border-gray-200 rounded-xl p-8 text-center hover:bg-gray-50 transition-colors cursor-pointer mb-6 disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:bg-white"
+        >
           <UploadCloud className="w-8 h-8 text-gray-400 mx-auto mb-3" />
           <p className="text-sm font-medium text-gray-700">
-            클릭하거나 파일을 드래그하여 업로드
+            {isGeneratingPipeline
+              ? "PDF 분석 중입니다. 잠시만 기다려 주세요"
+              : "클릭해서 PRD(PDF) 업로드"}
           </p>
           <p className="text-xs text-gray-500 mt-1">
-            PDF, DOCX, TXT 지원 (최대 50MB)
+            PDF 지원 (최대 50MB)
           </p>
-        </div>
+        </button>
 
         <div className="space-y-3">
           <h4 className="text-sm font-medium text-gray-900 mb-2">
             학습된 문서
           </h4>
+
+          {knowledgeDocs.length === 0 && (
+            <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4 text-sm text-gray-500">
+              업로드된 문서가 없습니다. PDF를 올리면 AI 파이프라인 생성에 사용됩니다.
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {mockDocs.map((doc) => (
+            {knowledgeDocs.map((doc) => (
               <div
-                key={doc.name}
+                key={doc.id}
                 className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100"
               >
                 <FileText className="w-5 h-5 text-indigo-500" />
@@ -67,7 +111,9 @@ export default function AdminDashboard({ section }: AdminDashboardProps) {
                   <p className="text-sm font-medium text-gray-900 truncate">
                     {doc.name}
                   </p>
-                  <p className="text-xs text-gray-500">{doc.date}</p>
+                  <p className="text-xs text-gray-500">
+                    {doc.uploadedAt} · {doc.sizeLabel}
+                  </p>
                 </div>
               </div>
             ))}

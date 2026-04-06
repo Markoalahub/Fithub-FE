@@ -4,6 +4,10 @@ import DevDashboard from "@/src/pages/Dev/DevDashboard";
 import AdminDashboard from "./pages/Admin/AdminDashboard.tsx";
 import LoginScreen from "./pages/Auth/LoginScreen.tsx";
 import {
+  generatePipelineFromPrd,
+  type GeneratedPipelineItem,
+} from "./services/api";
+import {
   Activity,
   FolderGit2,
   GitPullRequest,
@@ -18,6 +22,7 @@ import type {
   AuthUser,
   Feature,
   FeatureQuestion,
+  KnowledgeDocument,
   PipelineProposal,
   PipelineProposalAction,
   QuestionMessage,
@@ -81,6 +86,45 @@ const buildPipelineProposalIntroMessage = ({
 
 const makeTaskId = (featureId: number) =>
   `${featureId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+
+const PIPELINE_GENERATION_REQUIREMENTS =
+  "첨부된 PRD를 기반으로 MVP 스펙의 파이프라인을 설계해줘";
+
+const formatFileSize = (size: number) => {
+  if (size >= 1024 * 1024) {
+    return `${(size / (1024 * 1024)).toFixed(1)}MB`;
+  }
+  if (size >= 1024) {
+    return `${Math.max(1, Math.round(size / 1024))}KB`;
+  }
+  return `${size}B`;
+};
+
+const mapGeneratedPipelineToFeatures = (
+  pipeline: GeneratedPipelineItem[],
+): Feature[] =>
+  [...pipeline]
+    .sort((a, b) => a.priority - b.priority)
+    .map((item, index) => {
+      const featureId = index + 1;
+      const majorFeatureTitle = item.title?.trim() || `주요 기능 ${featureId}`;
+      const detailItems = Array.isArray(item.details) ? item.details : [];
+
+      return {
+        id: featureId,
+        name: majorFeatureTitle,
+        tasks: detailItems
+          .map((detail) => detail.trim())
+          .filter((detail) => detail.length > 0)
+          .map((detail, detailIndex) => ({
+            id: `${featureId}-${detailIndex + 1}`,
+            title: detail,
+            devChecked: false,
+            pmConfirmed: false,
+            isAiSuggested: true,
+          })),
+      };
+    });
 
 const applyPipelineProposal = (
   prevFeatures: Feature[],
@@ -278,84 +322,7 @@ const applyPipelineProposal = (
   }
 };
 
-const initialFeatures: Feature[] = [
-  {
-    id: 1,
-    name: "소셜 로그인 연동",
-    tasks: [
-      {
-        id: "1-1",
-        title: "카카오 API 키 발급",
-        devChecked: true,
-        pmConfirmed: true,
-      },
-      {
-        id: "1-2",
-        title: "OAuth 콜백 라우트 구현",
-        devChecked: true,
-        pmConfirmed: true,
-      },
-      {
-        id: "1-3",
-        title: "DB 유저 정보 연동",
-        devChecked: true,
-        pmConfirmed: true,
-      },
-    ],
-  },
-  {
-    id: 2,
-    name: "결제 모듈 연동",
-    tasks: [
-      {
-        id: "2-1",
-        title: "PortOne SDK 설치",
-        devChecked: true,
-        pmConfirmed: true,
-      },
-      {
-        id: "2-2",
-        title: "결제창 호출 UI 구현",
-        devChecked: true,
-        pmConfirmed: false,
-      },
-      {
-        id: "2-3",
-        title: "Webhook 검증 로직 작성",
-        devChecked: false,
-        pmConfirmed: false,
-      },
-    ],
-  },
-  {
-    id: 3,
-    name: "관리자 통계 페이지",
-    tasks: [
-      {
-        id: "3-1",
-        title: "일별 매출 집계 쿼리",
-        devChecked: false,
-        pmConfirmed: false,
-      },
-      {
-        id: "3-2",
-        title: "차트 UI 컴포넌트 개발",
-        devChecked: false,
-        pmConfirmed: false,
-      },
-    ],
-  },
-  {
-    id: 4,
-    name: "알림 시스템 구축",
-    tasks: [],
-  },
-  {
-    id: 5,
-    name: "검색 최적화",
-    tasks: [],
-  },
-];
+const initialFeatures: Feature[] = [];
 
 type PMSection =
   | "pm-ai"
@@ -414,6 +381,8 @@ export default function App() {
   const [currentSection, setCurrentSection] = useState<SidebarSection>("pm-ai");
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [features, setFeatures] = useState<Feature[]>(initialFeatures);
+  const [knowledgeDocs, setKnowledgeDocs] = useState<KnowledgeDocument[]>([]);
+  const [isGeneratingPipeline, setIsGeneratingPipeline] = useState(false);
   const [pipelineProposals, setPipelineProposals] = useState<
     PipelineProposal[]
   >([]);
@@ -473,6 +442,65 @@ export default function App() {
     setAuthUser(null);
     setCurrentSection("pm-ai");
     pushToast("로그아웃 되었습니다.", "info");
+  };
+
+  const handleUploadKnowledgePdf = async (file: File) => {
+    const isPdfFile =
+      file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+
+    if (!isPdfFile) {
+      pushToast("PDF 파일만 업로드할 수 있습니다.", "warning");
+      return;
+    }
+
+    setIsGeneratingPipeline(true);
+    setFeatures([]);
+    setPipelineProposals([]);
+    setFeatureQuestions([]);
+    pushToast("PDF를 분석해 파이프라인을 생성하고 있습니다.", "info");
+
+    try {
+      const response = await generatePipelineFromPrd({
+        requirements: PIPELINE_GENERATION_REQUIREMENTS,
+        prdFile: file,
+      });
+
+      const generatedItems = Array.isArray(response.pipeline)
+        ? response.pipeline
+        : [];
+      const nextFeatures = mapGeneratedPipelineToFeatures(generatedItems);
+
+      setFeatures(nextFeatures);
+      setCurrentSection("pm-pipeline");
+
+      setKnowledgeDocs((prev) => [
+        {
+          id: createId(),
+          name: file.name,
+          uploadedAt: new Date().toLocaleDateString("ko-KR"),
+          sizeLabel: formatFileSize(file.size),
+        },
+        ...prev,
+      ]);
+
+      if (nextFeatures.length === 0) {
+        pushToast("응답은 받았지만 생성된 파이프라인이 없습니다.", "warning");
+        return;
+      }
+
+      pushToast(
+        `파이프라인 ${nextFeatures.length}개를 생성해 반영했습니다.`,
+        "success",
+      );
+    } catch (error) {
+      console.error(error);
+      pushToast(
+        "파이프라인 생성 API 호출에 실패했습니다. 서버 상태를 확인해 주세요.",
+        "warning",
+      );
+    } finally {
+      setIsGeneratingPipeline(false);
+    }
   };
 
   useEffect(() => {
@@ -1401,7 +1429,12 @@ export default function App() {
         )}
 
         {authUser.role === "pm" && currentSection.startsWith("admin-") && (
-          <AdminDashboard section={adminSection} />
+          <AdminDashboard
+            section={adminSection}
+            knowledgeDocs={knowledgeDocs}
+            isGeneratingPipeline={isGeneratingPipeline}
+            onUploadKnowledgePdf={handleUploadKnowledgePdf}
+          />
         )}
 
         {authUser.role === "dev" && (

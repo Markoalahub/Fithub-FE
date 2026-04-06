@@ -70,3 +70,10 @@ export type QuestionMessage = {
   content: string;
   createdAt: string;
 };
+
+export type KnowledgeDocument = {
+  id: string;
+  name: string;
+  uploadedAt: string;
+  sizeLabel: string;
+};
