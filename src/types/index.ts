@@ -15,6 +15,33 @@ export type Feature = {
   tasks: Task[];
 };
 
+export type PipelineProposalAction =
+  | "add-feature"
+  | "edit-feature"
+  | "delete-feature"
+  | "add-task"
+  | "edit-task"
+  | "delete-task";
+
+export type PipelineProposalStatus = "pending" | "approved" | "rejected";
+
+export type PipelineProposal = {
+  id: string;
+  action: PipelineProposalAction;
+  featureId?: number;
+  featureName?: string;
+  taskId?: string;
+  taskTitle?: string;
+  proposedValue?: string;
+  messages: QuestionMessage[];
+  createdAt: string;
+  status: PipelineProposalStatus;
+  pmConfirmed: boolean;
+  devConfirmed: boolean;
+  closedAt?: string;
+  resultMessage?: string;
+};
+
 export type TimelineMessage = {
   id: string;
   role: "pm" | "dev";
