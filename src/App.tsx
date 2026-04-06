@@ -9,6 +9,8 @@ import {
   GitPullRequest,
   LogOut,
   MessageSquare,
+  PanelLeftClose,
+  PanelLeftOpen,
   UploadCloud,
   Users,
 } from "lucide-react";
@@ -400,6 +402,7 @@ const devItems: SidebarGroup["items"] = [
 export default function App() {
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [currentSection, setCurrentSection] = useState<SidebarSection>("pm-ai");
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [features, setFeatures] = useState<Feature[]>(initialFeatures);
   const [pipelineProposals, setPipelineProposals] = useState<
     PipelineProposal[]
@@ -965,149 +968,167 @@ export default function App() {
     currentSection === "dev-feedback" ? "feedback" : "pipeline";
 
   return (
-    <div className="h-screen bg-slate-100 text-slate-900">
-      <div className="h-full grid grid-cols-1 md:grid-cols-[280px_1fr]">
-        <aside className="border-b md:border-b-0 md:border-r border-slate-200 bg-white/95 backdrop-blur px-4 py-4 md:px-5 md:py-6 flex flex-col">
-          <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 px-2 mb-3">
-            메뉴
-          </div>
+    <div className="h-screen bg-slate-100 text-slate-900 relative overflow-hidden">
+      <button
+        onClick={() => setIsSidebarOpen((prev) => !prev)}
+        className="fixed top-4 left-4 z-50 inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-slate-600 shadow-sm hover:bg-slate-50"
+        aria-label={isSidebarOpen ? "사이드바 닫기" : "사이드바 열기"}
+      >
+        {isSidebarOpen ? (
+          <PanelLeftClose className="h-4 w-4" />
+        ) : (
+          <PanelLeftOpen className="h-4 w-4" />
+        )}
+      </button>
 
-          <div className="space-y-5 overflow-y-auto">
-            {sidebarGroups.map((group) => (
-              <section key={group.title}>
-                <h3 className="px-2 mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                  {group.title}
-                </h3>
-                <div className="space-y-1">
-                  {group.items.map((item) => {
-                    const Icon = item.icon;
-                    return (
-                      <button
-                        key={item.id}
-                        onClick={() => setCurrentSection(item.id)}
-                        className={`w-full inline-flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium text-left transition-colors ${
-                          currentSection === item.id
-                            ? "bg-indigo-50 text-indigo-700 border border-indigo-100"
-                            : "text-slate-600 hover:bg-slate-100"
-                        }`}
-                      >
-                        <Icon className="h-4 w-4" />
-                        <span>{item.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </section>
-            ))}
-          </div>
+      {isSidebarOpen && (
+        <button
+          onClick={() => setIsSidebarOpen(false)}
+          className="fixed inset-0 z-30 bg-black/25 md:hidden"
+          aria-label="사이드바 닫기"
+        />
+      )}
 
-          <div className="mt-4 pt-4 border-t border-slate-200">
-            <button
-              onClick={handleLogout}
-              className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50"
-            >
-              <LogOut className="h-4 w-4" />
-              로그아웃
-            </button>
-          </div>
-        </aside>
+      <aside
+        className={`fixed inset-y-0 left-0 z-40 w-[280px] border-r border-slate-200 bg-white/95 backdrop-blur px-4 py-4 md:px-5 md:py-6 flex flex-col transition-transform duration-300 ${
+          isSidebarOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 px-2 mb-3">
+          메뉴
+        </div>
 
-        <main className="overflow-y-auto p-4 md:p-6">
-          {authUser.role === "pm" && currentSection.startsWith("pm-") && (
-            <PMDashboard
-              section={pmSection}
-              features={features}
-              setFeatures={setFeatures}
-              pipelineProposals={pipelineProposals}
-              featureQuestions={featureQuestions}
-              onCreateFeatureQuestion={createFeatureQuestion}
-              onCreatePipelineProposal={createPipelineProposal}
-              onAddPipelineProposalMessage={(proposalId, content) =>
-                addPipelineProposalMessage(proposalId, "pm", content)
-              }
-              onUpdatePipelineProposalMessage={(
+        <div className="space-y-5 overflow-y-auto">
+          {sidebarGroups.map((group) => (
+            <section key={group.title}>
+              <h3 className="px-2 mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                {group.title}
+              </h3>
+              <div className="space-y-1">
+                {group.items.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => setCurrentSection(item.id)}
+                      className={`w-full inline-flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium text-left transition-colors ${
+                        currentSection === item.id
+                          ? "bg-indigo-50 text-indigo-700 border border-indigo-100"
+                          : "text-slate-600 hover:bg-slate-100"
+                      }`}
+                    >
+                      <Icon className="h-4 w-4" />
+                      <span>{item.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          ))}
+        </div>
+
+        <div className="mt-4 pt-4 border-t border-slate-200">
+          <button
+            onClick={handleLogout}
+            className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50"
+          >
+            <LogOut className="h-4 w-4" />
+            로그아웃
+          </button>
+        </div>
+      </aside>
+
+      <main
+        className={`h-full overflow-y-auto p-4 md:p-6 pt-20 transition-all duration-300 ${
+          isSidebarOpen ? "md:pl-[304px]" : "md:pl-6"
+        }`}
+      >
+        {authUser.role === "pm" && currentSection.startsWith("pm-") && (
+          <PMDashboard
+            section={pmSection}
+            features={features}
+            setFeatures={setFeatures}
+            pipelineProposals={pipelineProposals}
+            featureQuestions={featureQuestions}
+            onCreateFeatureQuestion={createFeatureQuestion}
+            onCreatePipelineProposal={createPipelineProposal}
+            onAddPipelineProposalMessage={(proposalId, content) =>
+              addPipelineProposalMessage(proposalId, "pm", content)
+            }
+            onUpdatePipelineProposalMessage={(proposalId, messageId, content) =>
+              updatePipelineProposalMessage(
                 proposalId,
                 messageId,
+                "pm",
                 content,
-              ) =>
-                updatePipelineProposalMessage(
-                  proposalId,
-                  messageId,
-                  "pm",
-                  content,
-                )
-              }
-              onDeletePipelineProposalMessage={(proposalId, messageId) =>
-                deletePipelineProposalMessage(proposalId, messageId, "pm")
-              }
-              onUpdatePipelineProposalValue={updatePipelineProposalValue}
-              onTogglePipelineProposalConfirmByPm={
-                togglePipelineProposalConfirmByPm
-              }
-              onAddQuestionMessage={(questionId, content) =>
-                addQuestionMessage(questionId, "pm", content)
-              }
-              onUpdateQuestionMessage={(questionId, messageId, content) =>
-                updateQuestionMessage(questionId, messageId, "pm", content)
-              }
-              onDeleteQuestionMessage={(questionId, messageId) =>
-                deleteQuestionMessage(questionId, messageId, "pm")
-              }
-              onDeleteQuestion={deleteFeatureQuestion}
-              onConfirmQuestionByPm={confirmQuestionByPm}
-              onCancelQuestionConfirmByPm={cancelQuestionConfirmByPm}
-              onTogglePmTaskConfirm={togglePmTaskConfirm}
-              onMoveSection={(next) => setCurrentSection(next)}
-            />
-          )}
+              )
+            }
+            onDeletePipelineProposalMessage={(proposalId, messageId) =>
+              deletePipelineProposalMessage(proposalId, messageId, "pm")
+            }
+            onUpdatePipelineProposalValue={updatePipelineProposalValue}
+            onTogglePipelineProposalConfirmByPm={
+              togglePipelineProposalConfirmByPm
+            }
+            onAddQuestionMessage={(questionId, content) =>
+              addQuestionMessage(questionId, "pm", content)
+            }
+            onUpdateQuestionMessage={(questionId, messageId, content) =>
+              updateQuestionMessage(questionId, messageId, "pm", content)
+            }
+            onDeleteQuestionMessage={(questionId, messageId) =>
+              deleteQuestionMessage(questionId, messageId, "pm")
+            }
+            onDeleteQuestion={deleteFeatureQuestion}
+            onConfirmQuestionByPm={confirmQuestionByPm}
+            onCancelQuestionConfirmByPm={cancelQuestionConfirmByPm}
+            onTogglePmTaskConfirm={togglePmTaskConfirm}
+            onMoveSection={(next) => setCurrentSection(next)}
+          />
+        )}
 
-          {authUser.role === "pm" && currentSection.startsWith("admin-") && (
-            <AdminDashboard section={adminSection} />
-          )}
+        {authUser.role === "pm" && currentSection.startsWith("admin-") && (
+          <AdminDashboard section={adminSection} />
+        )}
 
-          {authUser.role === "dev" && (
-            <DevDashboard
-              section={devSection}
-              features={features}
-              pipelineProposals={pipelineProposals}
-              featureQuestions={featureQuestions}
-              onToggleDevTaskCheck={toggleDevTaskCheck}
-              onAddPipelineProposalMessage={(proposalId, content) =>
-                addPipelineProposalMessage(proposalId, "dev", content)
-              }
-              onUpdatePipelineProposalMessage={(
+        {authUser.role === "dev" && (
+          <DevDashboard
+            section={devSection}
+            features={features}
+            pipelineProposals={pipelineProposals}
+            featureQuestions={featureQuestions}
+            onToggleDevTaskCheck={toggleDevTaskCheck}
+            onAddPipelineProposalMessage={(proposalId, content) =>
+              addPipelineProposalMessage(proposalId, "dev", content)
+            }
+            onUpdatePipelineProposalMessage={(proposalId, messageId, content) =>
+              updatePipelineProposalMessage(
                 proposalId,
                 messageId,
+                "dev",
                 content,
-              ) =>
-                updatePipelineProposalMessage(
-                  proposalId,
-                  messageId,
-                  "dev",
-                  content,
-                )
-              }
-              onDeletePipelineProposalMessage={(proposalId, messageId) =>
-                deletePipelineProposalMessage(proposalId, messageId, "dev")
-              }
-              onUpdatePipelineProposalValue={updatePipelineProposalValue}
-              onTogglePipelineProposalConfirmByDev={
-                togglePipelineProposalConfirmByDev
-              }
-              onAddQuestionMessage={(questionId, content) =>
-                addQuestionMessage(questionId, "dev", content)
-              }
-              onUpdateQuestionMessage={(questionId, messageId, content) =>
-                updateQuestionMessage(questionId, messageId, "dev", content)
-              }
-              onDeleteQuestionMessage={(questionId, messageId) =>
-                deleteQuestionMessage(questionId, messageId, "dev")
-              }
-              onConfirmQuestionByDev={confirmQuestionByDev}
-            />
-          )}
-        </main>
-      </div>
+              )
+            }
+            onDeletePipelineProposalMessage={(proposalId, messageId) =>
+              deletePipelineProposalMessage(proposalId, messageId, "dev")
+            }
+            onUpdatePipelineProposalValue={updatePipelineProposalValue}
+            onTogglePipelineProposalConfirmByDev={
+              togglePipelineProposalConfirmByDev
+            }
+            onAddQuestionMessage={(questionId, content) =>
+              addQuestionMessage(questionId, "dev", content)
+            }
+            onUpdateQuestionMessage={(questionId, messageId, content) =>
+              updateQuestionMessage(questionId, messageId, "dev", content)
+            }
+            onDeleteQuestionMessage={(questionId, messageId) =>
+              deleteQuestionMessage(questionId, messageId, "dev")
+            }
+            onConfirmQuestionByDev={confirmQuestionByDev}
+          />
+        )}
+      </main>
     </div>
   );
 }
