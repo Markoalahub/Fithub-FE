@@ -11,6 +11,7 @@ import {
   Activity,
   FolderGit2,
   GitPullRequest,
+  Loader2,
   LogOut,
   Menu,
   MessageSquare,
@@ -383,6 +384,9 @@ export default function App() {
   const [features, setFeatures] = useState<Feature[]>(initialFeatures);
   const [knowledgeDocs, setKnowledgeDocs] = useState<KnowledgeDocument[]>([]);
   const [isGeneratingPipeline, setIsGeneratingPipeline] = useState(false);
+  const [generatingFileName, setGeneratingFileName] = useState<string | null>(
+    null,
+  );
   const [pipelineProposals, setPipelineProposals] = useState<
     PipelineProposal[]
   >([]);
@@ -454,6 +458,7 @@ export default function App() {
     }
 
     setIsGeneratingPipeline(true);
+    setGeneratingFileName(file.name);
     setFeatures([]);
     setPipelineProposals([]);
     setFeatureQuestions([]);
@@ -500,6 +505,7 @@ export default function App() {
       );
     } finally {
       setIsGeneratingPipeline(false);
+      setGeneratingFileName(null);
     }
   };
 
@@ -1303,10 +1309,27 @@ export default function App() {
 
   return (
     <div className="h-screen bg-slate-100 text-slate-900 relative overflow-hidden">
+      {isGeneratingPipeline && (
+        <div className="pointer-events-none fixed inset-x-0 top-0 z-[80] flex justify-center px-4 pt-3">
+          <div
+            role="status"
+            aria-live="polite"
+            className="inline-flex w-full max-w-2xl items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50/95 px-4 py-2 text-sm font-medium text-indigo-800 shadow-lg backdrop-blur"
+          >
+            <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+            <span className="min-w-0 truncate">
+              PDF 분석 중: {generatingFileName ?? "업로드 파일"}
+            </span>
+          </div>
+        </div>
+      )}
+
       {!isSidebarOpen && (
         <button
           onClick={() => setIsSidebarOpen(true)}
-          className="fixed top-4 left-4 z-50 inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-slate-600 shadow-sm transition-colors duration-300 ease-in-out hover:bg-slate-50"
+          className={`fixed left-4 z-50 inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-slate-600 shadow-sm transition-colors duration-300 ease-in-out hover:bg-slate-50 ${
+            isGeneratingPipeline ? "top-16" : "top-4"
+          }`}
           aria-label="사이드바 열기"
         >
           <Menu className="h-4 w-4" />
@@ -1380,7 +1403,9 @@ export default function App() {
       </aside>
 
       <main
-        className={`h-full overflow-y-auto p-4 md:p-6 pt-20 transition-all duration-300 ease-in-out ${
+        className={`h-full overflow-y-auto p-4 md:p-6 transition-all duration-300 ease-in-out ${
+          isGeneratingPipeline ? "pt-24" : "pt-20"
+        } ${
           isSidebarOpen ? "md:pl-[304px]" : "md:pl-6"
         }`}
       >
@@ -1484,7 +1509,11 @@ export default function App() {
         )}
       </main>
 
-      <div className="pointer-events-none fixed right-4 top-4 z-[70] flex w-[min(92vw,360px)] flex-col gap-2">
+      <div
+        className={`pointer-events-none fixed right-4 z-[70] flex w-[min(92vw,360px)] flex-col gap-2 ${
+          isGeneratingPipeline ? "top-16" : "top-4"
+        }`}
+      >
         {toasts.map((toast) => (
           <div
             key={toast.id}
