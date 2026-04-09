@@ -559,7 +559,9 @@ export default function App() {
     }
 
     const matchedFeature = features.find((feature) => feature.id === featureId);
-    const matchedTask = matchedFeature?.tasks.find((task) => task.id === taskId);
+    const matchedTask = matchedFeature?.tasks.find(
+      (task) => task.id === taskId,
+    );
 
     if (!matchedFeature || !matchedTask) {
       pushToast("이슈로 올릴 세부작업을 찾을 수 없습니다.", "warning");
@@ -583,7 +585,11 @@ export default function App() {
     ].join("\n");
 
     const issueCreateUrl = `${connectedGithubRepo.htmlUrl}/issues/new?title=${encodeURIComponent(issueTitle)}&body=${encodeURIComponent(issueBody)}`;
-    const openedWindow = window.open(issueCreateUrl, "_blank", "noopener,noreferrer");
+    const openedWindow = window.open(
+      issueCreateUrl,
+      "_blank",
+      "noopener,noreferrer",
+    );
 
     if (!openedWindow) {
       pushToast("팝업이 차단되어 이슈 페이지를 열지 못했습니다.", "warning");

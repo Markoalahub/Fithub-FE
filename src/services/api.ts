@@ -176,7 +176,8 @@ export async function fetchPublicGithubRepository(
     owner: data.owner?.login ?? parsed.owner,
     name: data.name ?? parsed.repo,
     fullName: data.full_name ?? `${parsed.owner}/${parsed.repo}`,
-    htmlUrl: data.html_url ?? `https://github.com/${parsed.owner}/${parsed.repo}`,
+    htmlUrl:
+      data.html_url ?? `https://github.com/${parsed.owner}/${parsed.repo}`,
     description: data.description ?? undefined,
     language: data.language ?? undefined,
     defaultBranch: data.default_branch ?? "main",
