@@ -4,6 +4,7 @@ import DevDashboard from "@/src/pages/Dev/DevDashboard";
 import AdminDashboard from "./pages/Admin/AdminDashboard.tsx";
 import LoginScreen from "./pages/Auth/LoginScreen.tsx";
 import {
+  fetchPublicGithubRepository,
   generatePipelineFromPrd,
   type GeneratedPipelineItem,
 } from "./services/api";
@@ -21,6 +22,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import type {
   AuthUser,
+  ConnectedGithubRepository,
   Feature,
   FeatureQuestion,
   KnowledgeDocument,
@@ -90,6 +92,8 @@ const makeTaskId = (featureId: number) =>
 
 const PIPELINE_GENERATION_REQUIREMENTS =
   "첨부된 PRD를 기반으로 MVP 스펙의 파이프라인을 설계해줘";
+const PROJECT_NAME_STORAGE_KEY = "fithub.projectName";
+const CONNECTED_GITHUB_REPO_STORAGE_KEY = "fithub.connectedGithubRepo";
 
 const formatFileSize = (size: number) => {
   if (size >= 1024 * 1024) {
@@ -330,9 +334,8 @@ type PMSection =
   | "pm-pipeline"
   | "pm-review"
   | "admin-knowledge"
-  | "admin-project"
   | "admin-team";
-type DevSection = "dev-pipeline" | "dev-feedback";
+type DevSection = "dev-pipeline" | "dev-feedback" | "dev-project";
 type SidebarSection = PMSection | DevSection;
 
 type SidebarGroup = {
@@ -364,7 +367,6 @@ const pmFeatureItems: SidebarGroup["items"] = [
 
 const pmAdminItems: SidebarGroup["items"] = [
   { id: "admin-knowledge", label: "AI 지식 베이스", icon: UploadCloud },
-  { id: "admin-project", label: "프로젝트 설정", icon: FolderGit2 },
   { id: "admin-team", label: "팀원 관리", icon: Users },
 ];
 
@@ -375,6 +377,7 @@ const devItems: SidebarGroup["items"] = [
     label: "기능 질문 타임라인",
     icon: GitPullRequest,
   },
+  { id: "dev-project", label: "프로젝트 설정", icon: FolderGit2 },
 ];
 
 export default function App() {
@@ -382,8 +385,36 @@ export default function App() {
   const [currentSection, setCurrentSection] = useState<SidebarSection>("pm-ai");
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [features, setFeatures] = useState<Feature[]>(initialFeatures);
+  const [projectName, setProjectName] = useState<string>(() => {
+    if (typeof window === "undefined") {
+      return "Fithub V1";
+    }
+
+    const savedName = window.localStorage.getItem(PROJECT_NAME_STORAGE_KEY);
+    return savedName?.trim() || "Fithub V1";
+  });
+  const [connectedGithubRepo, setConnectedGithubRepo] =
+    useState<ConnectedGithubRepository | null>(() => {
+      if (typeof window === "undefined") {
+        return null;
+      }
+
+      const savedRepo = window.localStorage.getItem(
+        CONNECTED_GITHUB_REPO_STORAGE_KEY,
+      );
+      if (!savedRepo) {
+        return null;
+      }
+
+      try {
+        return JSON.parse(savedRepo) as ConnectedGithubRepository;
+      } catch {
+        return null;
+      }
+    });
   const [knowledgeDocs, setKnowledgeDocs] = useState<KnowledgeDocument[]>([]);
   const [isGeneratingPipeline, setIsGeneratingPipeline] = useState(false);
+  const [isConnectingGithubRepo, setIsConnectingGithubRepo] = useState(false);
   const [generatingFileName, setGeneratingFileName] = useState<string | null>(
     null,
   );
@@ -446,6 +477,120 @@ export default function App() {
     setAuthUser(null);
     setCurrentSection("pm-ai");
     pushToast("로그아웃 되었습니다.", "info");
+  };
+
+  const saveProjectName = (nextProjectName: string) => {
+    const normalizedName = nextProjectName.trim();
+    if (!normalizedName) {
+      pushToast("프로젝트 이름은 비워둘 수 없습니다.", "warning");
+      return;
+    }
+
+    setProjectName(normalizedName);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(PROJECT_NAME_STORAGE_KEY, normalizedName);
+    }
+    pushToast("프로젝트 이름을 저장했습니다.", "success");
+  };
+
+  const connectGithubRepository = async (repositoryInput: string) => {
+    const normalizedInput = repositoryInput.trim();
+    if (!normalizedInput) {
+      pushToast("연결할 GitHub 저장소를 입력해 주세요.", "warning");
+      return;
+    }
+
+    setIsConnectingGithubRepo(true);
+    try {
+      const repository = await fetchPublicGithubRepository(normalizedInput);
+      const connectedRepository: ConnectedGithubRepository = {
+        ...repository,
+        connectedAt: new Date().toLocaleString("ko-KR"),
+      };
+
+      setConnectedGithubRepo(connectedRepository);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(
+          CONNECTED_GITHUB_REPO_STORAGE_KEY,
+          JSON.stringify(connectedRepository),
+        );
+      }
+
+      pushToast(
+        `${connectedRepository.fullName} 저장소를 연결했습니다.`,
+        "success",
+      );
+    } catch (error) {
+      console.error(error);
+      pushToast(
+        error instanceof Error
+          ? error.message
+          : "GitHub 저장소 연결에 실패했습니다.",
+        "warning",
+      );
+    } finally {
+      setIsConnectingGithubRepo(false);
+    }
+  };
+
+  const disconnectGithubRepository = () => {
+    if (!connectedGithubRepo) {
+      pushToast("현재 연결된 GitHub 저장소가 없습니다.", "info");
+      return;
+    }
+
+    setConnectedGithubRepo(null);
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(CONNECTED_GITHUB_REPO_STORAGE_KEY);
+    }
+    pushToast("GitHub 저장소 연결을 해제했습니다.", "info");
+  };
+
+  const publishTaskToGithubIssue = (featureId: number, taskId: string) => {
+    if (!connectedGithubRepo) {
+      if (authUser?.role === "dev") {
+        setCurrentSection("dev-project");
+      }
+      pushToast(
+        "먼저 프로젝트 설정에서 Public GitHub 저장소를 연결해 주세요.",
+        "warning",
+      );
+      return;
+    }
+
+    const matchedFeature = features.find((feature) => feature.id === featureId);
+    const matchedTask = matchedFeature?.tasks.find((task) => task.id === taskId);
+
+    if (!matchedFeature || !matchedTask) {
+      pushToast("이슈로 올릴 세부작업을 찾을 수 없습니다.", "warning");
+      return;
+    }
+
+    const issueTitle = `[${projectName}] ${matchedFeature.name} - ${matchedTask.title}`;
+    const issueBody = [
+      "## 작업 요약",
+      `- 프로젝트: ${projectName}`,
+      `- 기능: ${matchedFeature.name}`,
+      `- 세부작업: ${matchedTask.title}`,
+      `- DEV 체크: ${matchedTask.devChecked ? "완료" : "미완료"}`,
+      `- PM 확인: ${matchedTask.pmConfirmed ? "완료" : "대기"}`,
+      "",
+      "## 작업 내용",
+      "- [ ] 작업 범위 확정",
+      "- [ ] 구현",
+      "- [ ] 테스트",
+      "- [ ] 배포 준비",
+    ].join("\n");
+
+    const issueCreateUrl = `${connectedGithubRepo.htmlUrl}/issues/new?title=${encodeURIComponent(issueTitle)}&body=${encodeURIComponent(issueBody)}`;
+    const openedWindow = window.open(issueCreateUrl, "_blank", "noopener,noreferrer");
+
+    if (!openedWindow) {
+      pushToast("팝업이 차단되어 이슈 페이지를 열지 못했습니다.", "warning");
+      return;
+    }
+
+    pushToast("GitHub 이슈 생성 페이지를 열었습니다.", "success");
   };
 
   const handleUploadKnowledgePdf = async (file: File) => {
@@ -1298,14 +1443,14 @@ export default function App() {
         : "review";
 
   const adminSection =
-    currentSection === "admin-knowledge"
-      ? "knowledge"
-      : currentSection === "admin-project"
-        ? "project"
-        : "team";
+    currentSection === "admin-knowledge" ? "knowledge" : "team";
 
   const devSection =
-    currentSection === "dev-feedback" ? "feedback" : "pipeline";
+    currentSection === "dev-feedback"
+      ? "feedback"
+      : currentSection === "dev-project"
+        ? "project"
+        : "pipeline";
 
   return (
     <div className="h-screen bg-slate-100 text-slate-900 relative overflow-hidden">
@@ -1405,9 +1550,7 @@ export default function App() {
       <main
         className={`h-full overflow-y-auto p-4 md:p-6 transition-all duration-300 ease-in-out ${
           isGeneratingPipeline ? "pt-24" : "pt-20"
-        } ${
-          isSidebarOpen ? "md:pl-[304px]" : "md:pl-6"
-        }`}
+        } ${isSidebarOpen ? "md:pl-[304px]" : "md:pl-6"}`}
       >
         {authUser.role === "pm" && currentSection.startsWith("pm-") && (
           <PMDashboard
@@ -1465,10 +1608,17 @@ export default function App() {
         {authUser.role === "dev" && (
           <DevDashboard
             section={devSection}
+            projectName={projectName}
+            connectedGithubRepo={connectedGithubRepo}
+            isConnectingGithubRepo={isConnectingGithubRepo}
             features={features}
             pipelineProposals={pipelineProposals}
             featureQuestions={featureQuestions}
             onToggleDevTaskCheck={toggleDevTaskCheck}
+            onSaveProjectName={saveProjectName}
+            onConnectGithubRepo={connectGithubRepository}
+            onDisconnectGithubRepo={disconnectGithubRepository}
+            onPublishTaskToGithubIssue={publishTaskToGithubIssue}
             onAddPipelineProposalMessage={(
               proposalId: string,
               content: string,

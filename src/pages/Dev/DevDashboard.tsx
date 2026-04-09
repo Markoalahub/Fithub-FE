@@ -5,14 +5,22 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  ExternalLink,
+  FolderGit2,
+  GitBranch,
+  GitFork,
   GitPullRequest,
+  Link2,
+  Loader2,
   MessageSquare,
   Pencil,
   Send,
+  Star,
   Trash2,
   X,
 } from "lucide-react";
 import type {
+  ConnectedGithubRepository,
   Feature,
   FeatureQuestion,
   PipelineProposal,
@@ -21,11 +29,18 @@ import type {
 } from "../../types/index";
 
 interface DevDashboardProps {
-  section: "pipeline" | "feedback";
+  section: "pipeline" | "feedback" | "project";
+  projectName: string;
+  connectedGithubRepo: ConnectedGithubRepository | null;
+  isConnectingGithubRepo: boolean;
   features: Feature[];
   pipelineProposals: PipelineProposal[];
   featureQuestions: FeatureQuestion[];
   onToggleDevTaskCheck: (featureId: number, taskId: string) => void;
+  onSaveProjectName: (projectName: string) => void;
+  onConnectGithubRepo: (repositoryInput: string) => Promise<void>;
+  onDisconnectGithubRepo: () => void;
+  onPublishTaskToGithubIssue: (featureId: number, taskId: string) => void;
   onAddPipelineProposalMessage: (proposalId: string, content: string) => void;
   onUpdatePipelineProposalMessage: (
     proposalId: string,
@@ -126,10 +141,17 @@ const getProposalTargetText = (proposal: PipelineProposal) => {
 
 export default function DevDashboard({
   section,
+  projectName,
+  connectedGithubRepo,
+  isConnectingGithubRepo,
   features,
   pipelineProposals,
   featureQuestions,
   onToggleDevTaskCheck,
+  onSaveProjectName,
+  onConnectGithubRepo,
+  onDisconnectGithubRepo,
+  onPublishTaskToGithubIssue,
   onAddPipelineProposalMessage,
   onUpdatePipelineProposalMessage,
   onDeletePipelineProposalMessage,
@@ -140,6 +162,10 @@ export default function DevDashboard({
   onDeleteQuestionMessage,
   onConfirmQuestionByDev,
 }: DevDashboardProps) {
+  const [projectNameInput, setProjectNameInput] = useState(projectName);
+  const [repositoryInput, setRepositoryInput] = useState(
+    connectedGithubRepo?.htmlUrl ?? "",
+  );
   const [expandedFeatureIds, setExpandedFeatureIds] = useState<number[]>(
     features[0] ? [features[0].id] : [],
   );
@@ -209,6 +235,14 @@ export default function DevDashboard({
       setSelectedQuestionId(selectedQuestion.id);
     }
   }, [selectedQuestion, selectedQuestionId]);
+
+  useEffect(() => {
+    setProjectNameInput(projectName);
+  }, [projectName]);
+
+  useEffect(() => {
+    setRepositoryInput(connectedGithubRepo?.htmlUrl ?? "");
+  }, [connectedGithubRepo?.htmlUrl]);
 
   const selectedProposal = useMemo(() => {
     if (pipelineProposals.length === 0) return null;
@@ -473,6 +507,15 @@ export default function DevDashboard({
     onUpdatePipelineProposalValue(selectedProposal.id, trimmedDraft);
   };
 
+  const handleProjectNameSave = () => {
+    onSaveProjectName(projectNameInput);
+  };
+
+  const handleRepositoryConnect = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    void onConnectGithubRepo(repositoryInput);
+  };
+
   const calculateProgress = (tasks: Task[]) => {
     if (tasks.length === 0) {
       return { dev: 0, pm: 0 };
@@ -515,6 +558,152 @@ export default function DevDashboard({
     () => pipelineProposals.filter((proposal) => proposal.status !== "pending"),
     [pipelineProposals],
   );
+
+  if (section === "project") {
+    return (
+      <section className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm min-h-[620px]">
+        <div className="mb-6 flex items-center justify-between">
+          <h3 className="font-semibold text-gray-800 flex items-center gap-2">
+            <FolderGit2 className="w-5 h-5" /> 프로젝트 설정
+          </h3>
+          <span
+            className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+              connectedGithubRepo
+                ? "bg-emerald-100 text-emerald-700"
+                : "bg-gray-100 text-gray-600"
+            }`}
+          >
+            {connectedGithubRepo ? "저장소 연결됨" : "저장소 미연결"}
+          </span>
+        </div>
+
+        <div className="space-y-6">
+          <div>
+            <p className="text-sm text-gray-500 mb-1">프로젝트 이름</p>
+            <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
+              <input
+                type="text"
+                value={projectNameInput}
+                onChange={(event) => setProjectNameInput(event.target.value)}
+                className="w-full sm:flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                placeholder="프로젝트 이름을 입력해 주세요"
+              />
+              <button
+                type="button"
+                onClick={handleProjectNameSave}
+                className="inline-flex items-center justify-center rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+              >
+                저장
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <p className="text-sm text-gray-500 mb-1">Public GitHub 저장소 연결</p>
+
+            <form
+              onSubmit={handleRepositoryConnect}
+              className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center"
+            >
+              <input
+                type="text"
+                value={repositoryInput}
+                onChange={(event) => setRepositoryInput(event.target.value)}
+                className="w-full sm:flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                placeholder="https://github.com/owner/repo 또는 owner/repo"
+              />
+              <button
+                type="submit"
+                disabled={isConnectingGithubRepo}
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {isConnectingGithubRepo ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    연결 중
+                  </>
+                ) : (
+                  <>
+                    <Link2 className="h-4 w-4" />
+                    저장소 연결
+                  </>
+                )}
+              </button>
+            </form>
+
+            <p className="mt-2 text-xs text-gray-500">
+              공개 저장소만 연결할 수 있습니다.
+            </p>
+          </div>
+
+          {connectedGithubRepo ? (
+            <div className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-gray-900 break-all">
+                    {connectedGithubRepo.fullName}
+                  </p>
+                  <a
+                    href={connectedGithubRepo.htmlUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-indigo-700 hover:text-indigo-800"
+                  >
+                    GitHub에서 저장소 열기
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={onDisconnectGithubRepo}
+                  className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  연결 해제
+                </button>
+              </div>
+
+              {connectedGithubRepo.description && (
+                <p className="mt-3 text-sm text-gray-600">
+                  {connectedGithubRepo.description}
+                </p>
+              )}
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                <span className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600">
+                  <Star className="h-3.5 w-3.5" />
+                  {connectedGithubRepo.stars.toLocaleString()}
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600">
+                  <GitFork className="h-3.5 w-3.5" />
+                  {connectedGithubRepo.forks.toLocaleString()}
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600">
+                  <GitBranch className="h-3.5 w-3.5" />
+                  {connectedGithubRepo.defaultBranch}
+                </span>
+                {connectedGithubRepo.language && (
+                  <span className="inline-flex items-center rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600">
+                    {connectedGithubRepo.language}
+                  </span>
+                )}
+              </div>
+
+              <p className="mt-3 text-xs text-gray-500">
+                연결 시각: {connectedGithubRepo.connectedAt}
+              </p>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4 text-sm text-gray-500">
+              아직 연결된 저장소가 없습니다. Public GitHub 저장소를 연결하면
+              파이프라인 세부작업에서 "깃허브에 올리기" 버튼으로 이슈를 만들 수
+              있습니다.
+            </div>
+          )}
+        </div>
+      </section>
+    );
+  }
 
   if (section === "pipeline") {
     return (
@@ -987,10 +1176,11 @@ export default function DevDashboard({
                         )}
 
                         {feature.tasks.map((task) => (
-                          <label
+                          <div
                             key={task.id}
-                            className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 flex items-center justify-between gap-2"
+                            className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2"
                           >
+                            <div className="flex items-center justify-between gap-2">
                             <div className="min-w-0">
                               <p className="text-xs font-medium text-gray-800 truncate">
                                 {task.title}
@@ -1001,15 +1191,27 @@ export default function DevDashboard({
                                   : "PM 확인 대기"}
                               </p>
                             </div>
-                            <input
-                              type="checkbox"
-                              checked={task.devChecked}
-                              onChange={() =>
-                                onToggleDevTaskCheck(feature.id, task.id)
-                              }
-                              className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                            />
-                          </label>
+                              <div className="flex shrink-0 items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    onPublishTaskToGithubIssue(feature.id, task.id)
+                                  }
+                                  className="rounded-md border border-indigo-300 bg-indigo-50 px-2 py-1 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100"
+                                >
+                                  깃허브에 올리기
+                                </button>
+                                <input
+                                  type="checkbox"
+                                  checked={task.devChecked}
+                                  onChange={() =>
+                                    onToggleDevTaskCheck(feature.id, task.id)
+                                  }
+                                  className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                />
+                              </div>
+                            </div>
+                          </div>
                         ))}
                       </div>
                     )}

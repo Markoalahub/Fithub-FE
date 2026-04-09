@@ -1,10 +1,10 @@
 import { useRef } from "react";
-import { FileText, FolderGit2, Plus, UploadCloud, Users } from "lucide-react";
+import { FileText, Plus, UploadCloud, Users } from "lucide-react";
 import type { ChangeEvent } from "react";
 import type { KnowledgeDocument } from "../../types/index";
 
 interface AdminDashboardProps {
-  section: "knowledge" | "project" | "team";
+  section: "knowledge" | "team";
   knowledgeDocs: KnowledgeDocument[];
   isGeneratingPipeline: boolean;
   onUploadKnowledgePdf: (file: File) => Promise<void>;
@@ -116,31 +116,6 @@ export default function AdminDashboard({
                 </div>
               </div>
             ))}
-          </div>
-        </div>
-      </section>
-    );
-  }
-
-  if (section === "project") {
-    return (
-      <section className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm min-h-[620px]">
-        <div className="flex justify-between items-center mb-6">
-          <h3 className="font-semibold text-gray-800 flex items-center gap-2">
-            <FolderGit2 className="w-5 h-5" /> 프로젝트 설정
-          </h3>
-          <button className="text-sm text-indigo-600 font-medium hover:text-indigo-700">
-            수정
-          </button>
-        </div>
-        <div className="space-y-4">
-          <div>
-            <p className="text-sm text-gray-500 mb-1">프로젝트 이름</p>
-            <p className="font-medium text-gray-900">Fithub V1</p>
-          </div>
-          <div>
-            <p className="text-sm text-gray-500 mb-1">연결된 GitHub 저장소</p>
-            <p className="font-medium text-gray-900">team-alpha/fithub-web</p>
           </div>
         </div>
       </section>

@@ -77,3 +77,16 @@ export type KnowledgeDocument = {
   uploadedAt: string;
   sizeLabel: string;
 };
+
+export type ConnectedGithubRepository = {
+  owner: string;
+  name: string;
+  fullName: string;
+  htmlUrl: string;
+  description?: string;
+  language?: string;
+  defaultBranch: string;
+  stars: number;
+  forks: number;
+  connectedAt: string;
+};
