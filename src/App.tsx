@@ -4,9 +4,15 @@ import DevDashboard from "@/src/pages/Dev/DevDashboard";
 import AdminDashboard from "./pages/Admin/AdminDashboard.tsx";
 import LoginScreen from "./pages/Auth/LoginScreen.tsx";
 import {
+  fetchPublicGithubRepository,
+  generatePipelineFromPrd,
+  type GeneratedPipelineItem,
+} from "./services/api";
+import {
   Activity,
   FolderGit2,
   GitPullRequest,
+  Loader2,
   LogOut,
   Menu,
   MessageSquare,
@@ -16,8 +22,10 @@ import {
 import type { LucideIcon } from "lucide-react";
 import type {
   AuthUser,
+  ConnectedGithubRepository,
   Feature,
   FeatureQuestion,
+  KnowledgeDocument,
   PipelineProposal,
   PipelineProposalAction,
   QuestionMessage,
@@ -81,6 +89,47 @@ const buildPipelineProposalIntroMessage = ({
 
 const makeTaskId = (featureId: number) =>
   `${featureId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+
+const PIPELINE_GENERATION_REQUIREMENTS =
+  "첨부된 PRD를 기반으로 MVP 스펙의 파이프라인을 설계해줘";
+const PROJECT_NAME_STORAGE_KEY = "fithub.projectName";
+const CONNECTED_GITHUB_REPO_STORAGE_KEY = "fithub.connectedGithubRepo";
+
+const formatFileSize = (size: number) => {
+  if (size >= 1024 * 1024) {
+    return `${(size / (1024 * 1024)).toFixed(1)}MB`;
+  }
+  if (size >= 1024) {
+    return `${Math.max(1, Math.round(size / 1024))}KB`;
+  }
+  return `${size}B`;
+};
+
+const mapGeneratedPipelineToFeatures = (
+  pipeline: GeneratedPipelineItem[],
+): Feature[] =>
+  [...pipeline]
+    .sort((a, b) => a.priority - b.priority)
+    .map((item, index) => {
+      const featureId = index + 1;
+      const majorFeatureTitle = item.title?.trim() || `주요 기능 ${featureId}`;
+      const detailItems = Array.isArray(item.details) ? item.details : [];
+
+      return {
+        id: featureId,
+        name: majorFeatureTitle,
+        tasks: detailItems
+          .map((detail) => detail.trim())
+          .filter((detail) => detail.length > 0)
+          .map((detail, detailIndex) => ({
+            id: `${featureId}-${detailIndex + 1}`,
+            title: detail,
+            devChecked: false,
+            pmConfirmed: false,
+            isAiSuggested: true,
+          })),
+      };
+    });
 
 const applyPipelineProposal = (
   prevFeatures: Feature[],
@@ -278,93 +327,15 @@ const applyPipelineProposal = (
   }
 };
 
-const initialFeatures: Feature[] = [
-  {
-    id: 1,
-    name: "소셜 로그인 연동",
-    tasks: [
-      {
-        id: "1-1",
-        title: "카카오 API 키 발급",
-        devChecked: true,
-        pmConfirmed: true,
-      },
-      {
-        id: "1-2",
-        title: "OAuth 콜백 라우트 구현",
-        devChecked: true,
-        pmConfirmed: true,
-      },
-      {
-        id: "1-3",
-        title: "DB 유저 정보 연동",
-        devChecked: true,
-        pmConfirmed: true,
-      },
-    ],
-  },
-  {
-    id: 2,
-    name: "결제 모듈 연동",
-    tasks: [
-      {
-        id: "2-1",
-        title: "PortOne SDK 설치",
-        devChecked: true,
-        pmConfirmed: true,
-      },
-      {
-        id: "2-2",
-        title: "결제창 호출 UI 구현",
-        devChecked: true,
-        pmConfirmed: false,
-      },
-      {
-        id: "2-3",
-        title: "Webhook 검증 로직 작성",
-        devChecked: false,
-        pmConfirmed: false,
-      },
-    ],
-  },
-  {
-    id: 3,
-    name: "관리자 통계 페이지",
-    tasks: [
-      {
-        id: "3-1",
-        title: "일별 매출 집계 쿼리",
-        devChecked: false,
-        pmConfirmed: false,
-      },
-      {
-        id: "3-2",
-        title: "차트 UI 컴포넌트 개발",
-        devChecked: false,
-        pmConfirmed: false,
-      },
-    ],
-  },
-  {
-    id: 4,
-    name: "알림 시스템 구축",
-    tasks: [],
-  },
-  {
-    id: 5,
-    name: "검색 최적화",
-    tasks: [],
-  },
-];
+const initialFeatures: Feature[] = [];
 
 type PMSection =
   | "pm-ai"
   | "pm-pipeline"
   | "pm-review"
   | "admin-knowledge"
-  | "admin-project"
   | "admin-team";
-type DevSection = "dev-pipeline" | "dev-feedback";
+type DevSection = "dev-pipeline" | "dev-feedback" | "dev-project";
 type SidebarSection = PMSection | DevSection;
 
 type SidebarGroup = {
@@ -396,7 +367,6 @@ const pmFeatureItems: SidebarGroup["items"] = [
 
 const pmAdminItems: SidebarGroup["items"] = [
   { id: "admin-knowledge", label: "AI 지식 베이스", icon: UploadCloud },
-  { id: "admin-project", label: "프로젝트 설정", icon: FolderGit2 },
   { id: "admin-team", label: "팀원 관리", icon: Users },
 ];
 
@@ -407,6 +377,7 @@ const devItems: SidebarGroup["items"] = [
     label: "기능 질문 타임라인",
     icon: GitPullRequest,
   },
+  { id: "dev-project", label: "프로젝트 설정", icon: FolderGit2 },
 ];
 
 export default function App() {
@@ -414,6 +385,39 @@ export default function App() {
   const [currentSection, setCurrentSection] = useState<SidebarSection>("pm-ai");
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [features, setFeatures] = useState<Feature[]>(initialFeatures);
+  const [projectName, setProjectName] = useState<string>(() => {
+    if (typeof window === "undefined") {
+      return "Fithub V1";
+    }
+
+    const savedName = window.localStorage.getItem(PROJECT_NAME_STORAGE_KEY);
+    return savedName?.trim() || "Fithub V1";
+  });
+  const [connectedGithubRepo, setConnectedGithubRepo] =
+    useState<ConnectedGithubRepository | null>(() => {
+      if (typeof window === "undefined") {
+        return null;
+      }
+
+      const savedRepo = window.localStorage.getItem(
+        CONNECTED_GITHUB_REPO_STORAGE_KEY,
+      );
+      if (!savedRepo) {
+        return null;
+      }
+
+      try {
+        return JSON.parse(savedRepo) as ConnectedGithubRepository;
+      } catch {
+        return null;
+      }
+    });
+  const [knowledgeDocs, setKnowledgeDocs] = useState<KnowledgeDocument[]>([]);
+  const [isGeneratingPipeline, setIsGeneratingPipeline] = useState(false);
+  const [isConnectingGithubRepo, setIsConnectingGithubRepo] = useState(false);
+  const [generatingFileName, setGeneratingFileName] = useState<string | null>(
+    null,
+  );
   const [pipelineProposals, setPipelineProposals] = useState<
     PipelineProposal[]
   >([]);
@@ -473,6 +477,187 @@ export default function App() {
     setAuthUser(null);
     setCurrentSection("pm-ai");
     pushToast("로그아웃 되었습니다.", "info");
+  };
+
+  const saveProjectName = (nextProjectName: string) => {
+    const normalizedName = nextProjectName.trim();
+    if (!normalizedName) {
+      pushToast("프로젝트 이름은 비워둘 수 없습니다.", "warning");
+      return;
+    }
+
+    setProjectName(normalizedName);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(PROJECT_NAME_STORAGE_KEY, normalizedName);
+    }
+    pushToast("프로젝트 이름을 저장했습니다.", "success");
+  };
+
+  const connectGithubRepository = async (repositoryInput: string) => {
+    const normalizedInput = repositoryInput.trim();
+    if (!normalizedInput) {
+      pushToast("연결할 GitHub 저장소를 입력해 주세요.", "warning");
+      return;
+    }
+
+    setIsConnectingGithubRepo(true);
+    try {
+      const repository = await fetchPublicGithubRepository(normalizedInput);
+      const connectedRepository: ConnectedGithubRepository = {
+        ...repository,
+        connectedAt: new Date().toLocaleString("ko-KR"),
+      };
+
+      setConnectedGithubRepo(connectedRepository);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(
+          CONNECTED_GITHUB_REPO_STORAGE_KEY,
+          JSON.stringify(connectedRepository),
+        );
+      }
+
+      pushToast(
+        `${connectedRepository.fullName} 저장소를 연결했습니다.`,
+        "success",
+      );
+    } catch (error) {
+      console.error(error);
+      pushToast(
+        error instanceof Error
+          ? error.message
+          : "GitHub 저장소 연결에 실패했습니다.",
+        "warning",
+      );
+    } finally {
+      setIsConnectingGithubRepo(false);
+    }
+  };
+
+  const disconnectGithubRepository = () => {
+    if (!connectedGithubRepo) {
+      pushToast("현재 연결된 GitHub 저장소가 없습니다.", "info");
+      return;
+    }
+
+    setConnectedGithubRepo(null);
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(CONNECTED_GITHUB_REPO_STORAGE_KEY);
+    }
+    pushToast("GitHub 저장소 연결을 해제했습니다.", "info");
+  };
+
+  const publishTaskToGithubIssue = (featureId: number, taskId: string) => {
+    if (!connectedGithubRepo) {
+      if (authUser?.role === "dev") {
+        setCurrentSection("dev-project");
+      }
+      pushToast(
+        "먼저 프로젝트 설정에서 Public GitHub 저장소를 연결해 주세요.",
+        "warning",
+      );
+      return;
+    }
+
+    const matchedFeature = features.find((feature) => feature.id === featureId);
+    const matchedTask = matchedFeature?.tasks.find(
+      (task) => task.id === taskId,
+    );
+
+    if (!matchedFeature || !matchedTask) {
+      pushToast("이슈로 올릴 세부작업을 찾을 수 없습니다.", "warning");
+      return;
+    }
+
+    const issueTitle = `[${projectName}] ${matchedFeature.name} - ${matchedTask.title}`;
+    const issueBody = [
+      "## 작업 요약",
+      `- 프로젝트: ${projectName}`,
+      `- 기능: ${matchedFeature.name}`,
+      `- 세부작업: ${matchedTask.title}`,
+      `- DEV 체크: ${matchedTask.devChecked ? "완료" : "미완료"}`,
+      `- PM 확인: ${matchedTask.pmConfirmed ? "완료" : "대기"}`,
+      "",
+      "## 작업 내용",
+      "- [ ] 작업 범위 확정",
+      "- [ ] 구현",
+      "- [ ] 테스트",
+      "- [ ] 배포 준비",
+    ].join("\n");
+
+    const issueCreateUrl = `${connectedGithubRepo.htmlUrl}/issues/new?title=${encodeURIComponent(issueTitle)}&body=${encodeURIComponent(issueBody)}`;
+    const openedWindow = window.open(
+      issueCreateUrl,
+      "_blank",
+      "noopener,noreferrer",
+    );
+
+    if (!openedWindow) {
+      pushToast("팝업이 차단되어 이슈 페이지를 열지 못했습니다.", "warning");
+      return;
+    }
+
+    pushToast("GitHub 이슈 생성 페이지를 열었습니다.", "success");
+  };
+
+  const handleUploadKnowledgePdf = async (file: File) => {
+    const isPdfFile =
+      file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+
+    if (!isPdfFile) {
+      pushToast("PDF 파일만 업로드할 수 있습니다.", "warning");
+      return;
+    }
+
+    setIsGeneratingPipeline(true);
+    setGeneratingFileName(file.name);
+    setFeatures([]);
+    setPipelineProposals([]);
+    setFeatureQuestions([]);
+    pushToast("PDF를 분석해 파이프라인을 생성하고 있습니다.", "info");
+
+    try {
+      const response = await generatePipelineFromPrd({
+        requirements: PIPELINE_GENERATION_REQUIREMENTS,
+        prdFile: file,
+      });
+
+      const generatedItems = Array.isArray(response.pipeline)
+        ? response.pipeline
+        : [];
+      const nextFeatures = mapGeneratedPipelineToFeatures(generatedItems);
+
+      setFeatures(nextFeatures);
+      setCurrentSection("pm-pipeline");
+
+      setKnowledgeDocs((prev) => [
+        {
+          id: createId(),
+          name: file.name,
+          uploadedAt: new Date().toLocaleDateString("ko-KR"),
+          sizeLabel: formatFileSize(file.size),
+        },
+        ...prev,
+      ]);
+
+      if (nextFeatures.length === 0) {
+        pushToast("응답은 받았지만 생성된 파이프라인이 없습니다.", "warning");
+        return;
+      }
+
+      pushToast(
+        `파이프라인 ${nextFeatures.length}개를 생성해 반영했습니다.`,
+        "success",
+      );
+    } catch (error) {
+      console.error(error);
+      pushToast(
+        "파이프라인 생성 API 호출에 실패했습니다. 서버 상태를 확인해 주세요.",
+        "warning",
+      );
+    } finally {
+      setIsGeneratingPipeline(false);
+      setGeneratingFileName(null);
+    }
   };
 
   useEffect(() => {
@@ -1264,21 +1449,38 @@ export default function App() {
         : "review";
 
   const adminSection =
-    currentSection === "admin-knowledge"
-      ? "knowledge"
-      : currentSection === "admin-project"
-        ? "project"
-        : "team";
+    currentSection === "admin-knowledge" ? "knowledge" : "team";
 
   const devSection =
-    currentSection === "dev-feedback" ? "feedback" : "pipeline";
+    currentSection === "dev-feedback"
+      ? "feedback"
+      : currentSection === "dev-project"
+        ? "project"
+        : "pipeline";
 
   return (
     <div className="h-screen bg-slate-100 text-slate-900 relative overflow-hidden">
+      {isGeneratingPipeline && (
+        <div className="pointer-events-none fixed inset-x-0 top-0 z-[80] flex justify-center px-4 pt-3">
+          <div
+            role="status"
+            aria-live="polite"
+            className="inline-flex w-full max-w-2xl items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50/95 px-4 py-2 text-sm font-medium text-indigo-800 shadow-lg backdrop-blur"
+          >
+            <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+            <span className="min-w-0 truncate">
+              PDF 분석 중: {generatingFileName ?? "업로드 파일"}
+            </span>
+          </div>
+        </div>
+      )}
+
       {!isSidebarOpen && (
         <button
           onClick={() => setIsSidebarOpen(true)}
-          className="fixed top-4 left-4 z-50 inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-slate-600 shadow-sm transition-colors duration-300 ease-in-out hover:bg-slate-50"
+          className={`fixed left-4 z-50 inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-slate-600 shadow-sm transition-colors duration-300 ease-in-out hover:bg-slate-50 ${
+            isGeneratingPipeline ? "top-16" : "top-4"
+          }`}
           aria-label="사이드바 열기"
         >
           <Menu className="h-4 w-4" />
@@ -1352,9 +1554,9 @@ export default function App() {
       </aside>
 
       <main
-        className={`h-full overflow-y-auto p-4 md:p-6 pt-20 transition-all duration-300 ease-in-out ${
-          isSidebarOpen ? "md:pl-[304px]" : "md:pl-6"
-        }`}
+        className={`h-full overflow-y-auto p-4 md:p-6 transition-all duration-300 ease-in-out ${
+          isGeneratingPipeline ? "pt-24" : "pt-20"
+        } ${isSidebarOpen ? "md:pl-[304px]" : "md:pl-6"}`}
       >
         {authUser.role === "pm" && currentSection.startsWith("pm-") && (
           <PMDashboard
@@ -1401,16 +1603,28 @@ export default function App() {
         )}
 
         {authUser.role === "pm" && currentSection.startsWith("admin-") && (
-          <AdminDashboard section={adminSection} />
+          <AdminDashboard
+            section={adminSection}
+            knowledgeDocs={knowledgeDocs}
+            isGeneratingPipeline={isGeneratingPipeline}
+            onUploadKnowledgePdf={handleUploadKnowledgePdf}
+          />
         )}
 
         {authUser.role === "dev" && (
           <DevDashboard
             section={devSection}
+            projectName={projectName}
+            connectedGithubRepo={connectedGithubRepo}
+            isConnectingGithubRepo={isConnectingGithubRepo}
             features={features}
             pipelineProposals={pipelineProposals}
             featureQuestions={featureQuestions}
             onToggleDevTaskCheck={toggleDevTaskCheck}
+            onSaveProjectName={saveProjectName}
+            onConnectGithubRepo={connectGithubRepository}
+            onDisconnectGithubRepo={disconnectGithubRepository}
+            onPublishTaskToGithubIssue={publishTaskToGithubIssue}
             onAddPipelineProposalMessage={(
               proposalId: string,
               content: string,
@@ -1451,7 +1665,11 @@ export default function App() {
         )}
       </main>
 
-      <div className="pointer-events-none fixed right-4 top-4 z-[70] flex w-[min(92vw,360px)] flex-col gap-2">
+      <div
+        className={`pointer-events-none fixed right-4 z-[70] flex w-[min(92vw,360px)] flex-col gap-2 ${
+          isGeneratingPipeline ? "top-16" : "top-4"
+        }`}
+      >
         {toasts.map((toast) => (
           <div
             key={toast.id}

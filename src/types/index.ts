@@ -70,3 +70,23 @@ export type QuestionMessage = {
   content: string;
   createdAt: string;
 };
+
+export type KnowledgeDocument = {
+  id: string;
+  name: string;
+  uploadedAt: string;
+  sizeLabel: string;
+};
+
+export type ConnectedGithubRepository = {
+  owner: string;
+  name: string;
+  fullName: string;
+  htmlUrl: string;
+  description?: string;
+  language?: string;
+  defaultBranch: string;
+  stars: number;
+  forks: number;
+  connectedAt: string;
+};
