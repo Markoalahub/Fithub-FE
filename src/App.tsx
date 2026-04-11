@@ -982,11 +982,13 @@ export default function App() {
     featureId,
     taskId,
     proposedValue,
+    role = "pm",
   }: {
     action: PipelineProposalAction;
     featureId?: number;
     taskId?: string;
     proposedValue?: string;
+    role?: "pm" | "dev";
   }) => {
     const nextValue = proposedValue?.trim();
     if (proposalNeedsValue(action) && !nextValue) {
@@ -1047,7 +1049,7 @@ export default function App() {
       proposedValue: nextValue,
       messages: [
         createQuestionMessage(
-          "pm",
+          role,
           buildPipelineProposalIntroMessage({
             action,
             featureName: matchedFeature?.name,
@@ -1621,6 +1623,14 @@ export default function App() {
             pipelineProposals={pipelineProposals}
             featureQuestions={featureQuestions}
             onToggleDevTaskCheck={toggleDevTaskCheck}
+            onCreateTaskProposal={(featureId: number, proposedValue: string) =>
+              createPipelineProposal({
+                action: "add-task",
+                featureId,
+                proposedValue,
+                role: "dev",
+              })
+            }
             onSaveProjectName={saveProjectName}
             onConnectGithubRepo={connectGithubRepository}
             onDisconnectGithubRepo={disconnectGithubRepository}

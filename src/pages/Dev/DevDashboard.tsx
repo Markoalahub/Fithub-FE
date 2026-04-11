@@ -37,6 +37,7 @@ interface DevDashboardProps {
   pipelineProposals: PipelineProposal[];
   featureQuestions: FeatureQuestion[];
   onToggleDevTaskCheck: (featureId: number, taskId: string) => void;
+  onCreateTaskProposal: (featureId: number, proposedValue: string) => void;
   onSaveProjectName: (projectName: string) => void;
   onConnectGithubRepo: (repositoryInput: string) => Promise<void>;
   onDisconnectGithubRepo: () => void;
@@ -68,6 +69,7 @@ interface DevDashboardProps {
 
 const PROPOSAL_MESSAGE_MAX_LENGTH = 260;
 const PROPOSAL_DRAFT_MAX_LENGTH = 90;
+const TASK_TITLE_MAX_LENGTH = 90;
 const FLOATING_BUTTON_SIZE = 56;
 const FLOATING_PANEL_MAX_WIDTH = 540;
 const FLOATING_PANEL_MAX_HEIGHT = 600;
@@ -148,6 +150,7 @@ export default function DevDashboard({
   pipelineProposals,
   featureQuestions,
   onToggleDevTaskCheck,
+  onCreateTaskProposal,
   onSaveProjectName,
   onConnectGithubRepo,
   onDisconnectGithubRepo,
@@ -166,6 +169,7 @@ export default function DevDashboard({
   const [repositoryInput, setRepositoryInput] = useState(
     connectedGithubRepo?.htmlUrl ?? "",
   );
+  const [taskDrafts, setTaskDrafts] = useState<Record<number, string>>({});
   const [expandedFeatureIds, setExpandedFeatureIds] = useState<number[]>(
     features[0] ? [features[0].id] : [],
   );
@@ -421,6 +425,23 @@ export default function DevDashboard({
         ? prev.filter((id) => id !== featureId)
         : [...prev, featureId],
     );
+  };
+
+  const createTaskProposal = (featureId: number) => {
+    const draft = (taskDrafts[featureId] ?? "")
+      .trim()
+      .slice(0, TASK_TITLE_MAX_LENGTH);
+    if (!draft) return;
+
+    const confirmed = window.confirm(
+      `'${draft}' 세부작업 추가 제안을 등록할까요?`,
+    );
+    if (!confirmed) return;
+
+    onCreateTaskProposal(featureId, draft);
+    setTaskDrafts((prev) => ({ ...prev, [featureId]: "" }));
+    setProposalWidgetTab("chat");
+    setIsProposalWidgetOpen(true);
   };
 
   const submitNewMessage = () => {
@@ -1218,6 +1239,33 @@ export default function DevDashboard({
                             </div>
                           </div>
                         ))}
+
+                        <div className="flex items-center gap-2 pt-1">
+                          <input
+                            value={taskDrafts[feature.id] ?? ""}
+                            maxLength={TASK_TITLE_MAX_LENGTH}
+                            onChange={(event) =>
+                              setTaskDrafts((prev) => ({
+                                ...prev,
+                                [feature.id]: event.target.value,
+                              }))
+                            }
+                            onKeyDown={(event) => {
+                              if (event.key !== "Enter") return;
+                              if (event.nativeEvent.isComposing) return;
+                              event.preventDefault();
+                              createTaskProposal(feature.id);
+                            }}
+                            placeholder="세부작업 추가 제안"
+                            className="flex-1 rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs"
+                          />
+                          <button
+                            onClick={() => createTaskProposal(feature.id)}
+                            className="rounded-lg bg-gray-900 px-2.5 py-1.5 text-xs font-semibold text-white"
+                          >
+                            제안
+                          </button>
+                        </div>
                       </div>
                     )}
                   </article>
