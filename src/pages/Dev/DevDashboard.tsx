@@ -878,7 +878,9 @@ export default function DevDashboard({
 
                     <div className="flex-1 overflow-y-auto px-3 py-2 space-y-2">
                       {(selectedProposal.messages ?? []).map((message) => {
-                        const isDev = message.role === "dev";
+                        const isDev =
+                          message.role === "dev-fe" ||
+                          message.role === "dev-be";
                         const isEditing =
                           editingProposalMessageId === message.id;
                         return (
@@ -1291,7 +1293,7 @@ export default function DevDashboard({
           (message) => message.role === "pm",
         ).length,
         devCount: selectedQuestion.messages.filter(
-          (message) => message.role === "dev",
+          (message) => message.role === "dev-fe" || message.role === "dev-be",
         ).length,
       }
     : null;
@@ -1383,7 +1385,8 @@ export default function DevDashboard({
 
             <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
               {selectedQuestion.messages.map((message) => {
-                const isDev = message.role === "dev";
+                const isDev =
+                  message.role === "dev-fe" || message.role === "dev-be";
                 const isEditing = editingMessageId === message.id;
 
                 return (

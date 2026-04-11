@@ -44,7 +44,7 @@ export type PipelineProposal = {
 
 export type TimelineMessage = {
   id: string;
-  role: "pm" | "dev";
+  role: "pm" | "dev-fe" | "dev-be";
   content: string;
   aiTranslation: string;
   time: string;
@@ -66,7 +66,7 @@ export type FeatureQuestion = {
 
 export type QuestionMessage = {
   id: string;
-  role: "pm" | "dev";
+  role: "pm" | "dev-fe" | "dev-be";
   content: string;
   createdAt: string;
 };
