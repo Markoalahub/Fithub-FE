@@ -5,6 +5,7 @@ import {
   demoAccounts,
   type AuthUser,
   type LoginProvider,
+  type UserRole,
 } from "../../types/index";
 
 interface LoginScreenProps {
@@ -71,7 +72,7 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
       ? "bg-gray-900 text-white hover:bg-gray-800"
       : "bg-yellow-300 text-gray-900 hover:bg-yellow-400";
 
-  const handleQuickLogin = (role: "pm" | "dev") => {
+  const handleQuickLogin = (role: UserRole) => {
     const matchedAccount = demoAccounts.find(
       (account) => account.role === role,
     );
@@ -129,7 +130,7 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
             <p className="text-xs font-semibold text-indigo-800 mb-2">
               원클릭 데모 로그인
             </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <button
                 type="button"
                 onClick={() => handleQuickLogin("pm")}
@@ -139,10 +140,17 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
               </button>
               <button
                 type="button"
-                onClick={() => handleQuickLogin("dev")}
+                onClick={() => handleQuickLogin("dev-fe")}
                 className="rounded-xl bg-slate-800 px-3 py-2.5 text-sm font-semibold text-white hover:bg-slate-900"
               >
-                개발자 로그인
+                프론트 개발자 로그인
+              </button>
+              <button
+                type="button"
+                onClick={() => handleQuickLogin("dev-be")}
+                className="rounded-xl bg-emerald-700 px-3 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800"
+              >
+                백엔드 개발자 로그인
               </button>
             </div>
           </div>

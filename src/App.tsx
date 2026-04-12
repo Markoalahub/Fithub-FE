@@ -40,7 +40,7 @@ const getNowTimeLabel = () =>
   });
 
 const createQuestionMessage = (
-  role: "pm" | "dev",
+  role: "pm" | "dev-fe" | "dev-be",
   content: string,
 ): QuestionMessage => ({
   id: createId(),
@@ -92,8 +92,63 @@ const makeTaskId = (featureId: number) =>
 
 const PIPELINE_GENERATION_REQUIREMENTS =
   "첨부된 PRD를 기반으로 MVP 스펙의 파이프라인을 설계해줘";
-const PROJECT_NAME_STORAGE_KEY = "fithub.projectName";
-const CONNECTED_GITHUB_REPO_STORAGE_KEY = "fithub.connectedGithubRepo";
+const LEGACY_PROJECT_NAME_STORAGE_KEY = "fithub.projectName";
+const LEGACY_CONNECTED_GITHUB_REPO_STORAGE_KEY = "fithub.connectedGithubRepo";
+const getProjectNameStorageKey = (track: "frontend" | "backend") =>
+  `${LEGACY_PROJECT_NAME_STORAGE_KEY}.${track}`;
+const getConnectedGithubRepoStorageKey = (track: "frontend" | "backend") =>
+  `${LEGACY_CONNECTED_GITHUB_REPO_STORAGE_KEY}.${track}`;
+
+const readStoredProjectName = (track: "frontend" | "backend") => {
+  if (typeof window === "undefined") {
+    return "Fithub V1";
+  }
+
+  const scopedName = window.localStorage.getItem(
+    getProjectNameStorageKey(track),
+  );
+  if (scopedName?.trim()) {
+    return scopedName.trim();
+  }
+
+  if (track === "frontend") {
+    const legacyName = window.localStorage.getItem(
+      LEGACY_PROJECT_NAME_STORAGE_KEY,
+    );
+    if (legacyName?.trim()) {
+      return legacyName.trim();
+    }
+  }
+
+  return "Fithub V1";
+};
+
+const readStoredConnectedGithubRepo = (
+  track: "frontend" | "backend",
+): ConnectedGithubRepository | null => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const scopedRepo = window.localStorage.getItem(
+    getConnectedGithubRepoStorageKey(track),
+  );
+  const repoRaw =
+    scopedRepo ??
+    (track === "frontend"
+      ? window.localStorage.getItem(LEGACY_CONNECTED_GITHUB_REPO_STORAGE_KEY)
+      : null);
+
+  if (!repoRaw) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(repoRaw) as ConnectedGithubRepository;
+  } catch {
+    return null;
+  }
+};
 
 const formatFileSize = (size: number) => {
   if (size >= 1024 * 1024) {
@@ -329,10 +384,15 @@ const applyPipelineProposal = (
 
 const initialFeatures: Feature[] = [];
 
+type DevTrack = "frontend" | "backend";
+
 type PMSection =
-  | "pm-ai"
-  | "pm-pipeline"
-  | "pm-review"
+  | "pm-fe-ai"
+  | "pm-fe-pipeline"
+  | "pm-fe-review"
+  | "pm-be-ai"
+  | "pm-be-pipeline"
+  | "pm-be-review"
   | "admin-knowledge"
   | "admin-team";
 type DevSection = "dev-pipeline" | "dev-feedback" | "dev-project";
@@ -355,11 +415,26 @@ type ToastItem = {
   tone: ToastTone;
 };
 
-const pmFeatureItems: SidebarGroup["items"] = [
-  { id: "pm-ai", label: "기능 질문", icon: MessageSquare },
-  { id: "pm-pipeline", label: "전체 개발 파이프라인", icon: Activity },
+const devTrackLabel: Record<DevTrack, string> = {
+  frontend: "프론트엔드",
+  backend: "백엔드",
+};
+
+const pmFrontendItems: SidebarGroup["items"] = [
+  { id: "pm-fe-ai", label: "기능 질문", icon: MessageSquare },
+  { id: "pm-fe-pipeline", label: "개발 파이프라인", icon: Activity },
   {
-    id: "pm-review",
+    id: "pm-fe-review",
+    label: "타임라인 & 파이프라인",
+    icon: GitPullRequest,
+  },
+];
+
+const pmBackendItems: SidebarGroup["items"] = [
+  { id: "pm-be-ai", label: "기능 질문", icon: MessageSquare },
+  { id: "pm-be-pipeline", label: "개발 파이프라인", icon: Activity },
+  {
+    id: "pm-be-review",
     label: "타임라인 & 파이프라인",
     icon: GitPullRequest,
   },
@@ -382,53 +457,124 @@ const devItems: SidebarGroup["items"] = [
 
 export default function App() {
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
-  const [currentSection, setCurrentSection] = useState<SidebarSection>("pm-ai");
+  const [currentSection, setCurrentSection] =
+    useState<SidebarSection>("pm-fe-ai");
+  const [pmSelectedTrack, setPmSelectedTrack] = useState<DevTrack>("frontend");
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [features, setFeatures] = useState<Feature[]>(initialFeatures);
-  const [projectName, setProjectName] = useState<string>(() => {
-    if (typeof window === "undefined") {
-      return "Fithub V1";
-    }
-
-    const savedName = window.localStorage.getItem(PROJECT_NAME_STORAGE_KEY);
-    return savedName?.trim() || "Fithub V1";
-  });
-  const [connectedGithubRepo, setConnectedGithubRepo] =
-    useState<ConnectedGithubRepository | null>(() => {
-      if (typeof window === "undefined") {
-        return null;
-      }
-
-      const savedRepo = window.localStorage.getItem(
-        CONNECTED_GITHUB_REPO_STORAGE_KEY,
-      );
-      if (!savedRepo) {
-        return null;
-      }
-
-      try {
-        return JSON.parse(savedRepo) as ConnectedGithubRepository;
-      } catch {
-        return null;
-      }
-    });
+  const [frontendFeatures, setFrontendFeatures] =
+    useState<Feature[]>(initialFeatures);
+  const [backendFeatures, setBackendFeatures] =
+    useState<Feature[]>(initialFeatures);
+  const [frontendProjectName, setFrontendProjectName] = useState<string>(() =>
+    readStoredProjectName("frontend"),
+  );
+  const [backendProjectName, setBackendProjectName] = useState<string>(() =>
+    readStoredProjectName("backend"),
+  );
+  const [frontendConnectedGithubRepo, setFrontendConnectedGithubRepo] =
+    useState<ConnectedGithubRepository | null>(() =>
+      readStoredConnectedGithubRepo("frontend"),
+    );
+  const [backendConnectedGithubRepo, setBackendConnectedGithubRepo] =
+    useState<ConnectedGithubRepository | null>(() =>
+      readStoredConnectedGithubRepo("backend"),
+    );
   const [knowledgeDocs, setKnowledgeDocs] = useState<KnowledgeDocument[]>([]);
   const [isGeneratingPipeline, setIsGeneratingPipeline] = useState(false);
   const [isConnectingGithubRepo, setIsConnectingGithubRepo] = useState(false);
   const [generatingFileName, setGeneratingFileName] = useState<string | null>(
     null,
   );
-  const [pipelineProposals, setPipelineProposals] = useState<
+  const [frontendPipelineProposals, setFrontendPipelineProposals] = useState<
     PipelineProposal[]
   >([]);
-  const [featureQuestions, setFeatureQuestions] = useState<FeatureQuestion[]>(
-    [],
-  );
+  const [backendPipelineProposals, setBackendPipelineProposals] = useState<
+    PipelineProposal[]
+  >([]);
+  const [frontendFeatureQuestions, setFrontendFeatureQuestions] = useState<
+    FeatureQuestion[]
+  >([]);
+  const [backendFeatureQuestions, setBackendFeatureQuestions] = useState<
+    FeatureQuestion[]
+  >([]);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const lastMessageFingerprintRef = useRef<{ key: string; at: number } | null>(
     null,
   );
   const toastTimeoutIdsRef = useRef<number[]>([]);
+
+  const isDevUser = authUser?.role === "dev-fe" || authUser?.role === "dev-be";
+  const activeTrack: DevTrack =
+    authUser?.role === "dev-fe"
+      ? "frontend"
+      : authUser?.role === "dev-be"
+        ? "backend"
+        : pmSelectedTrack;
+
+  const features =
+    activeTrack === "frontend" ? frontendFeatures : backendFeatures;
+  const pipelineProposals =
+    activeTrack === "frontend"
+      ? frontendPipelineProposals
+      : backendPipelineProposals;
+  const featureQuestions =
+    activeTrack === "frontend"
+      ? frontendFeatureQuestions
+      : backendFeatureQuestions;
+  const projectName =
+    activeTrack === "frontend" ? frontendProjectName : backendProjectName;
+  const connectedGithubRepo =
+    activeTrack === "frontend"
+      ? frontendConnectedGithubRepo
+      : backendConnectedGithubRepo;
+
+  const setFeatures: React.Dispatch<React.SetStateAction<Feature[]>> = (
+    updater,
+  ) => {
+    if (activeTrack === "frontend") {
+      setFrontendFeatures(updater);
+      return;
+    }
+    setBackendFeatures(updater);
+  };
+
+  const setPipelineProposals: React.Dispatch<
+    React.SetStateAction<PipelineProposal[]>
+  > = (updater) => {
+    if (activeTrack === "frontend") {
+      setFrontendPipelineProposals(updater);
+      return;
+    }
+    setBackendPipelineProposals(updater);
+  };
+
+  const setFeatureQuestions: React.Dispatch<
+    React.SetStateAction<FeatureQuestion[]>
+  > = (updater) => {
+    if (activeTrack === "frontend") {
+      setFrontendFeatureQuestions(updater);
+      return;
+    }
+    setBackendFeatureQuestions(updater);
+  };
+
+  const setProjectName = (nextProjectName: string) => {
+    if (activeTrack === "frontend") {
+      setFrontendProjectName(nextProjectName);
+      return;
+    }
+    setBackendProjectName(nextProjectName);
+  };
+
+  const setConnectedGithubRepo = (
+    nextRepo: ConnectedGithubRepository | null,
+  ) => {
+    if (activeTrack === "frontend") {
+      setFrontendConnectedGithubRepo(nextRepo);
+      return;
+    }
+    setBackendConnectedGithubRepo(nextRepo);
+  };
 
   const pushToast = (message: string, tone: ToastTone = "info") => {
     const id = createId();
@@ -448,12 +594,31 @@ export default function App() {
     if (!authUser) return [];
     if (authUser.role === "pm") {
       return [
-        { title: "기획자 기능", items: pmFeatureItems },
+        { title: "프론트엔드 협업", items: pmFrontendItems },
+        { title: "백엔드 협업", items: pmBackendItems },
         { title: "관리자 설정", items: pmAdminItems },
       ];
     }
-    return [{ title: "개발자 기능", items: devItems }];
+    return [
+      {
+        title:
+          authUser.role === "dev-fe"
+            ? "프론트엔드 개발자 기능"
+            : "백엔드 개발자 기능",
+        items: devItems,
+      },
+    ];
   }, [authUser]);
+
+  useEffect(() => {
+    if (currentSection.startsWith("pm-fe-")) {
+      setPmSelectedTrack("frontend");
+      return;
+    }
+    if (currentSection.startsWith("pm-be-")) {
+      setPmSelectedTrack("backend");
+    }
+  }, [currentSection]);
 
   useEffect(() => {
     return () => {
@@ -466,16 +631,25 @@ export default function App() {
 
   const handleLogin = (user: AuthUser) => {
     setAuthUser(user);
-    setCurrentSection(user.role === "pm" ? "pm-ai" : "dev-pipeline");
+
+    if (user.role === "pm") {
+      setPmSelectedTrack("frontend");
+      setCurrentSection("pm-fe-ai");
+      pushToast("기획자 계정으로 로그인했습니다.", "success");
+      return;
+    }
+
+    setCurrentSection("dev-pipeline");
     pushToast(
-      `${user.role === "pm" ? "기획자" : "개발자"} 계정으로 로그인했습니다.`,
+      `${user.role === "dev-fe" ? "프론트엔드 개발자" : "백엔드 개발자"} 계정으로 로그인했습니다.`,
       "success",
     );
   };
 
   const handleLogout = () => {
     setAuthUser(null);
-    setCurrentSection("pm-ai");
+    setPmSelectedTrack("frontend");
+    setCurrentSection("pm-fe-ai");
     pushToast("로그아웃 되었습니다.", "info");
   };
 
@@ -488,7 +662,10 @@ export default function App() {
 
     setProjectName(normalizedName);
     if (typeof window !== "undefined") {
-      window.localStorage.setItem(PROJECT_NAME_STORAGE_KEY, normalizedName);
+      window.localStorage.setItem(
+        getProjectNameStorageKey(activeTrack),
+        normalizedName,
+      );
     }
     pushToast("프로젝트 이름을 저장했습니다.", "success");
   };
@@ -511,7 +688,7 @@ export default function App() {
       setConnectedGithubRepo(connectedRepository);
       if (typeof window !== "undefined") {
         window.localStorage.setItem(
-          CONNECTED_GITHUB_REPO_STORAGE_KEY,
+          getConnectedGithubRepoStorageKey(activeTrack),
           JSON.stringify(connectedRepository),
         );
       }
@@ -541,14 +718,16 @@ export default function App() {
 
     setConnectedGithubRepo(null);
     if (typeof window !== "undefined") {
-      window.localStorage.removeItem(CONNECTED_GITHUB_REPO_STORAGE_KEY);
+      window.localStorage.removeItem(
+        getConnectedGithubRepoStorageKey(activeTrack),
+      );
     }
     pushToast("GitHub 저장소 연결을 해제했습니다.", "info");
   };
 
   const publishTaskToGithubIssue = (featureId: number, taskId: string) => {
     if (!connectedGithubRepo) {
-      if (authUser?.role === "dev") {
+      if (isDevUser) {
         setCurrentSection("dev-project");
       }
       pushToast(
@@ -613,7 +792,10 @@ export default function App() {
     setFeatures([]);
     setPipelineProposals([]);
     setFeatureQuestions([]);
-    pushToast("PDF를 분석해 파이프라인을 생성하고 있습니다.", "info");
+    pushToast(
+      `${devTrackLabel[activeTrack]} 파이프라인용 PDF를 분석하고 있습니다.`,
+      "info",
+    );
 
     try {
       const response = await generatePipelineFromPrd({
@@ -627,7 +809,9 @@ export default function App() {
       const nextFeatures = mapGeneratedPipelineToFeatures(generatedItems);
 
       setFeatures(nextFeatures);
-      setCurrentSection("pm-pipeline");
+      setCurrentSection(
+        activeTrack === "frontend" ? "pm-fe-pipeline" : "pm-be-pipeline",
+      );
 
       setKnowledgeDocs((prev) => [
         {
@@ -645,7 +829,7 @@ export default function App() {
       }
 
       pushToast(
-        `파이프라인 ${nextFeatures.length}개를 생성해 반영했습니다.`,
+        `${devTrackLabel[activeTrack]} 파이프라인 ${nextFeatures.length}개를 생성해 반영했습니다.`,
         "success",
       );
     } catch (error) {
@@ -743,12 +927,12 @@ export default function App() {
     };
 
     setFeatureQuestions((prev) => [nextQuestion, ...prev]);
-    pushToast("질문을 등록했습니다.", "success");
+    pushToast(`${devTrackLabel[activeTrack]} 질문을 등록했습니다.`, "success");
   };
 
   const addQuestionMessage = (
     questionId: string,
-    role: "pm" | "dev",
+    role: "pm" | "dev-fe" | "dev-be",
     content: string,
   ) => {
     const trimmed = content.trim();
@@ -798,7 +982,7 @@ export default function App() {
   const updateQuestionMessage = (
     questionId: string,
     messageId: string,
-    role: "pm" | "dev",
+    role: "pm" | "dev-fe" | "dev-be",
     content: string,
   ) => {
     const trimmed = content.trim();
@@ -847,7 +1031,7 @@ export default function App() {
   const deleteQuestionMessage = (
     questionId: string,
     messageId: string,
-    role: "pm" | "dev",
+    role: "pm" | "dev-fe" | "dev-be",
   ) => {
     const targetQuestion = featureQuestions.find(
       (question) => question.id === questionId,
@@ -982,11 +1166,13 @@ export default function App() {
     featureId,
     taskId,
     proposedValue,
+    role = "pm",
   }: {
     action: PipelineProposalAction;
     featureId?: number;
     taskId?: string;
     proposedValue?: string;
+    role?: "pm" | "dev-fe" | "dev-be";
   }) => {
     const nextValue = proposedValue?.trim();
     if (proposalNeedsValue(action) && !nextValue) {
@@ -1047,7 +1233,7 @@ export default function App() {
       proposedValue: nextValue,
       messages: [
         createQuestionMessage(
-          "pm",
+          role,
           buildPipelineProposalIntroMessage({
             action,
             featureName: matchedFeature?.name,
@@ -1063,12 +1249,15 @@ export default function App() {
     };
 
     setPipelineProposals((prev) => [nextProposal, ...prev]);
-    pushToast("기능 제안을 등록했습니다.", "success");
+    pushToast(
+      `${devTrackLabel[activeTrack]} 기능 제안을 등록했습니다.`,
+      "success",
+    );
   };
 
   const addPipelineProposalMessage = (
     proposalId: string,
-    role: "pm" | "dev",
+    role: "pm" | "dev-fe" | "dev-be",
     content: string,
   ) => {
     const trimmed = content.trim();
@@ -1117,7 +1306,7 @@ export default function App() {
   const updatePipelineProposalMessage = (
     proposalId: string,
     messageId: string,
-    role: "pm" | "dev",
+    role: "pm" | "dev-fe" | "dev-be",
     content: string,
   ) => {
     const trimmed = content.trim();
@@ -1165,7 +1354,7 @@ export default function App() {
   const deletePipelineProposalMessage = (
     proposalId: string,
     messageId: string,
-    role: "pm" | "dev",
+    role: "pm" | "dev-fe" | "dev-be",
   ) => {
     const targetProposal = pipelineProposals.find(
       (proposal) => proposal.id === proposalId,
@@ -1249,7 +1438,7 @@ export default function App() {
 
   const togglePipelineProposalConfirm = (
     proposalId: string,
-    role: "pm" | "dev",
+    role: "pm" | "dev-fe" | "dev-be",
   ) => {
     const targetProposal = pipelineProposals.find(
       (proposal) => proposal.id === proposalId && proposal.status === "pending",
@@ -1266,7 +1455,7 @@ export default function App() {
           ? !targetProposal.pmConfirmed
           : targetProposal.pmConfirmed,
       devConfirmed:
-        role === "dev"
+        role !== "pm"
           ? !targetProposal.devConfirmed
           : targetProposal.devConfirmed,
       resultMessage: undefined,
@@ -1347,7 +1536,10 @@ export default function App() {
   };
 
   const togglePipelineProposalConfirmByDev = (proposalId: string) => {
-    togglePipelineProposalConfirm(proposalId, "dev");
+    togglePipelineProposalConfirm(
+      proposalId,
+      authUser?.role === "dev-be" ? "dev-be" : "dev-fe",
+    );
   };
 
   const toggleDevTaskCheck = (featureId: number, taskId: string) => {
@@ -1441,12 +1633,17 @@ export default function App() {
     return <LoginScreen onLogin={handleLogin} />;
   }
 
-  const pmSection =
-    currentSection === "pm-ai"
-      ? "ai"
-      : currentSection === "pm-pipeline"
-        ? "pipeline"
-        : "review";
+  const pmSection = currentSection.endsWith("-ai")
+    ? "ai"
+    : currentSection.endsWith("-pipeline")
+      ? "pipeline"
+      : "review";
+
+  const movePmSection = (section: "ai" | "pipeline" | "review") => {
+    setCurrentSection(
+      `${activeTrack === "backend" ? "pm-be" : "pm-fe"}-${section}` as PMSection,
+    );
+  };
 
   const adminSection =
     currentSection === "admin-knowledge" ? "knowledge" : "team";
@@ -1558,6 +1755,45 @@ export default function App() {
           isGeneratingPipeline ? "pt-24" : "pt-20"
         } ${isSidebarOpen ? "md:pl-[304px]" : "md:pl-6"}`}
       >
+        {authUser.role === "pm" && (
+          <div className="mb-4 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-semibold text-slate-500">
+                협업 파이프라인 선택
+              </span>
+              <button
+                onClick={() => {
+                  setPmSelectedTrack("frontend");
+                  setCurrentSection("pm-fe-ai");
+                }}
+                className={`rounded-lg px-3 py-1.5 text-sm font-semibold ${
+                  activeTrack === "frontend"
+                    ? "bg-indigo-600 text-white"
+                    : "border border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                프론트엔드 섹션
+              </button>
+              <button
+                onClick={() => {
+                  setPmSelectedTrack("backend");
+                  setCurrentSection("pm-be-ai");
+                }}
+                className={`rounded-lg px-3 py-1.5 text-sm font-semibold ${
+                  activeTrack === "backend"
+                    ? "bg-emerald-700 text-white"
+                    : "border border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                백엔드 섹션
+              </button>
+              <span className="ml-auto rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+                현재: {devTrackLabel[activeTrack]} 파이프라인
+              </span>
+            </div>
+          </div>
+        )}
+
         {authUser.role === "pm" && currentSection.startsWith("pm-") && (
           <PMDashboard
             section={pmSection}
@@ -1598,7 +1834,7 @@ export default function App() {
             onConfirmQuestionByPm={confirmQuestionByPm}
             onCancelQuestionConfirmByPm={cancelQuestionConfirmByPm}
             onTogglePmTaskConfirm={togglePmTaskConfirm}
-            onMoveSection={(next) => setCurrentSection(next)}
+            onMoveSection={movePmSection}
           />
         )}
 
@@ -1611,7 +1847,7 @@ export default function App() {
           />
         )}
 
-        {authUser.role === "dev" && (
+        {isDevUser && (
           <DevDashboard
             section={devSection}
             projectName={projectName}
@@ -1621,6 +1857,14 @@ export default function App() {
             pipelineProposals={pipelineProposals}
             featureQuestions={featureQuestions}
             onToggleDevTaskCheck={toggleDevTaskCheck}
+            onCreateTaskProposal={(featureId: number, proposedValue: string) =>
+              createPipelineProposal({
+                action: "add-task",
+                featureId,
+                proposedValue,
+                role: authUser.role,
+              })
+            }
             onSaveProjectName={saveProjectName}
             onConnectGithubRepo={connectGithubRepository}
             onDisconnectGithubRepo={disconnectGithubRepository}
@@ -1628,7 +1872,7 @@ export default function App() {
             onAddPipelineProposalMessage={(
               proposalId: string,
               content: string,
-            ) => addPipelineProposalMessage(proposalId, "dev", content)}
+            ) => addPipelineProposalMessage(proposalId, authUser.role, content)}
             onUpdatePipelineProposalMessage={(
               proposalId: string,
               messageId: string,
@@ -1637,28 +1881,41 @@ export default function App() {
               updatePipelineProposalMessage(
                 proposalId,
                 messageId,
-                "dev",
+                authUser.role,
                 content,
               )
             }
             onDeletePipelineProposalMessage={(
               proposalId: string,
               messageId: string,
-            ) => deletePipelineProposalMessage(proposalId, messageId, "dev")}
+            ) =>
+              deletePipelineProposalMessage(
+                proposalId,
+                messageId,
+                authUser.role,
+              )
+            }
             onUpdatePipelineProposalValue={updatePipelineProposalValue}
             onTogglePipelineProposalConfirmByDev={
               togglePipelineProposalConfirmByDev
             }
             onAddQuestionMessage={(questionId: string, content: string) =>
-              addQuestionMessage(questionId, "dev", content)
+              addQuestionMessage(questionId, authUser.role, content)
             }
             onUpdateQuestionMessage={(
               questionId: string,
               messageId: string,
               content: string,
-            ) => updateQuestionMessage(questionId, messageId, "dev", content)}
+            ) =>
+              updateQuestionMessage(
+                questionId,
+                messageId,
+                authUser.role,
+                content,
+              )
+            }
             onDeleteQuestionMessage={(questionId: string, messageId: string) =>
-              deleteQuestionMessage(questionId, messageId, "dev")
+              deleteQuestionMessage(questionId, messageId, authUser.role)
             }
             onConfirmQuestionByDev={confirmQuestionByDev}
           />

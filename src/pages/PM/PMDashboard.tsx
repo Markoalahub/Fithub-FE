@@ -66,7 +66,7 @@ interface PMDashboardProps {
   onConfirmQuestionByPm: (questionId: string) => void;
   onCancelQuestionConfirmByPm: (questionId: string) => void;
   onTogglePmTaskConfirm: (featureId: number, taskId: string) => void;
-  onMoveSection: (section: "pm-ai" | "pm-pipeline" | "pm-review") => void;
+  onMoveSection: (section: "ai" | "pipeline" | "review") => void;
 }
 
 type ProposalCreatePayload = {
@@ -732,7 +732,7 @@ export default function PMDashboard({
       content: trimmedQuestion,
     });
     setQuestionInput("");
-    onMoveSection("pm-review");
+    onMoveSection("review");
   };
 
   const submitNewMessage = () => {
@@ -893,7 +893,6 @@ export default function PMDashboard({
                 <GitPullRequest className="h-4 w-4" /> 파이프라인 선택
                 다이얼로그 열기
               </button>
-
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="rounded-xl border border-indigo-100 bg-white p-3">
                   <p className="text-xs font-semibold text-indigo-900">
@@ -1861,7 +1860,7 @@ export default function PMDashboard({
         <div className="p-4 border-b border-gray-100 flex items-center justify-between gap-2">
           <h3 className="text-sm font-semibold text-gray-900">질문 리스트</h3>
           <button
-            onClick={() => onMoveSection("pm-ai")}
+            onClick={() => onMoveSection("ai")}
             className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-2.5 py-1.5 text-xs font-semibold text-white"
           >
             <Plus className="h-3.5 w-3.5" /> 새 질문

@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useMemo, useRef, useState } from "react";
 import { FileText, Plus, UploadCloud, Users } from "lucide-react";
 import type { ChangeEvent } from "react";
 import type { KnowledgeDocument } from "../../types/index";
@@ -16,20 +16,23 @@ const mockMembers = [
     role: "Product Manager",
     email: "pm@example.com",
     type: "기획자",
+    discipline: "pm",
   },
   {
-    name: "이개발",
+    name: "이프론트",
     role: "Frontend Engineer",
     email: "fe@example.com",
-    type: "개발자",
+    type: "프론트엔드 개발자",
+    discipline: "frontend",
   },
   {
-    name: "박서버",
+    name: "박백엔드",
     role: "Backend Engineer",
     email: "be@example.com",
-    type: "개발자",
+    type: "백엔드 개발자",
+    discipline: "backend",
   },
-];
+] as const;
 
 export default function AdminDashboard({
   section,
@@ -38,6 +41,22 @@ export default function AdminDashboard({
   onUploadKnowledgePdf,
 }: AdminDashboardProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [selectedDeveloperSection, setSelectedDeveloperSection] = useState<
+    "frontend" | "backend"
+  >("frontend");
+
+  const frontendMembers = useMemo(
+    () => mockMembers.filter((member) => member.discipline === "frontend"),
+    [],
+  );
+
+  const backendMembers = useMemo(
+    () => mockMembers.filter((member) => member.discipline === "backend"),
+    [],
+  );
+
+  const selectedMembers =
+    selectedDeveloperSection === "frontend" ? frontendMembers : backendMembers;
 
   const openFilePicker = () => {
     if (isGeneratingPipeline) return;
@@ -133,8 +152,61 @@ export default function AdminDashboard({
         </button>
       </div>
 
+      <div className="rounded-2xl border border-gray-200 bg-gray-50/70 p-4 mb-4">
+        <p className="text-xs font-semibold text-gray-600 mb-2">기획자</p>
+        {mockMembers
+          .filter((member) => member.discipline === "pm")
+          .map((member) => (
+            <div
+              key={member.email}
+              className="flex items-center justify-between p-3 border border-gray-100 rounded-xl bg-white"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center font-bold text-gray-600">
+                  {member.name[0]}
+                </div>
+                <div>
+                  <p className="font-medium text-gray-900">
+                    {member.name}
+                    <span className="text-xs font-normal text-gray-500 ml-1">
+                      {member.email}
+                    </span>
+                  </p>
+                  <p className="text-xs text-gray-500">{member.role}</p>
+                </div>
+              </div>
+              <span className="px-2.5 py-1 text-xs font-medium rounded-md bg-blue-100 text-blue-700">
+                {member.type}
+              </span>
+            </div>
+          ))}
+      </div>
+
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <button
+          onClick={() => setSelectedDeveloperSection("frontend")}
+          className={`rounded-lg px-3 py-1.5 text-sm font-semibold ${
+            selectedDeveloperSection === "frontend"
+              ? "bg-indigo-600 text-white"
+              : "border border-gray-300 bg-white text-gray-600 hover:bg-gray-50"
+          }`}
+        >
+          프론트엔드 개발자 섹션
+        </button>
+        <button
+          onClick={() => setSelectedDeveloperSection("backend")}
+          className={`rounded-lg px-3 py-1.5 text-sm font-semibold ${
+            selectedDeveloperSection === "backend"
+              ? "bg-emerald-700 text-white"
+              : "border border-gray-300 bg-white text-gray-600 hover:bg-gray-50"
+          }`}
+        >
+          백엔드 개발자 섹션
+        </button>
+      </div>
+
       <div className="space-y-3">
-        {mockMembers.map((member) => (
+        {selectedMembers.map((member) => (
           <div
             key={member.email}
             className="flex items-center justify-between p-3 border border-gray-100 rounded-xl hover:bg-gray-50"
@@ -155,8 +227,8 @@ export default function AdminDashboard({
             </div>
             <span
               className={`px-2.5 py-1 text-xs font-medium rounded-md ${
-                member.type === "기획자"
-                  ? "bg-blue-100 text-blue-700"
+                member.discipline === "frontend"
+                  ? "bg-indigo-100 text-indigo-700"
                   : "bg-emerald-100 text-emerald-700"
               }`}
             >
