@@ -73,14 +73,15 @@ export default function AdminDashboard({
 
   if (section === "knowledge") {
     return (
-      <section className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm min-h-[620px]">
-        <h3 className="font-semibold text-gray-800 flex items-center gap-2 mb-2">
-          <UploadCloud className="w-5 h-5" /> AI 지식 베이스
-        </h3>
-        <p className="text-sm text-gray-500 mb-6">
-          기획서, 회의록 등을 업로드하면 AI가 이를 학습하여 더 정확한 답변을
-          제공합니다.
-        </p>
+      <section className="rounded-2xl border border-gray-200 bg-white p-8 min-h-[620px]">
+        <div className="pb-6 mb-6 border-b border-gray-100">
+          <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+            <UploadCloud className="w-4 h-4 text-gray-400" /> AI 지식 베이스
+          </h3>
+          <p className="text-sm text-gray-500 mt-1">
+            기획서, 회의록 등을 업로드하면 AI가 이를 학습하여 더 정확한 답변을 제공합니다.
+          </p>
+        </div>
 
         <input
           ref={fileInputRef}
@@ -95,41 +96,40 @@ export default function AdminDashboard({
           type="button"
           onClick={openFilePicker}
           disabled={isGeneratingPipeline}
-          className="w-full border-2 border-dashed border-gray-200 rounded-xl p-8 text-center hover:bg-gray-50 transition-colors cursor-pointer mb-6 disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:bg-white"
+          className="w-full border-2 border-dashed border-gray-200 rounded-lg p-8 text-center hover:bg-gray-50 hover:border-gray-300 transition-colors cursor-pointer mb-8 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-white"
         >
-          <UploadCloud className="w-8 h-8 text-gray-400 mx-auto mb-3" />
+          <UploadCloud className="w-7 h-7 text-gray-300 mx-auto mb-3" />
           <p className="text-sm font-medium text-gray-700">
             {isGeneratingPipeline
               ? "PDF 분석 중입니다. 잠시만 기다려 주세요"
               : "클릭해서 PRD(PDF) 업로드"}
           </p>
-          <p className="text-xs text-gray-500 mt-1">PDF 지원 (최대 50MB)</p>
+          <p className="text-xs text-gray-400 mt-1">PDF 지원 (최대 50MB)</p>
         </button>
 
         <div className="space-y-3">
-          <h4 className="text-sm font-medium text-gray-900 mb-2">
+          <h4 className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-3">
             학습된 문서
           </h4>
 
           {knowledgeDocs.length === 0 && (
-            <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4 text-sm text-gray-500">
-              업로드된 문서가 없습니다. PDF를 올리면 AI 파이프라인 생성에
-              사용됩니다.
+            <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-4 text-sm text-gray-400">
+              업로드된 문서가 없습니다. PDF를 올리면 AI 파이프라인 생성에 사용됩니다.
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {knowledgeDocs.map((doc) => (
               <div
                 key={doc.id}
                 className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100"
               >
-                <FileText className="w-5 h-5 text-indigo-500" />
+                <FileText className="w-4 h-4 text-gray-400 shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-gray-900 truncate">
                     {doc.name}
                   </p>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-gray-400">
                     {doc.uploadedAt} · {doc.sizeLabel}
                   </p>
                 </div>
@@ -142,96 +142,90 @@ export default function AdminDashboard({
   }
 
   return (
-    <section className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm min-h-[620px]">
-      <div className="flex justify-between items-center mb-6">
-        <h3 className="font-semibold text-gray-800 flex items-center gap-2">
-          <Users className="w-5 h-5" /> 팀원 관리
+    <section className="rounded-2xl border border-gray-200 bg-white p-8 min-h-[620px]">
+      <div className="pb-6 mb-6 border-b border-gray-100 flex items-center justify-between">
+        <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+          <Users className="w-4 h-4 text-gray-400" /> 팀원 관리
         </h3>
-        <button className="flex items-center gap-1 text-sm bg-gray-900 text-white px-3 py-1.5 rounded-lg hover:bg-gray-800">
-          <Plus className="w-4 h-4" /> 초대
+        <button className="inline-flex items-center gap-1.5 text-sm bg-gray-900 text-white px-3 py-1.5 rounded-lg hover:bg-gray-800">
+          <Plus className="w-3.5 h-3.5" /> 초대
         </button>
       </div>
 
-      <div className="rounded-2xl border border-gray-200 bg-gray-50/70 p-4 mb-4">
-        <p className="text-xs font-semibold text-gray-600 mb-2">기획자</p>
+      <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 mb-6">
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-3">기획자</p>
         {mockMembers
           .filter((member) => member.discipline === "pm")
           .map((member) => (
             <div
               key={member.email}
-              className="flex items-center justify-between p-3 border border-gray-100 rounded-xl bg-white"
+              className="flex items-center justify-between p-3 border border-gray-100 rounded-lg bg-white"
             >
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center font-bold text-gray-600">
+                <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center font-semibold text-gray-600 text-sm">
                   {member.name[0]}
                 </div>
                 <div>
-                  <p className="font-medium text-gray-900">
+                  <p className="text-sm font-medium text-gray-900">
                     {member.name}
-                    <span className="text-xs font-normal text-gray-500 ml-1">
+                    <span className="text-xs font-normal text-gray-400 ml-1.5">
                       {member.email}
                     </span>
                   </p>
-                  <p className="text-xs text-gray-500">{member.role}</p>
+                  <p className="text-xs text-gray-400">{member.role}</p>
                 </div>
               </div>
-              <span className="px-2.5 py-1 text-xs font-medium rounded-md bg-blue-100 text-blue-700">
+              <span className="px-2.5 py-1 text-xs font-medium rounded-md bg-gray-100 text-gray-700">
                 {member.type}
               </span>
             </div>
           ))}
       </div>
 
-      <div className="mb-4 flex flex-wrap items-center gap-2">
+      <div className="mb-5 flex items-center border-b border-gray-100">
         <button
           onClick={() => setSelectedDeveloperSection("frontend")}
-          className={`rounded-lg px-3 py-1.5 text-sm font-semibold ${
+          className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
             selectedDeveloperSection === "frontend"
-              ? "bg-indigo-600 text-white"
-              : "border border-gray-300 bg-white text-gray-600 hover:bg-gray-50"
+              ? "border-gray-900 text-gray-900 font-semibold"
+              : "border-transparent text-gray-400 hover:text-gray-700"
           }`}
         >
-          프론트엔드 개발자 섹션
+          프론트엔드
         </button>
         <button
           onClick={() => setSelectedDeveloperSection("backend")}
-          className={`rounded-lg px-3 py-1.5 text-sm font-semibold ${
+          className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
             selectedDeveloperSection === "backend"
-              ? "bg-emerald-700 text-white"
-              : "border border-gray-300 bg-white text-gray-600 hover:bg-gray-50"
+              ? "border-gray-900 text-gray-900 font-semibold"
+              : "border-transparent text-gray-400 hover:text-gray-700"
           }`}
         >
-          백엔드 개발자 섹션
+          백엔드
         </button>
       </div>
 
-      <div className="space-y-3">
+      <div className="space-y-2">
         {selectedMembers.map((member) => (
           <div
             key={member.email}
-            className="flex items-center justify-between p-3 border border-gray-100 rounded-xl hover:bg-gray-50"
+            className="flex items-center justify-between p-3 border border-gray-100 rounded-lg hover:bg-gray-50"
           >
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center font-bold text-gray-600">
+              <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center font-semibold text-gray-600 text-sm">
                 {member.name[0]}
               </div>
               <div>
-                <p className="font-medium text-gray-900">
+                <p className="text-sm font-medium text-gray-900">
                   {member.name}
-                  <span className="text-xs font-normal text-gray-500 ml-1">
+                  <span className="text-xs font-normal text-gray-400 ml-1.5">
                     {member.email}
                   </span>
                 </p>
-                <p className="text-xs text-gray-500">{member.role}</p>
+                <p className="text-xs text-gray-400">{member.role}</p>
               </div>
             </div>
-            <span
-              className={`px-2.5 py-1 text-xs font-medium rounded-md ${
-                member.discipline === "frontend"
-                  ? "bg-indigo-100 text-indigo-700"
-                  : "bg-emerald-100 text-emerald-700"
-              }`}
-            >
+            <span className="px-2.5 py-1 text-xs font-medium rounded-md bg-gray-100 text-gray-700">
               {member.type}
             </span>
           </div>

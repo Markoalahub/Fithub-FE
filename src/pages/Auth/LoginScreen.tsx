@@ -70,7 +70,7 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
   const submitButtonClass =
     selectedProvider === "github"
       ? "bg-gray-900 text-white hover:bg-gray-800"
-      : "bg-yellow-300 text-gray-900 hover:bg-yellow-400";
+      : "bg-yellow-400 text-gray-900 hover:bg-yellow-300";
 
   const handleQuickLogin = (role: UserRole) => {
     const matchedAccount = demoAccounts.find(
@@ -87,10 +87,12 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-sky-50 px-6 py-8 text-gray-900">
+    <div className="min-h-screen bg-gray-50 px-6 py-8 text-gray-900">
       <div className="mx-auto flex w-full max-w-md items-center justify-center py-12">
-        <section className="w-full rounded-3xl border border-gray-200 bg-white p-8 shadow-sm">
-          <p className="text-sm font-medium text-indigo-600">Demo Auth</p>
+        <section className="w-full rounded-2xl border border-gray-200 bg-white p-8">
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">
+            Demo Auth
+          </p>
           <h1 className="mt-1 text-2xl font-bold text-gray-900">
             {appConfig.name}
           </h1>
@@ -103,7 +105,7 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
             <button
               type="button"
               onClick={() => setSelectedProvider("github")}
-              className={`inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold transition-colors ${
+              className={`inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-3 text-sm font-semibold transition-colors ${
                 selectedProvider === "github"
                   ? "border-gray-900 bg-gray-900 text-white"
                   : "border-gray-200 bg-white text-gray-700 hover:border-gray-300"
@@ -115,9 +117,9 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
             <button
               type="button"
               onClick={() => setSelectedProvider("kakao")}
-              className={`inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold transition-colors ${
+              className={`inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-3 text-sm font-semibold transition-colors ${
                 selectedProvider === "kakao"
-                  ? "border-yellow-300 bg-yellow-300 text-gray-900"
+                  ? "border-yellow-400 bg-yellow-400 text-gray-900"
                   : "border-gray-200 bg-white text-gray-700 hover:border-gray-300"
               }`}
             >
@@ -126,31 +128,31 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
             </button>
           </div>
 
-          <div className="mt-4 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-3">
-            <p className="text-xs font-semibold text-indigo-800 mb-2">
+          <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-4">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-3">
               원클릭 데모 로그인
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <button
                 type="button"
                 onClick={() => handleQuickLogin("pm")}
-                className="rounded-xl bg-indigo-600 px-3 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700"
+                className="rounded-lg bg-gray-900 px-3 py-2.5 text-xs font-semibold text-white hover:bg-gray-800"
               >
-                기획자 로그인
+                기획자
               </button>
               <button
                 type="button"
                 onClick={() => handleQuickLogin("dev-fe")}
-                className="rounded-xl bg-slate-800 px-3 py-2.5 text-sm font-semibold text-white hover:bg-slate-900"
+                className="rounded-lg bg-gray-900 px-3 py-2.5 text-xs font-semibold text-white hover:bg-gray-800"
               >
-                프론트 개발자 로그인
+                프론트엔드
               </button>
               <button
                 type="button"
                 onClick={() => handleQuickLogin("dev-be")}
-                className="rounded-xl bg-emerald-700 px-3 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800"
+                className="rounded-lg bg-gray-900 px-3 py-2.5 text-xs font-semibold text-white hover:bg-gray-800"
               >
-                백엔드 개발자 로그인
+                백엔드
               </button>
             </div>
           </div>
@@ -159,7 +161,7 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
             <div>
               <label
                 htmlFor="demo-email"
-                className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500"
+                className="mb-1.5 block text-[10px] font-semibold uppercase tracking-widest text-gray-400"
               >
                 Email
               </label>
@@ -169,13 +171,13 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 placeholder="이메일을 입력하세요"
-                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm focus:border-gray-900 focus:outline-none focus:ring-0"
               />
             </div>
             <div>
               <label
                 htmlFor="demo-password"
-                className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500"
+                className="mb-1.5 block text-[10px] font-semibold uppercase tracking-widest text-gray-400"
               >
                 Password
               </label>
@@ -185,26 +187,26 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 placeholder="비밀번호를 입력하세요"
-                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm focus:border-gray-900 focus:outline-none focus:ring-0"
               />
             </div>
 
             {error && (
-              <p className="rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+              <p className="rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-xs font-medium text-gray-700">
                 {error}
               </p>
             )}
 
             <button
               type="submit"
-              className={`inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition-colors ${submitButtonClass}`}
+              className={`inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-semibold transition-colors ${submitButtonClass}`}
             >
               <LogIn className="h-4 w-4" />
               {providerLabel[selectedProvider]} 데모 로그인
             </button>
           </form>
 
-          <p className="mt-6 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-xs text-gray-600">
+          <p className="mt-6 rounded-lg border border-gray-100 bg-gray-50 px-4 py-3 text-xs text-gray-500">
             테스트용 계정 정보와 역할별 계획은 <code>DEMO_LOGIN_PLAN.md</code>를
             참고하세요.
           </p>
