@@ -27,6 +27,9 @@ const ZOOM_MIN = 0.6;
 const ZOOM_MAX = 1.8;
 const ZOOM_STEP = 0.1;
 const SELECTION_THRESHOLD = 4;
+const PROPOSAL_PANEL_MIN_WIDTH = 360;
+const PROPOSAL_PANEL_MAX_WIDTH = 760;
+const PROPOSAL_PANEL_DEFAULT_WIDTH = 460;
 
 type DragState = {
   featureIds: number[];
@@ -134,11 +137,15 @@ export default function PipelineCanvas({
     new Set(),
   );
   const [selectionRect, setSelectionRect] = useState<SelectionRect | null>(null);
+  const [proposalPanelWidth, setProposalPanelWidth] = useState(
+    PROPOSAL_PANEL_DEFAULT_WIDTH,
+  );
 
   const dragStateRef = useRef<DragState | null>(null);
   const cardRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const canvasRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
+  const layoutRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isPanningRef = useRef(false);
@@ -147,6 +154,9 @@ export default function PipelineCanvas({
   const selectionStartRef = useRef<{ x: number; y: number } | null>(null);
   const isSpacePressedRef = useRef(false);
   const hasAutoExpandedOnceRef = useRef(false);
+  const panelResizeStateRef = useRef<{ startX: number; startWidth: number } | null>(
+    null,
+  );
 
   const pendingProposalCount = pipelineProposals.filter(
     (proposal) => proposal.status === "pending",
@@ -170,6 +180,13 @@ export default function PipelineCanvas({
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
     };
   }, []);
 
@@ -254,6 +271,59 @@ export default function PipelineCanvas({
     [cardPositions, features],
   );
 
+  const getProposalPanelMaxWidth = useCallback(() => {
+    const layoutWidth = layoutRef.current?.clientWidth ?? window.innerWidth;
+    return Math.max(
+      PROPOSAL_PANEL_MIN_WIDTH,
+      Math.min(PROPOSAL_PANEL_MAX_WIDTH, layoutWidth - 220),
+    );
+  }, []);
+
+  const clampProposalPanelWidth = useCallback(
+    (width: number) =>
+      Math.min(
+        getProposalPanelMaxWidth(),
+        Math.max(PROPOSAL_PANEL_MIN_WIDTH, width),
+      ),
+    [getProposalPanelMaxWidth],
+  );
+
+  useEffect(() => {
+    const handleWindowResize = () => {
+      setProposalPanelWidth((prev) => clampProposalPanelWidth(prev));
+    };
+
+    handleWindowResize();
+    window.addEventListener("resize", handleWindowResize);
+    return () => window.removeEventListener("resize", handleWindowResize);
+  }, [clampProposalPanelWidth]);
+
+  useEffect(() => {
+    const handlePointerMove = (event: PointerEvent) => {
+      const resizeState = panelResizeStateRef.current;
+      if (!resizeState) return;
+      const deltaX = resizeState.startX - event.clientX;
+      setProposalPanelWidth(
+        clampProposalPanelWidth(resizeState.startWidth + deltaX),
+      );
+    };
+
+    const handlePointerUp = () => {
+      if (!panelResizeStateRef.current) return;
+      panelResizeStateRef.current = null;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+    };
+  }, [clampProposalPanelWidth]);
+
   const getCanvasPointFromClient = useCallback(
     (clientX: number, clientY: number) => {
       const viewport = viewportRef.current;
@@ -336,6 +406,20 @@ export default function PipelineCanvas({
     dialogState.onConfirm();
     closeDialog();
   };
+
+  const handleProposalPanelResizePointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      panelResizeStateRef.current = {
+        startX: event.clientX,
+        startWidth: proposalPanelWidth,
+      };
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+    },
+    [proposalPanelWidth],
+  );
 
   const applySelectionFromRect = useCallback(
     (rect: SelectionRect, append: boolean) => {
@@ -641,7 +725,7 @@ export default function PipelineCanvas({
 
   return (
     <>
-      <div className="flex-1 flex overflow-hidden">
+      <div ref={layoutRef} className="flex-1 flex overflow-hidden">
         <div className="flex-1 min-w-0 relative overflow-hidden">
           <div
             ref={viewportRef}
@@ -884,6 +968,8 @@ export default function PipelineCanvas({
           <ProposalPanel
             role={role}
             pipelineProposals={pipelineProposals}
+            width={proposalPanelWidth}
+            onResizePointerDown={handleProposalPanelResizePointerDown}
             onClose={() => setIsProposalPanelOpen(false)}
             onAddMessage={onAddPipelineProposalMessage}
             onUpdateMessage={onUpdatePipelineProposalMessage}

@@ -16,6 +16,8 @@ type ProposalTab = "chat" | "status";
 interface ProposalPanelProps {
   role: "pm" | "dev-fe" | "dev-be";
   pipelineProposals: PipelineProposal[];
+  width: number;
+  onResizePointerDown: (event: React.PointerEvent<HTMLDivElement>) => void;
   onClose: () => void;
   onAddMessage: (proposalId: string, content: string) => void;
   onUpdateMessage: (proposalId: string, messageId: string, content: string) => void;
@@ -27,6 +29,8 @@ interface ProposalPanelProps {
 export default function ProposalPanel({
   role,
   pipelineProposals,
+  width,
+  onResizePointerDown,
   onClose,
   onAddMessage,
   onUpdateMessage,
@@ -99,7 +103,18 @@ export default function ProposalPanel({
   };
 
   return (
-    <div className="w-[360px] shrink-0 flex flex-col bg-white border-l border-[#E5E5E5] min-h-0 overflow-hidden">
+    <div
+      className="relative shrink-0 flex flex-col bg-white border-l border-[#E5E5E5] min-h-0 overflow-hidden"
+      style={{ width }}
+    >
+      <div
+        onPointerDown={onResizePointerDown}
+        className="absolute left-0 top-0 z-20 h-full w-2 -translate-x-1/2 cursor-col-resize touch-none group"
+        title="패널 너비 조절"
+      >
+        <div className="mx-auto h-full w-[2px] bg-transparent transition-colors group-hover:bg-[#D4D4D4]" />
+      </div>
+
       {/* Header */}
       <div className="px-4 py-3 border-b border-[#E5E5E5] flex items-center justify-between shrink-0">
         <p className="text-sm font-semibold text-gray-900">협업 패널</p>
