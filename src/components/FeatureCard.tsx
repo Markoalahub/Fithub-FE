@@ -12,6 +12,9 @@ import { getAccentColor } from "../utils/pipelineHelpers";
 
 const FEATURE_NAME_MAX_LENGTH = 40;
 const TASK_TITLE_MAX_LENGTH = 90;
+const DEV_WATER_COLOR = "#818CF8";
+const PM_WATER_COLOR = "#5EEAD4";
+const FULLY_COMPLETED_COLOR = "#16A34A";
 
 interface FeatureCardProps {
   feature: Feature;
@@ -21,6 +24,7 @@ interface FeatureCardProps {
   onDragHandlePointerDown: (e: React.PointerEvent) => void;
   isDragging?: boolean;
   isDragOver?: boolean;
+  isSelected?: boolean;
   // PM actions
   onEditFeature?: (featureId: number, newName: string) => void;
   onDeleteFeature?: (featureId: number) => void;
@@ -51,6 +55,7 @@ export default function FeatureCard({
   onDragHandlePointerDown,
   isDragging = false,
   isDragOver = false,
+  isSelected = false,
   onEditFeature,
   onDeleteFeature,
   onAddTask,
@@ -71,6 +76,10 @@ export default function FeatureCard({
   const isPm = role === "pm";
   const accentColor = getAccentColor(feature.id);
   const progress = calculateProgress(feature.tasks);
+  const overlapProgress = Math.min(progress.dev, progress.pm);
+  const isFullyCompleted = progress.dev === 100 && progress.pm === 100;
+  const devWaterColor = isFullyCompleted ? FULLY_COMPLETED_COLOR : DEV_WATER_COLOR;
+  const pmWaterColor = isFullyCompleted ? FULLY_COMPLETED_COLOR : PM_WATER_COLOR;
 
   const handleSaveFeatureName = () => {
     const trimmed = editNameValue.trim().slice(0, FEATURE_NAME_MAX_LENGTH);
@@ -110,19 +119,75 @@ export default function FeatureCard({
 
   return (
     <div
-      className={`absolute bg-white rounded-xl border transition-all select-none ${
+      className={`relative isolate overflow-hidden rounded-xl border transition-all select-none ${
         isDragging ? "opacity-40 scale-95" : "opacity-100"
-      } ${isDragOver ? "ring-2 ring-[#6366F1] border-[#6366F1]" : "border-[#E5E5E5]"}`}
+      } ${
+        isDragOver || isSelected
+          ? "ring-2 ring-[#6366F1] border-[#6366F1]"
+          : "border-[#E5E5E5]"
+      }`}
       style={{
         width: 260,
+        backgroundColor: isFullyCompleted ? "#F0FDF4" : "#FFFFFF",
         boxShadow: isDragging
           ? "0 8px 24px rgba(0,0,0,0.12)"
           : "0 1px 4px rgba(0,0,0,0.06)",
         borderLeft: `3px solid ${accentColor}`,
       }}
     >
+      <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
+        <div
+          className="pipeline-water-layer absolute inset-x-0 bottom-0"
+          style={{
+            height: `${progress.pm}%`,
+            background:
+              isFullyCompleted
+                ? "linear-gradient(180deg, rgba(22,163,74,0.03) 0%, rgba(22,163,74,0.08) 100%)"
+                : `linear-gradient(180deg, ${pmWaterColor}10 0%, ${pmWaterColor}22 100%)`,
+          }}
+        >
+          <div
+            className="pipeline-water-wave"
+            style={{
+              background: `radial-gradient(circle at 30% 50%, ${pmWaterColor}33 0%, transparent 74%)`,
+            }}
+          />
+        </div>
+        <div
+          className="pipeline-water-layer absolute inset-x-0 bottom-0"
+          style={{
+            height: `${progress.dev}%`,
+            background:
+              isFullyCompleted
+                ? "linear-gradient(180deg, rgba(22,163,74,0.02) 0%, rgba(22,163,74,0.06) 100%)"
+                : `linear-gradient(180deg, ${devWaterColor}12 0%, ${devWaterColor}24 100%)`,
+          }}
+        >
+          <div
+            className="pipeline-water-wave"
+            style={{
+              animationDuration: "3.8s",
+              background: `radial-gradient(circle at 40% 50%, ${devWaterColor}3B 0%, transparent 76%)`,
+            }}
+          />
+        </div>
+        {!isFullyCompleted && overlapProgress > 0 && (
+          <div
+            className="pipeline-water-layer absolute inset-x-0 bottom-0"
+            style={{
+              height: `${overlapProgress}%`,
+              background:
+                "linear-gradient(180deg, rgba(56,189,248,0.02) 0%, rgba(56,189,248,0.06) 100%)",
+            }}
+          />
+        )}
+        {isFullyCompleted && (
+          <div className="absolute inset-0 bg-emerald-300/6 pipeline-complete-pulse" />
+        )}
+      </div>
+
       {/* Header */}
-      <div className="px-4 pt-3 pb-2">
+      <div className="relative z-10 px-4 pt-3 pb-2">
         <div className="flex items-start gap-2">
           {/* Drag handle */}
           <button
@@ -175,8 +240,10 @@ export default function FeatureCard({
               style={{ width: `${progress.dev}%`, backgroundColor: accentColor }}
             />
           </div>
-          <span className="text-[10px] text-[#9E9E9E] shrink-0">
-            DEV {progress.dev}% · PM {progress.pm}%
+          <span className="text-[10px] shrink-0">
+            <span className="font-semibold text-[#4F46E5]">DEV {progress.dev}%</span>
+            <span className="text-[#BDBDBD]"> · </span>
+            <span className="font-semibold text-[#0F766E]">PM {progress.pm}%</span>
           </span>
         </div>
 
@@ -203,7 +270,7 @@ export default function FeatureCard({
 
       {/* Task list */}
       {isExpanded && (
-        <div className="px-4 pb-3 space-y-1.5">
+        <div className="relative z-10 px-4 pb-3 space-y-1.5">
           <div className="h-px bg-[#F0F0F0] mb-2" />
 
           {feature.tasks.length === 0 && (

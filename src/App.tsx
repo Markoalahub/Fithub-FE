@@ -1318,8 +1318,6 @@ export default function App() {
           (message) => !(message.id === messageId && message.role === role),
         );
 
-        if (nextMessages.length === 0) return proposal;
-
         return {
           ...proposal,
           messages: nextMessages,
@@ -1827,11 +1825,11 @@ export default function App() {
       </div>
 
       {/* Toast notifications */}
-      <div className="pointer-events-none fixed right-4 top-16 z-[70] flex w-[min(92vw,360px)] flex-col gap-2">
+      <div className="pointer-events-none fixed left-1/2 top-4 z-[80] flex w-[min(92vw,420px)] -translate-x-1/2 flex-col items-center gap-2">
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className={`rounded-lg border border-gray-200 border-l-4 bg-white px-3 py-2 text-sm font-medium shadow-sm transition-all duration-200 ease-out ${
+            className={`toast-fade w-full rounded-xl border border-gray-200 border-l-4 bg-white/96 px-3 py-2 text-sm font-medium shadow-lg backdrop-blur-sm ${
               toast.tone === "success"
                 ? "border-l-[#6366F1] text-gray-900"
                 : toast.tone === "warning"

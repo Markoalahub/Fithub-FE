@@ -194,7 +194,7 @@ export default function ProposalPanel({
                 <div className="flex-1 overflow-y-auto px-3 py-2 space-y-3">
                   {selectedProposal.messages.map((message) => {
                     const isMsgPm = message.role === "pm";
-                    const isMine = isPm ? isMsgPm : !isMsgPm;
+                    const isMine = message.role === role;
                     const isEditing = editingMessageId === message.id;
                     return (
                       <div key={message.id} className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
@@ -284,6 +284,11 @@ export default function ProposalPanel({
                       </div>
                     );
                   })}
+                  {selectedProposal.messages.length === 0 && (
+                    <p className="text-center text-[11px] text-[#9E9E9E] py-2">
+                      삭제된 메시지입니다. 새 메시지를 남겨주세요.
+                    </p>
+                  )}
                 </div>
 
                 {/* Input area */}
