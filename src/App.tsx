@@ -1,27 +1,20 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import PMDashboard from "./pages/PM/PMDashboard.tsx";
 import DevDashboard from "@/src/pages/Dev/DevDashboard";
 import AdminDashboard from "./pages/Admin/AdminDashboard.tsx";
 import LoginScreen from "./pages/Auth/LoginScreen.tsx";
+import AppHeader from "./components/layout/AppHeader";
+import PipelineCanvas from "./components/PipelineCanvas";
 import {
   fetchPublicGithubRepository,
   generatePipelineFromPrd,
   type GeneratedPipelineItem,
 } from "./services/api";
-import {
-  Activity,
-  FolderGit2,
-  GitPullRequest,
-  Loader2,
-  LogOut,
-  Menu,
-  MessageSquare,
-  UploadCloud,
-  Users,
-} from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import type {
+  AppTab,
   AuthUser,
+  CardPosition,
   ConnectedGithubRepository,
   Feature,
   FeatureQuestion,
@@ -386,27 +379,6 @@ const initialFeatures: Feature[] = [];
 
 type DevTrack = "frontend" | "backend";
 
-type PMSection =
-  | "pm-fe-ai"
-  | "pm-fe-pipeline"
-  | "pm-fe-review"
-  | "pm-be-ai"
-  | "pm-be-pipeline"
-  | "pm-be-review"
-  | "admin-knowledge"
-  | "admin-team";
-type DevSection = "dev-pipeline" | "dev-feedback" | "dev-project";
-type SidebarSection = PMSection | DevSection;
-
-type SidebarGroup = {
-  title: string;
-  items: Array<{
-    id: SidebarSection;
-    label: string;
-    icon: LucideIcon;
-  }>;
-};
-
 type ToastTone = "success" | "info" | "warning";
 
 type ToastItem = {
@@ -420,47 +392,10 @@ const devTrackLabel: Record<DevTrack, string> = {
   backend: "백엔드",
 };
 
-const pmFrontendItems: SidebarGroup["items"] = [
-  { id: "pm-fe-ai", label: "기능 질문", icon: MessageSquare },
-  { id: "pm-fe-pipeline", label: "파이프라인", icon: Activity },
-  {
-    id: "pm-fe-review",
-    label: "질문 타임라인",
-    icon: GitPullRequest,
-  },
-];
-
-const pmBackendItems: SidebarGroup["items"] = [
-  { id: "pm-be-ai", label: "기능 질문", icon: MessageSquare },
-  { id: "pm-be-pipeline", label: "파이프라인", icon: Activity },
-  {
-    id: "pm-be-review",
-    label: "질문 타임라인",
-    icon: GitPullRequest,
-  },
-];
-
-const pmAdminItems: SidebarGroup["items"] = [
-  { id: "admin-knowledge", label: "AI 지식 베이스", icon: UploadCloud },
-  { id: "admin-team", label: "팀원 관리", icon: Users },
-];
-
-const devItems: SidebarGroup["items"] = [
-  { id: "dev-pipeline", label: "전체 개발 파이프라인", icon: Activity },
-  {
-    id: "dev-feedback",
-    label: "기능 질문 타임라인",
-    icon: GitPullRequest,
-  },
-  { id: "dev-project", label: "프로젝트 설정", icon: FolderGit2 },
-];
-
 export default function App() {
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
-  const [currentSection, setCurrentSection] =
-    useState<SidebarSection>("pm-fe-ai");
+  const [activeTab, setActiveTab] = useState<AppTab>("pipeline");
   const [pmSelectedTrack, setPmSelectedTrack] = useState<DevTrack>("frontend");
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [frontendFeatures, setFrontendFeatures] =
     useState<Feature[]>(initialFeatures);
   const [backendFeatures, setBackendFeatures] =
@@ -503,7 +438,23 @@ export default function App() {
   );
   const toastTimeoutIdsRef = useRef<number[]>([]);
 
+  // Card positions per track
+  const [frontendCardPositions, setFrontendCardPositions] = useState<
+    Map<number, CardPosition>
+  >(new Map());
+  const [backendCardPositions, setBackendCardPositions] = useState<
+    Map<number, CardPosition>
+  >(new Map());
+
+  // Sub-section states
+  const [pmSubSection, setPmSubSection] = useState<"ai" | "review">("ai");
+  const [adminSubSection, setAdminSubSection] = useState<
+    "knowledge" | "team"
+  >("knowledge");
+
   const isDevUser = authUser?.role === "dev-fe" || authUser?.role === "dev-be";
+  const isPm = authUser?.role === "pm";
+
   const activeTrack: DevTrack =
     authUser?.role === "dev-fe"
       ? "frontend"
@@ -527,6 +478,27 @@ export default function App() {
     activeTrack === "frontend"
       ? frontendConnectedGithubRepo
       : backendConnectedGithubRepo;
+
+  const cardPositions =
+    activeTrack === "frontend" ? frontendCardPositions : backendCardPositions;
+
+  const setCardPositions = (
+    updater: React.SetStateAction<Map<number, CardPosition>>,
+  ) => {
+    if (activeTrack === "frontend") {
+      setFrontendCardPositions(updater);
+      return;
+    }
+    setBackendCardPositions(updater);
+  };
+
+  const updateCardPosition = (featureId: number, pos: CardPosition) => {
+    setCardPositions((prev) => {
+      const next = new Map(prev);
+      next.set(featureId, pos);
+      return next;
+    });
+  };
 
   const setFeatures: React.Dispatch<React.SetStateAction<Feature[]>> = (
     updater,
@@ -590,36 +562,6 @@ export default function App() {
     toastTimeoutIdsRef.current.push(timeoutId);
   };
 
-  const sidebarGroups = useMemo<SidebarGroup[]>(() => {
-    if (!authUser) return [];
-    if (authUser.role === "pm") {
-      return [
-        { title: "프론트엔드 협업", items: pmFrontendItems },
-        { title: "백엔드 협업", items: pmBackendItems },
-        { title: "관리자 설정", items: pmAdminItems },
-      ];
-    }
-    return [
-      {
-        title:
-          authUser.role === "dev-fe"
-            ? "프론트엔드 개발자 기능"
-            : "백엔드 개발자 기능",
-        items: devItems,
-      },
-    ];
-  }, [authUser]);
-
-  useEffect(() => {
-    if (currentSection.startsWith("pm-fe-")) {
-      setPmSelectedTrack("frontend");
-      return;
-    }
-    if (currentSection.startsWith("pm-be-")) {
-      setPmSelectedTrack("backend");
-    }
-  }, [currentSection]);
-
   useEffect(() => {
     return () => {
       toastTimeoutIdsRef.current.forEach((timeoutId) => {
@@ -631,15 +573,14 @@ export default function App() {
 
   const handleLogin = (user: AuthUser) => {
     setAuthUser(user);
+    setActiveTab("pipeline");
 
     if (user.role === "pm") {
       setPmSelectedTrack("frontend");
-      setCurrentSection("pm-fe-ai");
       pushToast("기획자 계정으로 로그인했습니다.", "success");
       return;
     }
 
-    setCurrentSection("dev-pipeline");
     pushToast(
       `${user.role === "dev-fe" ? "프론트엔드 개발자" : "백엔드 개발자"} 계정으로 로그인했습니다.`,
       "success",
@@ -648,8 +589,7 @@ export default function App() {
 
   const handleLogout = () => {
     setAuthUser(null);
-    setPmSelectedTrack("frontend");
-    setCurrentSection("pm-fe-ai");
+    setActiveTab("pipeline");
     pushToast("로그아웃 되었습니다.", "info");
   };
 
@@ -728,7 +668,7 @@ export default function App() {
   const publishTaskToGithubIssue = (featureId: number, taskId: string) => {
     if (!connectedGithubRepo) {
       if (isDevUser) {
-        setCurrentSection("dev-project");
+        setActiveTab("settings");
       }
       pushToast(
         "먼저 프로젝트 설정에서 Public GitHub 저장소를 연결해 주세요.",
@@ -809,9 +749,7 @@ export default function App() {
       const nextFeatures = mapGeneratedPipelineToFeatures(generatedItems);
 
       setFeatures(nextFeatures);
-      setCurrentSection(
-        activeTrack === "frontend" ? "pm-fe-pipeline" : "pm-be-pipeline",
-      );
+      setActiveTab("pipeline");
 
       setKnowledgeDocs((prev) => [
         {
@@ -1633,225 +1571,76 @@ export default function App() {
     return <LoginScreen onLogin={handleLogin} />;
   }
 
-  const pmSection = currentSection.endsWith("-ai")
-    ? "ai"
-    : currentSection.endsWith("-pipeline")
-      ? "pipeline"
-      : "review";
-
-  const movePmSection = (section: "ai" | "pipeline" | "review") => {
-    setCurrentSection(
-      `${activeTrack === "backend" ? "pm-be" : "pm-fe"}-${section}` as PMSection,
-    );
-  };
-
-  const adminSection =
-    currentSection === "admin-knowledge" ? "knowledge" : "team";
-
-  const devSection =
-    currentSection === "dev-feedback"
-      ? "feedback"
-      : currentSection === "dev-project"
-        ? "project"
-        : "pipeline";
-
   return (
-    <div className="h-screen bg-gray-100 text-gray-900 relative overflow-hidden">
-      {isGeneratingPipeline && (
-        <div className="pointer-events-none fixed inset-x-0 top-0 z-[80] flex justify-center px-4 pt-3">
-          <div
-            role="status"
-            aria-live="polite"
-            className="inline-flex w-full max-w-2xl items-center justify-center gap-2 rounded-xl border border-gray-800 bg-gray-900/95 px-4 py-2 text-sm font-medium text-white shadow-lg backdrop-blur"
-          >
-            <Loader2 className="h-4 w-4 animate-spin shrink-0" />
-            <span className="min-w-0 truncate">
-              PDF 분석 중: {generatingFileName ?? "업로드 파일"}
-            </span>
-          </div>
-        </div>
-      )}
+    <div className="h-screen flex flex-col bg-[#F5F5F5] text-gray-900 overflow-hidden">
+      {/* Dark header */}
+      <AppHeader
+        authUser={authUser}
+        activeTab={activeTab}
+        activeTrack={activeTrack}
+        projectName={projectName}
+        onTabChange={setActiveTab}
+        onTrackChange={(track) => setPmSelectedTrack(track)}
+        onLogout={handleLogout}
+      />
 
-      {!isSidebarOpen && (
-        <button
-          onClick={() => setIsSidebarOpen(true)}
-          className={`fixed left-4 z-50 inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-gray-600 shadow-sm transition-colors duration-300 ease-in-out hover:bg-gray-50 ${
-            isGeneratingPipeline ? "top-16" : "top-4"
-          }`}
-          aria-label="사이드바 열기"
-        >
-          <Menu className="h-4 w-4" />
-        </button>
-      )}
-
-      {isSidebarOpen && (
-        <button
-          onClick={() => setIsSidebarOpen(false)}
-          className="fixed inset-0 z-30 bg-black/25 md:hidden"
-          aria-label="사이드바 닫기"
-        />
-      )}
-
-      <aside
-        className={`fixed inset-y-0 left-0 z-40 w-[280px] border-r border-gray-100 bg-white px-4 py-4 md:px-5 md:py-6 flex flex-col transition-transform duration-300 ease-in-out ${
-          isSidebarOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
-      >
-        <div className="mb-3 flex items-center justify-between px-2">
-          <div className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">
-            메뉴
-          </div>
-          <button
-            onClick={() => setIsSidebarOpen(false)}
-            className="inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white p-1.5 text-gray-600 transition-colors duration-300 ease-in-out hover:bg-gray-50"
-            aria-label="사이드바 닫기"
-          >
-            <Menu className="h-4 w-4" />
-          </button>
-        </div>
-
-        <div className="space-y-5 overflow-y-auto">
-          {sidebarGroups.map((group) => (
-            <section key={group.title}>
-              <h3 className="px-2 mb-2 text-[10px] font-semibold uppercase tracking-widest text-gray-400">
-                {group.title}
-              </h3>
-              <div className="space-y-0.5">
-                {group.items.map((item) => {
-                  const Icon = item.icon;
-                  return (
-                    <button
-                      key={item.id}
-                      onClick={() => setCurrentSection(item.id)}
-                      className={`w-full inline-flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-left transition-colors ${
-                        currentSection === item.id
-                          ? "bg-gray-900 text-white"
-                          : "text-gray-600 hover:bg-gray-50"
-                      }`}
-                    >
-                      <Icon className="h-4 w-4" />
-                      <span>{item.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
-          ))}
-        </div>
-
-        <div className="mt-4 pt-4 border-t border-gray-100">
-          <button
-            onClick={handleLogout}
-            className="w-full inline-flex items-center justify-center gap-2 rounded-lg border border-gray-200 px-3 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
-          >
-            <LogOut className="h-4 w-4" />
-            로그아웃
-          </button>
-        </div>
-      </aside>
-
-      <main
-        className={`h-full overflow-y-auto p-4 md:p-6 transition-all duration-300 ease-in-out ${
-          isGeneratingPipeline ? "pt-16" : "pt-6"
-        } ${isSidebarOpen ? "md:pl-[304px]" : "md:pl-6"}`}
-      >
-        {authUser.role === "pm" && (
-          <div className="mb-5 flex items-center border-b border-gray-100">
-            <button
-              onClick={() => {
-                setPmSelectedTrack("frontend");
-                const suffix = currentSection.endsWith("-pipeline") ? "pipeline" : currentSection.endsWith("-review") ? "review" : "ai";
-                setCurrentSection(`pm-fe-${suffix}` as SidebarSection);
-              }}
-              className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
-                activeTrack === "frontend"
-                  ? "border-gray-900 text-gray-900 font-semibold"
-                  : "border-transparent text-gray-400 hover:text-gray-700"
-              }`}
-            >
-              프론트엔드
-            </button>
-            <button
-              onClick={() => {
-                setPmSelectedTrack("backend");
-                const suffix = currentSection.endsWith("-pipeline") ? "pipeline" : currentSection.endsWith("-review") ? "review" : "ai";
-                setCurrentSection(`pm-be-${suffix}` as SidebarSection);
-              }}
-              className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
-                activeTrack === "backend"
-                  ? "border-gray-900 text-gray-900 font-semibold"
-                  : "border-transparent text-gray-400 hover:text-gray-700"
-              }`}
-            >
-              백엔드
-            </button>
-          </div>
-        )}
-
-        {authUser.role === "pm" && currentSection.startsWith("pm-") && (
-          <PMDashboard
-            section={pmSection}
+      {/* Main content (below header) */}
+      <div className="flex-1 flex overflow-hidden pt-12">
+        {/* Pipeline tab */}
+        {activeTab === "pipeline" && (
+          <PipelineCanvas
+            role={authUser.role}
             features={features}
-            setFeatures={setFeatures}
+            cardPositions={cardPositions}
+            onUpdateCardPosition={updateCardPosition}
             pipelineProposals={pipelineProposals}
-            featureQuestions={featureQuestions}
-            onCreateFeatureQuestion={createFeatureQuestion}
-            onCreatePipelineProposal={createPipelineProposal}
-            onAddPipelineProposalMessage={(proposalId, content) =>
-              addPipelineProposalMessage(proposalId, "pm", content)
-            }
-            onUpdatePipelineProposalMessage={(proposalId, messageId, content) =>
-              updatePipelineProposalMessage(
-                proposalId,
-                messageId,
-                "pm",
-                content,
-              )
-            }
-            onDeletePipelineProposalMessage={(proposalId, messageId) =>
-              deletePipelineProposalMessage(proposalId, messageId, "pm")
-            }
-            onUpdatePipelineProposalValue={updatePipelineProposalValue}
-            onTogglePipelineProposalConfirmByPm={
-              togglePipelineProposalConfirmByPm
-            }
-            onAddQuestionMessage={(questionId, content) =>
-              addQuestionMessage(questionId, "pm", content)
-            }
-            onUpdateQuestionMessage={(questionId, messageId, content) =>
-              updateQuestionMessage(questionId, messageId, "pm", content)
-            }
-            onDeleteQuestionMessage={(questionId, messageId) =>
-              deleteQuestionMessage(questionId, messageId, "pm")
-            }
-            onDeleteQuestion={deleteFeatureQuestion}
-            onConfirmQuestionByPm={confirmQuestionByPm}
-            onCancelQuestionConfirmByPm={cancelQuestionConfirmByPm}
-            onTogglePmTaskConfirm={togglePmTaskConfirm}
-            onMoveSection={movePmSection}
-          />
-        )}
-
-        {authUser.role === "pm" && currentSection.startsWith("admin-") && (
-          <AdminDashboard
-            section={adminSection}
-            knowledgeDocs={knowledgeDocs}
             isGeneratingPipeline={isGeneratingPipeline}
-            onUploadKnowledgePdf={handleUploadKnowledgePdf}
-          />
-        )}
-
-        {isDevUser && (
-          <DevDashboard
-            section={devSection}
-            projectName={projectName}
-            connectedGithubRepo={connectedGithubRepo}
-            isConnectingGithubRepo={isConnectingGithubRepo}
-            features={features}
-            pipelineProposals={pipelineProposals}
-            featureQuestions={featureQuestions}
+            generatingFileName={generatingFileName}
+            // PM actions
+            onEditFeature={(featureId, newName) =>
+              createPipelineProposal({
+                action: "edit-feature",
+                featureId,
+                proposedValue: newName,
+              })
+            }
+            onDeleteFeature={(featureId) =>
+              createPipelineProposal({ action: "delete-feature", featureId })
+            }
+            onAddTask={(featureId, taskTitle) =>
+              createPipelineProposal({
+                action: "add-task",
+                featureId,
+                proposedValue: taskTitle,
+              })
+            }
+            onEditTask={(featureId, taskId, newTitle) =>
+              createPipelineProposal({
+                action: "edit-task",
+                featureId,
+                taskId,
+                proposedValue: newTitle,
+              })
+            }
+            onDeleteTask={(featureId, taskId) =>
+              createPipelineProposal({
+                action: "delete-task",
+                featureId,
+                taskId,
+              })
+            }
+            onTogglePmTaskConfirm={togglePmTaskConfirm}
+            onAddNewFeature={(featureName) =>
+              createPipelineProposal({
+                action: "add-feature",
+                proposedValue: featureName,
+              })
+            }
+            onUploadPrd={handleUploadKnowledgePdf}
+            // Dev actions
             onToggleDevTaskCheck={toggleDevTaskCheck}
-            onCreateTaskProposal={(featureId: number, proposedValue: string) =>
+            onPublishTaskToGithubIssue={publishTaskToGithubIssue}
+            onCreateTaskProposal={(featureId, proposedValue) =>
               createPipelineProposal({
                 action: "add-task",
                 featureId,
@@ -1859,74 +1648,192 @@ export default function App() {
                 role: authUser.role,
               })
             }
-            onSaveProjectName={saveProjectName}
-            onConnectGithubRepo={connectGithubRepository}
-            onDisconnectGithubRepo={disconnectGithubRepository}
-            onPublishTaskToGithubIssue={publishTaskToGithubIssue}
-            onAddPipelineProposalMessage={(
-              proposalId: string,
-              content: string,
-            ) => addPipelineProposalMessage(proposalId, authUser.role, content)}
-            onUpdatePipelineProposalMessage={(
-              proposalId: string,
-              messageId: string,
-              content: string,
-            ) =>
+            // Proposal panel
+            onAddPipelineProposalMessage={(proposalId, content) =>
+              addPipelineProposalMessage(
+                proposalId,
+                isPm ? "pm" : authUser.role,
+                content,
+              )
+            }
+            onUpdatePipelineProposalMessage={(proposalId, messageId, content) =>
               updatePipelineProposalMessage(
                 proposalId,
                 messageId,
-                authUser.role,
+                isPm ? "pm" : authUser.role,
                 content,
               )
             }
-            onDeletePipelineProposalMessage={(
-              proposalId: string,
-              messageId: string,
-            ) =>
+            onDeletePipelineProposalMessage={(proposalId, messageId) =>
               deletePipelineProposalMessage(
                 proposalId,
                 messageId,
-                authUser.role,
+                isPm ? "pm" : authUser.role,
               )
             }
             onUpdatePipelineProposalValue={updatePipelineProposalValue}
-            onTogglePipelineProposalConfirmByDev={
-              togglePipelineProposalConfirmByDev
+            onTogglePipelineProposalConfirm={
+              isPm
+                ? togglePipelineProposalConfirmByPm
+                : togglePipelineProposalConfirmByDev
             }
-            onAddQuestionMessage={(questionId: string, content: string) =>
-              addQuestionMessage(questionId, authUser.role, content)
-            }
-            onUpdateQuestionMessage={(
-              questionId: string,
-              messageId: string,
-              content: string,
-            ) =>
-              updateQuestionMessage(
-                questionId,
-                messageId,
-                authUser.role,
-                content,
-              )
-            }
-            onDeleteQuestionMessage={(questionId: string, messageId: string) =>
-              deleteQuestionMessage(questionId, messageId, authUser.role)
-            }
-            onConfirmQuestionByDev={confirmQuestionByDev}
           />
         )}
-      </main>
 
-      <div
-        className={`pointer-events-none fixed right-4 z-[70] flex w-[min(92vw,360px)] flex-col gap-2 ${
-          isGeneratingPipeline ? "top-16" : "top-4"
-        }`}
-      >
+        {/* Questions tab - PM */}
+        {activeTab === "questions" && authUser.role === "pm" && (
+          <div className="flex-1 overflow-y-auto p-6">
+            {/* PM sub-tabs */}
+            <div className="flex items-center gap-2 mb-5">
+              <button
+                onClick={() => setPmSubSection("ai")}
+                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                  pmSubSection === "ai"
+                    ? "bg-white text-gray-900 shadow-sm border border-[#E5E5E5]"
+                    : "text-[#9E9E9E] hover:text-gray-700"
+                }`}
+              >
+                기능 질문 작성
+              </button>
+              <button
+                onClick={() => setPmSubSection("review")}
+                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                  pmSubSection === "review"
+                    ? "bg-white text-gray-900 shadow-sm border border-[#E5E5E5]"
+                    : "text-[#9E9E9E] hover:text-gray-700"
+                }`}
+              >
+                질문 타임라인
+              </button>
+            </div>
+            <PMDashboard
+              section={pmSubSection}
+              features={features}
+              featureQuestions={featureQuestions}
+              onCreateFeatureQuestion={createFeatureQuestion}
+              onAddQuestionMessage={(questionId, content) =>
+                addQuestionMessage(questionId, "pm", content)
+              }
+              onUpdateQuestionMessage={(questionId, messageId, content) =>
+                updateQuestionMessage(questionId, messageId, "pm", content)
+              }
+              onDeleteQuestionMessage={(questionId, messageId) =>
+                deleteQuestionMessage(questionId, messageId, "pm")
+              }
+              onDeleteQuestion={deleteFeatureQuestion}
+              onConfirmQuestionByPm={confirmQuestionByPm}
+              onCancelQuestionConfirmByPm={cancelQuestionConfirmByPm}
+              onMoveSection={setPmSubSection}
+            />
+          </div>
+        )}
+
+        {/* Questions tab - Dev */}
+        {activeTab === "questions" && isDevUser && (
+          <div className="flex-1 overflow-y-auto p-6">
+            <DevDashboard
+              section="feedback"
+              projectName={projectName}
+              connectedGithubRepo={connectedGithubRepo}
+              isConnectingGithubRepo={isConnectingGithubRepo}
+              featureQuestions={featureQuestions}
+              onAddQuestionMessage={(questionId, content) =>
+                addQuestionMessage(questionId, authUser.role, content)
+              }
+              onUpdateQuestionMessage={(questionId, messageId, content) =>
+                updateQuestionMessage(
+                  questionId,
+                  messageId,
+                  authUser.role,
+                  content,
+                )
+              }
+              onDeleteQuestionMessage={(questionId, messageId) =>
+                deleteQuestionMessage(questionId, messageId, authUser.role)
+              }
+              onConfirmQuestionByDev={confirmQuestionByDev}
+              onSaveProjectName={saveProjectName}
+              onConnectGithubRepo={connectGithubRepository}
+              onDisconnectGithubRepo={disconnectGithubRepository}
+            />
+          </div>
+        )}
+
+        {/* Settings tab - PM */}
+        {activeTab === "settings" && authUser.role === "pm" && (
+          <div className="flex-1 overflow-y-auto p-6">
+            {/* Sub-tabs for PM settings */}
+            <div className="flex items-center gap-2 mb-5">
+              <button
+                onClick={() => setAdminSubSection("knowledge")}
+                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                  adminSubSection === "knowledge"
+                    ? "bg-white text-gray-900 shadow-sm border border-[#E5E5E5]"
+                    : "text-[#9E9E9E] hover:text-gray-700"
+                }`}
+              >
+                AI 지식 베이스
+              </button>
+              <button
+                onClick={() => setAdminSubSection("team")}
+                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                  adminSubSection === "team"
+                    ? "bg-white text-gray-900 shadow-sm border border-[#E5E5E5]"
+                    : "text-[#9E9E9E] hover:text-gray-700"
+                }`}
+              >
+                팀원 관리
+              </button>
+            </div>
+            <AdminDashboard
+              section={adminSubSection}
+              knowledgeDocs={knowledgeDocs}
+              isGeneratingPipeline={isGeneratingPipeline}
+              onUploadKnowledgePdf={handleUploadKnowledgePdf}
+            />
+          </div>
+        )}
+
+        {/* Settings tab - Dev */}
+        {activeTab === "settings" && isDevUser && (
+          <div className="flex-1 overflow-y-auto p-6">
+            <DevDashboard
+              section="project"
+              projectName={projectName}
+              connectedGithubRepo={connectedGithubRepo}
+              isConnectingGithubRepo={isConnectingGithubRepo}
+              featureQuestions={featureQuestions}
+              onAddQuestionMessage={(questionId, content) =>
+                addQuestionMessage(questionId, authUser.role, content)
+              }
+              onUpdateQuestionMessage={(questionId, messageId, content) =>
+                updateQuestionMessage(
+                  questionId,
+                  messageId,
+                  authUser.role,
+                  content,
+                )
+              }
+              onDeleteQuestionMessage={(questionId, messageId) =>
+                deleteQuestionMessage(questionId, messageId, authUser.role)
+              }
+              onConfirmQuestionByDev={confirmQuestionByDev}
+              onSaveProjectName={saveProjectName}
+              onConnectGithubRepo={connectGithubRepository}
+              onDisconnectGithubRepo={disconnectGithubRepository}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Toast notifications */}
+      <div className="pointer-events-none fixed right-4 top-16 z-[70] flex w-[min(92vw,360px)] flex-col gap-2">
         {toasts.map((toast) => (
           <div
             key={toast.id}
             className={`rounded-lg border border-gray-200 border-l-4 bg-white px-3 py-2 text-sm font-medium shadow-sm transition-all duration-200 ease-out ${
               toast.tone === "success"
-                ? "border-l-gray-900 text-gray-900"
+                ? "border-l-[#6366F1] text-gray-900"
                 : toast.tone === "warning"
                   ? "border-l-gray-400 text-gray-700"
                   : "border-l-gray-200 text-gray-600"
