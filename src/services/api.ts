@@ -1,6 +1,9 @@
 const BE_API_BASE_URL = (
   import.meta.env.VITE_BE_API_BASE_URL ?? "http://127.0.0.1:8080/api/v1"
 ).replace(/\/$/, "");
+const GITHUB_API_BASE_URL = (
+  import.meta.env.VITE_GITHUB_API_BASE_URL ?? "https://api.github.com"
+).replace(/\/$/, "");
 
 type AuthMode = "none" | "optional" | "required";
 
@@ -137,6 +140,17 @@ const readApiToken = () => {
   return storageToken;
 };
 
+const readGithubAccessToken = () => {
+  const envToken = (import.meta.env.VITE_GITHUB_ACCESS_TOKEN ?? "").trim();
+  if (envToken) return envToken;
+
+  if (typeof window === "undefined") {
+    return "";
+  }
+
+  return (window.localStorage.getItem("fithub.githubAccessToken") ?? "").trim();
+};
+
 const toBearerToken = (token: string) =>
   /^Bearer\s+/i.test(token) ? token : `Bearer ${token}`;
 
@@ -190,6 +204,25 @@ const parseErrorMessage = async (response: Response) => {
   const rawText = await response.text().catch(() => "");
   if (!rawText.trim()) {
     return `${response.status} ${response.statusText}`;
+  }
+
+  try {
+    const data = JSON.parse(rawText) as Record<string, unknown>;
+    const message = readObjectValue(data, "message", "error", "detail");
+    if (typeof message === "string" && message.trim()) {
+      return message.trim();
+    }
+  } catch {
+    // ignore
+  }
+
+  return rawText.trim();
+};
+
+const parseGithubErrorMessage = async (response: Response) => {
+  const rawText = await response.text().catch(() => "");
+  if (!rawText.trim()) {
+    return `GitHub API 요청 실패 (${response.status})`;
   }
 
   try {
@@ -421,7 +454,7 @@ export async function fetchAvailableGithubRepositories(
 
   try {
     const response = await apiRequest<Record<string, unknown>>(
-      `/projects/${projectId}/repositories/github-available`,
+      "/repositories",
       {
         method: "GET",
         authMode: "optional",
@@ -429,10 +462,13 @@ export async function fetchAvailableGithubRepositories(
     );
     return normalize(response);
   } catch {
-    const response = await apiRequest<Record<string, unknown>>("/repositories", {
-      method: "GET",
-      authMode: "optional",
-    });
+    const response = await apiRequest<Record<string, unknown>>(
+      `/projects/${projectId}/repositories/github-available`,
+      {
+        method: "GET",
+        authMode: "optional",
+      },
+    );
     return normalize(response);
   }
 }
@@ -483,6 +519,43 @@ export async function fetchProjectGithubRepositories(
   return response.map((item) =>
     normalizeProjectRepository(item as Record<string, unknown>),
   );
+}
+
+export async function fetchGithubPublicRepositories(
+  projectIdForFallback = 1,
+): Promise<GithubAvailableRepository[]> {
+  const githubAccessToken = readGithubAccessToken();
+
+  if (!githubAccessToken) {
+    const fallback = await fetchAvailableGithubRepositories(projectIdForFallback);
+    return fallback.repositories.filter((repository) => !repository.isPrivate);
+  }
+
+  const response = await fetch(
+    `${GITHUB_API_BASE_URL}/user/repos?sort=updated`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `token ${githubAccessToken}`,
+        Accept: "application/vnd.github+json",
+      },
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(await parseGithubErrorMessage(response));
+  }
+
+  const rawRepositories = (await response.json()) as unknown;
+  if (!Array.isArray(rawRepositories)) {
+    return [];
+  }
+
+  return rawRepositories
+    .map((repository) =>
+      normalizeAvailableRepository(repository as Record<string, unknown>),
+    )
+    .filter((repository) => !repository.isPrivate);
 }
 
 export async function generateAllPipelines({

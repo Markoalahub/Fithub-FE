@@ -14,6 +14,10 @@ import {
   Star,
   Trash2,
 } from "lucide-react";
+import {
+  fetchGithubPublicRepositories,
+  type GithubAvailableRepository,
+} from "../../services/api";
 import type {
   ConnectedGithubRepository,
   FeatureQuestion,
@@ -21,6 +25,7 @@ import type {
 
 interface DevDashboardProps {
   section: "feedback" | "project";
+  projectId: number;
   projectName: string;
   connectedGithubRepo: ConnectedGithubRepository | null;
   isConnectingGithubRepo: boolean;
@@ -63,6 +68,7 @@ const getAiTranslation = (messageId: string, role: "pm" | "dev-fe" | "dev-be"): 
 
 export default function DevDashboard({
   section,
+  projectId,
   projectName,
   connectedGithubRepo,
   isConnectingGithubRepo,
@@ -79,6 +85,15 @@ export default function DevDashboard({
   const [repositoryInput, setRepositoryInput] = useState(
     connectedGithubRepo?.htmlUrl ?? "",
   );
+  const [publicRepositories, setPublicRepositories] = useState<
+    GithubAvailableRepository[]
+  >([]);
+  const [isLoadingPublicRepositories, setIsLoadingPublicRepositories] =
+    useState(false);
+  const [publicRepositoriesError, setPublicRepositoriesError] = useState<
+    string | null
+  >(null);
+  const [connectingRepoId, setConnectingRepoId] = useState<number | null>(null);
 
   const [selectedQuestionId, setSelectedQuestionId] = useState<string | null>(null);
   const [newMessageInput, setNewMessageInput] = useState("");
@@ -104,6 +119,46 @@ export default function DevDashboard({
 
   useEffect(() => { setProjectNameInput(projectName); }, [projectName]);
   useEffect(() => { setRepositoryInput(connectedGithubRepo?.htmlUrl ?? ""); }, [connectedGithubRepo?.htmlUrl]);
+
+  const loadPublicRepositories = async () => {
+    setIsLoadingPublicRepositories(true);
+    setPublicRepositoriesError(null);
+    try {
+      const repositories = await fetchGithubPublicRepositories(projectId);
+      setPublicRepositories(repositories);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "GitHub 저장소 목록을 불러오지 못했습니다.";
+      setPublicRepositoriesError(message);
+      setPublicRepositories([]);
+    } finally {
+      setIsLoadingPublicRepositories(false);
+    }
+  };
+
+  useEffect(() => {
+    if (section !== "project") return;
+    void loadPublicRepositories();
+  }, [section, projectId]);
+
+  const connectRepositoryFromList = async (repository: GithubAvailableRepository) => {
+    setRepositoryInput(repository.fullName);
+    setConnectingRepoId(repository.id);
+    try {
+      await onConnectGithubRepo(repository.fullName);
+    } finally {
+      setConnectingRepoId(null);
+    }
+  };
+
+  const formatDateLabel = (value?: string) => {
+    if (!value) return "-";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "-";
+    return date.toLocaleDateString("ko-KR");
+  };
 
   const toggleTranslation = (id: string) => setExpandedTranslations((prev) => {
     const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next;
@@ -192,6 +247,122 @@ export default function DevDashboard({
               </button>
             </form>
             <p className="mt-2 text-xs text-gray-400">공개 저장소만 연결할 수 있습니다.</p>
+          </div>
+
+          <div>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">
+                내 Public GitHub 레포 목록
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  void loadPublicRepositories();
+                }}
+                disabled={isLoadingPublicRepositories}
+                className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isLoadingPublicRepositories && (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                )}
+                새로고침
+              </button>
+            </div>
+
+            <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50">
+              {isLoadingPublicRepositories ? (
+                <div className="flex items-center justify-center gap-2 px-4 py-10 text-sm text-gray-500">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  GitHub 저장소 목록을 불러오는 중입니다.
+                </div>
+              ) : publicRepositoriesError ? (
+                <div className="px-4 py-4 text-sm text-red-600">
+                  {publicRepositoriesError}
+                </div>
+              ) : publicRepositories.length === 0 ? (
+                <div className="px-4 py-8 text-sm text-gray-500">
+                  조회된 Public 저장소가 없습니다.
+                </div>
+              ) : (
+                <div className="max-h-[360px] divide-y divide-gray-200 overflow-y-auto">
+                  {publicRepositories.map((repository) => {
+                    const isConnected =
+                      connectedGithubRepo?.githubRepoId === repository.id ||
+                      connectedGithubRepo?.fullName === repository.fullName;
+                    const isConnectingThisRepository =
+                      connectingRepoId === repository.id;
+
+                    return (
+                      <div
+                        key={repository.id}
+                        className="bg-white px-4 py-3 first:rounded-t-lg last:rounded-b-lg"
+                      >
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-gray-900 break-all">
+                              {repository.fullName}
+                            </p>
+                            <a
+                              href={repository.htmlUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="mt-1 inline-flex items-center gap-1 text-xs text-gray-600 underline underline-offset-4 hover:text-gray-900"
+                            >
+                              {repository.name}
+                              <ExternalLink className="h-3 w-3" />
+                            </a>
+                            {repository.description && (
+                              <p className="mt-2 text-xs text-gray-600">
+                                {repository.description}
+                              </p>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void connectRepositoryFromList(repository);
+                            }}
+                            disabled={
+                              isConnected ||
+                              isConnectingGithubRepo ||
+                              isConnectingThisRepository
+                            }
+                            className="inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {isConnected
+                              ? "연결됨"
+                              : isConnectingThisRepository
+                                ? "연결 중"
+                                : "이 저장소 연결"}
+                          </button>
+                        </div>
+
+                        <div className="mt-3 flex flex-wrap gap-2 text-xs text-gray-600">
+                          <span className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-gray-50 px-2 py-1">
+                            <Star className="h-3 w-3" />
+                            {repository.stargazersCount.toLocaleString()}
+                          </span>
+                          <span className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-gray-50 px-2 py-1">
+                            <GitPullRequest className="h-3 w-3" />
+                            Open {repository.openIssuesCount.toLocaleString()}
+                          </span>
+                          <span className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-gray-50 px-2 py-1">
+                            <GitBranch className="h-3 w-3" />
+                            {repository.language || "언어 미표기"}
+                          </span>
+                          <span className="inline-flex items-center rounded-md border border-gray-200 bg-gray-50 px-2 py-1">
+                            생성일 {formatDateLabel(repository.createdAt)}
+                          </span>
+                          <span className="inline-flex items-center rounded-md border border-gray-200 bg-gray-50 px-2 py-1">
+                            수정일 {formatDateLabel(repository.updatedAt)}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
 
           {connectedGithubRepo ? (

@@ -643,6 +643,7 @@ export default function App() {
 
     const params = new URLSearchParams(window.location.search);
     const accessToken = params.get("accessToken")?.trim();
+    const githubAccessToken = params.get("githubAccessToken")?.trim();
     const refreshToken = params.get("refreshToken")?.trim();
     const role = normalizeUserRole(params.get("role"));
     const userId = params.get("userId")?.trim() || createId();
@@ -657,6 +658,11 @@ export default function App() {
 
     window.localStorage.setItem("fithub.apiToken", accessToken);
     window.localStorage.setItem("fithub.authToken", accessToken);
+    if (githubAccessToken) {
+      window.localStorage.setItem("fithub.githubAccessToken", githubAccessToken);
+    } else {
+      window.localStorage.removeItem("fithub.githubAccessToken");
+    }
     if (refreshToken) {
       window.localStorage.setItem("fithub.refreshToken", refreshToken);
     }
@@ -696,6 +702,7 @@ export default function App() {
     if (typeof window !== "undefined") {
       window.localStorage.removeItem("fithub.apiToken");
       window.localStorage.removeItem("fithub.authToken");
+      window.localStorage.removeItem("fithub.githubAccessToken");
       window.localStorage.removeItem("fithub.refreshToken");
     }
     pushToast("로그아웃 되었습니다.", "info");
@@ -2037,6 +2044,7 @@ export default function App() {
           <div className="flex-1 overflow-y-auto p-6">
             <DevDashboard
               section="feedback"
+              projectId={DEFAULT_PROJECT_ID}
               projectName={projectName}
               connectedGithubRepo={connectedGithubRepo}
               isConnectingGithubRepo={isConnectingGithubRepo}
@@ -2144,6 +2152,7 @@ export default function App() {
             {devSettingsSubSection === "project" ? (
               <DevDashboard
                 section="project"
+                projectId={DEFAULT_PROJECT_ID}
                 projectName={projectName}
                 connectedGithubRepo={connectedGithubRepo}
                 isConnectingGithubRepo={isConnectingGithubRepo}
