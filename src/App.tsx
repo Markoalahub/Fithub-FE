@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import PMDashboard from "./pages/PM/PMDashboard.tsx";
 import DevDashboard from "@/src/pages/Dev/DevDashboard";
 import AdminDashboard from "./pages/Admin/AdminDashboard.tsx";
+import OnboardingScreen from "./pages/Auth/OnboardingScreen";
 import LoginScreen from "./pages/Auth/LoginScreen.tsx";
 import AppHeader from "./components/layout/AppHeader";
 import MyInfoSection from "./components/MyInfoSection";
@@ -460,6 +461,7 @@ const devTrackLabel: Record<DevTrack, string> = {
 
 export default function App() {
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const [onboardingRole, setOnboardingRole] = useState<UserRole | null>(null);
   const [activeTab, setActiveTab] = useState<AppTab>("pipeline");
   const [pmSelectedTrack, setPmSelectedTrack] = useState<DevTrack>("frontend");
   const [frontendFeatures, setFrontendFeatures] =
@@ -668,6 +670,7 @@ export default function App() {
     };
 
     setAuthUser(nextUser);
+    setOnboardingRole(role);
     setActiveTab("pipeline");
     if (role === "pm") {
       setPmSelectedTrack("frontend");
@@ -686,24 +689,9 @@ export default function App() {
     };
   }, []);
 
-  const handleLogin = (user: AuthUser) => {
-    setAuthUser(user);
-    setActiveTab("pipeline");
-
-    if (user.role === "pm") {
-      setPmSelectedTrack("frontend");
-      pushToast("기획자 계정으로 로그인했습니다.", "success");
-      return;
-    }
-
-    pushToast(
-      `${user.role === "dev-fe" ? "프론트엔드 개발자" : "백엔드 개발자"} 계정으로 로그인했습니다.`,
-      "success",
-    );
-  };
-
   const handleLogout = () => {
     setAuthUser(null);
+    setOnboardingRole(null);
     setActiveTab("pipeline");
     if (typeof window !== "undefined") {
       window.localStorage.removeItem("fithub.apiToken");
@@ -1871,7 +1859,16 @@ export default function App() {
   };
 
   if (!authUser) {
-    return <LoginScreen onLogin={handleLogin} />;
+    if (!onboardingRole) {
+      return <OnboardingScreen onSelectRole={setOnboardingRole} />;
+    }
+
+    return (
+      <LoginScreen
+        role={onboardingRole}
+        onBack={() => setOnboardingRole(null)}
+      />
+    );
   }
 
   return (

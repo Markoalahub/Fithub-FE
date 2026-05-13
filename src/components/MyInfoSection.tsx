@@ -14,7 +14,6 @@ const roleLabel: Record<string, string> = {
 
 const providerLabel: Record<string, string> = {
   github: "GitHub",
-  kakao: "카카오",
 };
 
 const maskToken = (token: string | null) => {
@@ -52,7 +51,10 @@ export default function MyInfoSection({
           label="역할"
           value={roleLabel[authUser.role] ?? authUser.role}
         />
-        <InfoItem label="로그인 방식" value={providerLabel[authUser.provider]} />
+        <InfoItem
+          label="로그인 방식"
+          value={providerLabel[authUser.provider] ?? authUser.provider}
+        />
         <InfoItem label="사용자 ID" value={authUser.id} />
         <InfoItem label="현재 작업 트랙" value={activeTrackLabel} />
         <InfoItem
