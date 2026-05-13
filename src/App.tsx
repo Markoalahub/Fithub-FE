@@ -4,13 +4,20 @@ import DevDashboard from "@/src/pages/Dev/DevDashboard";
 import AdminDashboard from "./pages/Admin/AdminDashboard.tsx";
 import LoginScreen from "./pages/Auth/LoginScreen.tsx";
 import AppHeader from "./components/layout/AppHeader";
+import MyInfoSection from "./components/MyInfoSection";
 import PipelineCanvas from "./components/PipelineCanvas";
 import {
-  fetchPublicGithubRepository,
-  generatePipelineFromPrd,
-  type GeneratedPipelineItem,
+  createIssueFromPipelineStep,
+  fetchAvailableGithubRepositories,
+  fetchProjectGithubRepositories,
+  generateAllPipelines,
+  parseGithubRepoInput,
+  syncIssueToGithub,
+  syncProjectGithubRepositories,
+  updatePipelineStep,
+  type Pipeline,
+  type RepositoryCategory,
 } from "./services/api";
-import { Loader2 } from "lucide-react";
 import type {
   AppTab,
   AuthUser,
@@ -22,7 +29,10 @@ import type {
   PipelineProposal,
   PipelineProposalAction,
   QuestionMessage,
+  UserRole,
 } from "./types/index";
+
+type DevTrack = "frontend" | "backend";
 
 const createId = () =>
   `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -83,8 +93,15 @@ const buildPipelineProposalIntroMessage = ({
 const makeTaskId = (featureId: number) =>
   `${featureId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 
-const PIPELINE_GENERATION_REQUIREMENTS =
-  "첨부된 PRD를 기반으로 MVP 스펙의 파이프라인을 설계해줘";
+const PROJECT_ID_ENV = Number(import.meta.env.VITE_PROJECT_ID ?? 1);
+const DEFAULT_PROJECT_ID =
+  Number.isFinite(PROJECT_ID_ENV) && PROJECT_ID_ENV > 0 ? PROJECT_ID_ENV : 1;
+const TRACK_CATEGORY: Record<DevTrack, RepositoryCategory> = {
+  frontend: "FE",
+  backend: "BE",
+};
+const GITHUB_CALLBACK_PATH = "/auth/github/callback";
+
 const LEGACY_PROJECT_NAME_STORAGE_KEY = "fithub.projectName";
 const LEGACY_CONNECTED_GITHUB_REPO_STORAGE_KEY = "fithub.connectedGithubRepo";
 const getProjectNameStorageKey = (track: "frontend" | "backend") =>
@@ -137,7 +154,42 @@ const readStoredConnectedGithubRepo = (
   }
 
   try {
-    return JSON.parse(repoRaw) as ConnectedGithubRepository;
+    const parsed = JSON.parse(repoRaw) as Partial<ConnectedGithubRepository>;
+    const repositoryId = Number(parsed.repositoryId ?? 0);
+    if (!repositoryId || !parsed.fullName || !parsed.htmlUrl) {
+      return null;
+    }
+
+    const [ownerFromFullName = "", nameFromFullName = ""] =
+      parsed.fullName.split("/");
+    const normalizedHtmlUrl = parsed.htmlUrl.replace(/\/+$/, "");
+
+    return {
+      repositoryId,
+      repoUrl: parsed.repoUrl?.trim() || normalizedHtmlUrl,
+      owner: parsed.owner || ownerFromFullName,
+      name: parsed.name || nameFromFullName,
+      fullName: parsed.fullName,
+      htmlUrl: normalizedHtmlUrl,
+      description: parsed.description,
+      language: parsed.language,
+      defaultBranch: parsed.defaultBranch || "main",
+      stars: Number(parsed.stars ?? 0),
+      forks: Number(parsed.forks ?? 0),
+      openIssuesCount:
+        parsed.openIssuesCount === undefined
+          ? undefined
+          : Number(parsed.openIssuesCount),
+      projectId:
+        parsed.projectId === undefined ? undefined : Number(parsed.projectId),
+      category: parsed.category,
+      githubRepoId:
+        parsed.githubRepoId === undefined
+          ? undefined
+          : Number(parsed.githubRepoId),
+      connectedAt:
+        parsed.connectedAt || new Date().toLocaleString("ko-KR"),
+    };
   } catch {
     return null;
   }
@@ -153,29 +205,45 @@ const formatFileSize = (size: number) => {
   return `${size}B`;
 };
 
-const mapGeneratedPipelineToFeatures = (
-  pipeline: GeneratedPipelineItem[],
-): Feature[] =>
-  [...pipeline]
-    .sort((a, b) => a.priority - b.priority)
-    .map((item, index) => {
+const normalizeUserRole = (value: string | null | undefined): UserRole => {
+  if (value === "pm" || value === "dev-fe" || value === "dev-be") {
+    return value;
+  }
+  return "dev-fe";
+};
+
+const normalizeCategory = (value?: string) => (value ?? "").trim().toUpperCase();
+
+const mapGeneratedPipelinesToFeatures = (pipelines: Pipeline[]): Feature[] =>
+  [...pipelines]
+    .sort((a, b) => a.id - b.id)
+    .map((pipeline, index) => {
       const featureId = index + 1;
-      const majorFeatureTitle = item.title?.trim() || `주요 기능 ${featureId}`;
-      const detailItems = Array.isArray(item.details) ? item.details : [];
+      const featureName = pipeline.category
+        ? `${pipeline.category} Pipeline`
+        : `Pipeline ${pipeline.id}`;
 
       return {
         id: featureId,
-        name: majorFeatureTitle,
-        tasks: detailItems
-          .map((detail) => detail.trim())
-          .filter((detail) => detail.length > 0)
-          .map((detail, detailIndex) => ({
-            id: `${featureId}-${detailIndex + 1}`,
-            title: detail,
-            devChecked: false,
+        name: featureName,
+        tasks: pipeline.steps.map((step, stepIndex) => {
+          const stepTitle = step.title?.trim() || `Step ${stepIndex + 1}`;
+          const stepDescription = step.description?.trim();
+          const isCompleted = Boolean(step.isCompleted);
+
+          return {
+            id: `${featureId}-${step.id || stepIndex + 1}`,
+            title: stepTitle,
+            description: stepDescription,
+            completed: isCompleted,
+            devChecked: isCompleted,
             pmConfirmed: false,
-            isAiSuggested: true,
-          })),
+            isAiSuggested:
+              normalizeCategory(step.origin) === "AI_GENERATED",
+            pipelineId: step.pipelineId || pipeline.id,
+            pipelineStepId: step.id || undefined,
+          };
+        }),
       };
     });
 
@@ -377,8 +445,6 @@ const applyPipelineProposal = (
 
 const initialFeatures: Feature[] = [];
 
-type DevTrack = "frontend" | "backend";
-
 type ToastTone = "success" | "info" | "warning";
 
 type ToastItem = {
@@ -449,8 +515,11 @@ export default function App() {
   // Sub-section states
   const [pmSubSection, setPmSubSection] = useState<"ai" | "review">("ai");
   const [adminSubSection, setAdminSubSection] = useState<
-    "knowledge" | "team"
+    "knowledge" | "team" | "profile"
   >("knowledge");
+  const [devSettingsSubSection, setDevSettingsSubSection] = useState<
+    "project" | "profile"
+  >("project");
 
   const isDevUser = authUser?.role === "dev-fe" || authUser?.role === "dev-be";
   const isPm = authUser?.role === "pm";
@@ -563,6 +632,52 @@ export default function App() {
   };
 
   useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    if (window.location.pathname !== GITHUB_CALLBACK_PATH) {
+      return;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const accessToken = params.get("accessToken")?.trim();
+    const refreshToken = params.get("refreshToken")?.trim();
+    const role = normalizeUserRole(params.get("role"));
+    const userId = params.get("userId")?.trim() || createId();
+    const username = params.get("username")?.trim() || "GitHub User";
+    const email = params.get("email")?.trim() || "";
+
+    if (!accessToken) {
+      pushToast("GitHub 로그인 토큰을 받지 못했습니다.", "warning");
+      window.history.replaceState({}, "", "/");
+      return;
+    }
+
+    window.localStorage.setItem("fithub.apiToken", accessToken);
+    window.localStorage.setItem("fithub.authToken", accessToken);
+    if (refreshToken) {
+      window.localStorage.setItem("fithub.refreshToken", refreshToken);
+    }
+
+    const nextUser: AuthUser = {
+      id: String(userId),
+      role,
+      name: username,
+      email,
+      provider: "github",
+    };
+
+    setAuthUser(nextUser);
+    setActiveTab("pipeline");
+    if (role === "pm") {
+      setPmSelectedTrack("frontend");
+    }
+
+    window.history.replaceState({}, "", "/");
+    pushToast("GitHub 로그인에 성공했습니다.", "success");
+  }, []);
+
+  useEffect(() => {
     return () => {
       toastTimeoutIdsRef.current.forEach((timeoutId) => {
         window.clearTimeout(timeoutId);
@@ -590,6 +705,11 @@ export default function App() {
   const handleLogout = () => {
     setAuthUser(null);
     setActiveTab("pipeline");
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem("fithub.apiToken");
+      window.localStorage.removeItem("fithub.authToken");
+      window.localStorage.removeItem("fithub.refreshToken");
+    }
     pushToast("로그아웃 되었습니다.", "info");
   };
 
@@ -610,6 +730,39 @@ export default function App() {
     pushToast("프로젝트 이름을 저장했습니다.", "success");
   };
 
+  const normalizeRepoIdentity = (value: string) =>
+    value
+      .trim()
+      .replace(/^https?:\/\/(www\.)?github\.com\//i, "")
+      .replace(/\.git$/i, "")
+      .replace(/\/+$/, "")
+      .toLowerCase();
+
+  const resolveRepositoryCandidate = (
+    repositories: Awaited<
+      ReturnType<typeof fetchAvailableGithubRepositories>
+    >["repositories"],
+    input: string,
+  ) => {
+    const normalizedInput = normalizeRepoIdentity(input);
+    const parsed = parseGithubRepoInput(input);
+    const normalizedSlug = parsed
+      ? `${parsed.owner.toLowerCase()}/${parsed.repo.toLowerCase()}`
+      : null;
+
+    return (
+      repositories.find((repo) => {
+        const repoSlug = normalizeRepoIdentity(repo.fullName);
+        const repoUrl = normalizeRepoIdentity(repo.htmlUrl);
+        if (normalizedSlug && repoSlug === normalizedSlug) return true;
+        return repoSlug === normalizedInput || repoUrl === normalizedInput;
+      }) ??
+      (parsed
+        ? undefined
+        : repositories.find((repo) => normalizeRepoIdentity(repo.name) === normalizedInput))
+    );
+  };
+
   const connectGithubRepository = async (repositoryInput: string) => {
     const normalizedInput = repositoryInput.trim();
     if (!normalizedInput) {
@@ -617,11 +770,75 @@ export default function App() {
       return;
     }
 
+    const category = TRACK_CATEGORY[activeTrack];
     setIsConnectingGithubRepo(true);
     try {
-      const repository = await fetchPublicGithubRepository(normalizedInput);
+      const availableResponse =
+        await fetchAvailableGithubRepositories(DEFAULT_PROJECT_ID);
+      const repository = resolveRepositoryCandidate(
+        availableResponse.repositories,
+        normalizedInput,
+      );
+      if (!repository) {
+        throw new Error(
+          "입력한 저장소를 서버에서 조회한 GitHub 레포 목록에서 찾지 못했습니다.",
+        );
+      }
+
+      const projectRepositories = await fetchProjectGithubRepositories(
+        DEFAULT_PROJECT_ID,
+      );
+      const existingRepository = projectRepositories.find(
+        (repo) =>
+          normalizeRepoIdentity(repo.repoUrl) ===
+            normalizeRepoIdentity(repository.htmlUrl) &&
+          normalizeCategory(repo.category) === category,
+      );
+
+      const syncedRepositories =
+        existingRepository
+          ? [existingRepository]
+          : await syncProjectGithubRepositories(DEFAULT_PROJECT_ID, {
+              githubRepoIds: [repository.id],
+              categoryMappings: [
+                {
+                  githubRepoId: repository.id,
+                  repoName: repository.name,
+                  category,
+                },
+              ],
+            });
+
+      const syncedRepository =
+        syncedRepositories.find(
+          (repo) =>
+            normalizeRepoIdentity(repo.repoUrl) ===
+              normalizeRepoIdentity(repository.htmlUrl) &&
+            normalizeCategory(repo.category) === category,
+        ) ?? syncedRepositories[0];
+
+      if (!syncedRepository) {
+        throw new Error("프로젝트 저장소 동기화에 실패했습니다.");
+      }
+
+      const [owner = "", repoName = repository.name] =
+        repository.fullName.split("/");
       const connectedRepository: ConnectedGithubRepository = {
-        ...repository,
+        repositoryId: syncedRepository.id,
+        repoUrl: syncedRepository.repoUrl,
+        owner,
+        name: repoName,
+        fullName: repository.fullName,
+        htmlUrl: repository.htmlUrl,
+        description: repository.description,
+        language: repository.language,
+        defaultBranch: "main",
+        stars: repository.stargazersCount,
+        forks: 0,
+        openIssuesCount: repository.openIssuesCount,
+        projectId: syncedRepository.projectId,
+        category: syncedRepository.category,
+        githubRepoId: repository.id,
         connectedAt: new Date().toLocaleString("ko-KR"),
       };
 
@@ -634,7 +851,7 @@ export default function App() {
       }
 
       pushToast(
-        `${connectedRepository.fullName} 저장소를 연결했습니다.`,
+        `${connectedRepository.fullName} 저장소를 프로젝트(${DEFAULT_PROJECT_ID})에 연결했습니다.`,
         "success",
       );
     } catch (error) {
@@ -662,10 +879,16 @@ export default function App() {
         getConnectedGithubRepoStorageKey(activeTrack),
       );
     }
-    pushToast("GitHub 저장소 연결을 해제했습니다.", "info");
+    pushToast(
+      "로컬 저장소 연결 상태를 해제했습니다. 서버 연결 해제는 별도 API가 필요합니다.",
+      "info",
+    );
   };
 
-  const publishTaskToGithubIssue = (featureId: number, taskId: string) => {
+  const publishTaskToGithubIssue = async (
+    featureId: number,
+    taskId: string,
+  ) => {
     if (!connectedGithubRepo) {
       if (isDevUser) {
         setActiveTab("settings");
@@ -674,6 +897,11 @@ export default function App() {
         "먼저 프로젝트 설정에서 Public GitHub 저장소를 연결해 주세요.",
         "warning",
       );
+      return;
+    }
+
+    if (!connectedGithubRepo.repositoryId) {
+      pushToast("저장소 ID가 없어 이슈를 생성할 수 없습니다.", "warning");
       return;
     }
 
@@ -687,35 +915,71 @@ export default function App() {
       return;
     }
 
-    const issueTitle = `[${projectName}] ${matchedFeature.name} - ${matchedTask.title}`;
-    const issueBody = [
-      "## 작업 요약",
-      `- 프로젝트: ${projectName}`,
-      `- 기능: ${matchedFeature.name}`,
-      `- 세부작업: ${matchedTask.title}`,
-      `- DEV 체크: ${matchedTask.devChecked ? "완료" : "미완료"}`,
-      `- PM 확인: ${matchedTask.pmConfirmed ? "완료" : "대기"}`,
-      "",
-      "## 작업 내용",
-      "- [ ] 작업 범위 확정",
-      "- [ ] 구현",
-      "- [ ] 테스트",
-      "- [ ] 배포 준비",
-    ].join("\n");
-
-    const issueCreateUrl = `${connectedGithubRepo.htmlUrl}/issues/new?title=${encodeURIComponent(issueTitle)}&body=${encodeURIComponent(issueBody)}`;
-    const openedWindow = window.open(
-      issueCreateUrl,
-      "_blank",
-      "noopener,noreferrer",
-    );
-
-    if (!openedWindow) {
-      pushToast("팝업이 차단되어 이슈 페이지를 열지 못했습니다.", "warning");
+    if (matchedTask.issueId) {
+      pushToast("이미 생성된 이슈가 있어 중복 생성하지 않습니다.", "info");
       return;
     }
 
-    pushToast("GitHub 이슈 생성 페이지를 열었습니다.", "success");
+    if (!matchedTask.pipelineStepId) {
+      pushToast(
+        "이 세부작업은 서버 파이프라인 스텝 ID가 없어 이슈 생성이 불가능합니다.",
+        "warning",
+      );
+      return;
+    }
+
+    const issueTitle = `[${projectName}] ${matchedFeature.name} - ${matchedTask.title}`;
+    const issueDescription = (
+      matchedTask.description?.trim() ||
+      `${matchedFeature.name} 기능의 세부작업: ${matchedTask.title}`
+    ).slice(0, 2000);
+
+    try {
+      const createdIssue = await createIssueFromPipelineStep({
+        pipelineStepId: matchedTask.pipelineStepId,
+        repositoryId: connectedGithubRepo.repositoryId,
+        title: issueTitle,
+        description: issueDescription,
+        repoUrl: connectedGithubRepo.repoUrl,
+      });
+
+      const syncedIssue = await syncIssueToGithub(
+        createdIssue.id,
+        connectedGithubRepo.repoUrl,
+      );
+
+      setFeatures((prev) =>
+        prev.map((feature) =>
+          feature.id !== featureId
+            ? feature
+            : {
+                ...feature,
+                tasks: feature.tasks.map((task) =>
+                  task.id === taskId
+                    ? {
+                        ...task,
+                        issueId: createdIssue.id,
+                      }
+                    : task,
+                ),
+              },
+        ),
+      );
+
+      if (syncedIssue.githubUrl) {
+        window.open(syncedIssue.githubUrl, "_blank", "noopener,noreferrer");
+      }
+
+      pushToast("Issue 생성 및 GitHub 동기화를 완료했습니다.", "success");
+    } catch (error) {
+      console.error(error);
+      pushToast(
+        error instanceof Error
+          ? error.message
+          : "Issue 생성 또는 GitHub 동기화에 실패했습니다.",
+        "warning",
+      );
+    }
   };
 
   const handleUploadKnowledgePdf = async (file: File) => {
@@ -724,6 +988,17 @@ export default function App() {
 
     if (!isPdfFile) {
       pushToast("PDF 파일만 업로드할 수 있습니다.", "warning");
+      return;
+    }
+
+    if (!connectedGithubRepo) {
+      pushToast(
+        "먼저 프로젝트 설정에서 GitHub 저장소를 연결한 뒤 파이프라인을 생성해 주세요.",
+        "warning",
+      );
+      if (isDevUser) {
+        setActiveTab("settings");
+      }
       return;
     }
 
@@ -738,15 +1013,19 @@ export default function App() {
     );
 
     try {
-      const response = await generatePipelineFromPrd({
-        requirements: PIPELINE_GENERATION_REQUIREMENTS,
+      const response = await generateAllPipelines({
+        projectId: DEFAULT_PROJECT_ID,
         prdFile: file,
       });
 
-      const generatedItems = Array.isArray(response.pipeline)
-        ? response.pipeline
-        : [];
-      const nextFeatures = mapGeneratedPipelineToFeatures(generatedItems);
+      const category = TRACK_CATEGORY[activeTrack];
+      const pipelines = response.pipelines ?? [];
+      const categoryPipelines = pipelines.filter(
+        (pipeline) => normalizeCategory(pipeline.category) === category,
+      );
+      const selectedPipelines =
+        categoryPipelines.length > 0 ? categoryPipelines : pipelines;
+      const nextFeatures = mapGeneratedPipelinesToFeatures(selectedPipelines);
 
       setFeatures(nextFeatures);
       setActiveTab("pipeline");
@@ -766,14 +1045,23 @@ export default function App() {
         return;
       }
 
+      if (categoryPipelines.length === 0) {
+        pushToast(
+          `${category} 카테고리 파이프라인이 없어 전체 결과를 표시합니다.`,
+          "info",
+        );
+      }
+
       pushToast(
-        `${devTrackLabel[activeTrack]} 파이프라인 ${nextFeatures.length}개를 생성해 반영했습니다.`,
+        `${devTrackLabel[activeTrack]} 파이프라인 ${nextFeatures.length}개를 생성해 반영했습니다. (projectId=${DEFAULT_PROJECT_ID})`,
         "success",
       );
     } catch (error) {
       console.error(error);
       pushToast(
-        "파이프라인 생성 API 호출에 실패했습니다. 서버 상태를 확인해 주세요.",
+        error instanceof Error
+          ? error.message
+          : "파이프라인 생성 API 호출에 실패했습니다. 서버 상태를 확인해 주세요.",
         "warning",
       );
     } finally {
@@ -1478,7 +1766,7 @@ export default function App() {
     );
   };
 
-  const toggleDevTaskCheck = (featureId: number, taskId: string) => {
+  const toggleDevTaskCheck = async (featureId: number, taskId: string) => {
     const matchedFeature = features.find((feature) => feature.id === featureId);
     const matchedTask = matchedFeature?.tasks.find(
       (task) => task.id === taskId,
@@ -1489,6 +1777,23 @@ export default function App() {
     }
 
     const nextDevChecked = !matchedTask.devChecked;
+
+    if (matchedTask.pipelineStepId) {
+      try {
+        await updatePipelineStep(matchedTask.pipelineStepId, {
+          isCompleted: nextDevChecked,
+        });
+      } catch (error) {
+        console.error(error);
+        pushToast(
+          error instanceof Error
+            ? error.message
+            : "Pipeline step 상태 업데이트에 실패했습니다.",
+          "warning",
+        );
+        return;
+      }
+    }
 
     setFeatures((prev) =>
       prev.map((feature) => {
@@ -1636,8 +1941,12 @@ export default function App() {
             }
             onUploadPrd={handleUploadKnowledgePdf}
             // Dev actions
-            onToggleDevTaskCheck={toggleDevTaskCheck}
-            onPublishTaskToGithubIssue={publishTaskToGithubIssue}
+            onToggleDevTaskCheck={(featureId, taskId) => {
+              void toggleDevTaskCheck(featureId, taskId);
+            }}
+            onPublishTaskToGithubIssue={(featureId, taskId) => {
+              void publishTaskToGithubIssue(featureId, taskId);
+            }}
             onCreateTaskProposal={(featureId, proposedValue) =>
               createPipelineProposal({
                 action: "add-task",
@@ -1782,44 +2091,92 @@ export default function App() {
               >
                 팀원 관리
               </button>
+              <button
+                onClick={() => setAdminSubSection("profile")}
+                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                  adminSubSection === "profile"
+                    ? "bg-white text-gray-900 shadow-sm border border-[#E5E5E5]"
+                    : "text-[#9E9E9E] hover:text-gray-700"
+                }`}
+              >
+                내 정보
+              </button>
             </div>
-            <AdminDashboard
-              section={adminSubSection}
-              knowledgeDocs={knowledgeDocs}
-              isGeneratingPipeline={isGeneratingPipeline}
-              onUploadKnowledgePdf={handleUploadKnowledgePdf}
-            />
+            {adminSubSection === "profile" ? (
+              <MyInfoSection
+                authUser={authUser}
+                activeTrackLabel={devTrackLabel[activeTrack]}
+                connectedGithubRepo={connectedGithubRepo}
+              />
+            ) : (
+              <AdminDashboard
+                section={adminSubSection}
+                knowledgeDocs={knowledgeDocs}
+                isGeneratingPipeline={isGeneratingPipeline}
+                onUploadKnowledgePdf={handleUploadKnowledgePdf}
+              />
+            )}
           </div>
         )}
 
         {/* Settings tab - Dev */}
         {activeTab === "settings" && isDevUser && (
           <div className="flex-1 overflow-y-auto p-6">
-            <DevDashboard
-              section="project"
-              projectName={projectName}
-              connectedGithubRepo={connectedGithubRepo}
-              isConnectingGithubRepo={isConnectingGithubRepo}
-              featureQuestions={featureQuestions}
-              onAddQuestionMessage={(questionId, content) =>
-                addQuestionMessage(questionId, authUser.role, content)
-              }
-              onUpdateQuestionMessage={(questionId, messageId, content) =>
-                updateQuestionMessage(
-                  questionId,
-                  messageId,
-                  authUser.role,
-                  content,
-                )
-              }
-              onDeleteQuestionMessage={(questionId, messageId) =>
-                deleteQuestionMessage(questionId, messageId, authUser.role)
-              }
-              onConfirmQuestionByDev={confirmQuestionByDev}
-              onSaveProjectName={saveProjectName}
-              onConnectGithubRepo={connectGithubRepository}
-              onDisconnectGithubRepo={disconnectGithubRepository}
-            />
+            <div className="flex items-center gap-2 mb-5">
+              <button
+                onClick={() => setDevSettingsSubSection("project")}
+                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                  devSettingsSubSection === "project"
+                    ? "bg-white text-gray-900 shadow-sm border border-[#E5E5E5]"
+                    : "text-[#9E9E9E] hover:text-gray-700"
+                }`}
+              >
+                프로젝트 설정
+              </button>
+              <button
+                onClick={() => setDevSettingsSubSection("profile")}
+                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                  devSettingsSubSection === "profile"
+                    ? "bg-white text-gray-900 shadow-sm border border-[#E5E5E5]"
+                    : "text-[#9E9E9E] hover:text-gray-700"
+                }`}
+              >
+                내 정보
+              </button>
+            </div>
+            {devSettingsSubSection === "project" ? (
+              <DevDashboard
+                section="project"
+                projectName={projectName}
+                connectedGithubRepo={connectedGithubRepo}
+                isConnectingGithubRepo={isConnectingGithubRepo}
+                featureQuestions={featureQuestions}
+                onAddQuestionMessage={(questionId, content) =>
+                  addQuestionMessage(questionId, authUser.role, content)
+                }
+                onUpdateQuestionMessage={(questionId, messageId, content) =>
+                  updateQuestionMessage(
+                    questionId,
+                    messageId,
+                    authUser.role,
+                    content,
+                  )
+                }
+                onDeleteQuestionMessage={(questionId, messageId) =>
+                  deleteQuestionMessage(questionId, messageId, authUser.role)
+                }
+                onConfirmQuestionByDev={confirmQuestionByDev}
+                onSaveProjectName={saveProjectName}
+                onConnectGithubRepo={connectGithubRepository}
+                onDisconnectGithubRepo={disconnectGithubRepository}
+              />
+            ) : (
+              <MyInfoSection
+                authUser={authUser}
+                activeTrackLabel={devTrackLabel[activeTrack]}
+                connectedGithubRepo={connectedGithubRepo}
+              />
+            )}
           </div>
         )}
       </div>

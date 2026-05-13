@@ -46,6 +46,7 @@ function KakaoTalkIcon({ className }: { className?: string }) {
 export default function LoginScreen({ onLogin }: LoginScreenProps) {
   const [selectedProvider, setSelectedProvider] =
     useState<LoginProvider>("github");
+  const [oauthRole, setOauthRole] = useState<UserRole>("dev-fe");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -71,6 +72,20 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
     selectedProvider === "github"
       ? "bg-gray-900 text-white hover:bg-gray-800"
       : "bg-yellow-400 text-gray-900 hover:bg-yellow-300";
+
+  const startGithubOAuthLogin = () => {
+    if (typeof window === "undefined") return;
+
+    const authBaseUrl = (
+      import.meta.env.VITE_BE_AUTH_BASE_URL ?? "http://localhost:8080/api/v1/auth"
+    ).replace(/\/$/, "");
+    const callbackUrl = `${window.location.origin}/auth/github/callback`;
+    const authUrl = new URL(`${authBaseUrl}/login`);
+    authUrl.searchParams.set("frontendRedirect", callbackUrl);
+    authUrl.searchParams.set("role", oauthRole);
+
+    window.location.assign(authUrl.toString());
+  };
 
   const handleQuickLogin = (role: UserRole) => {
     const matchedAccount = demoAccounts.find(
@@ -125,6 +140,60 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
             >
               <KakaoTalkIcon className="h-4 w-4" />
               카카오
+            </button>
+          </div>
+
+          <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-4">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-3">
+              GitHub OAuth 역할 선택
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => setOauthRole("pm")}
+                className={`rounded-lg px-3 py-2.5 text-xs font-semibold transition-colors ${
+                  oauthRole === "pm"
+                    ? "bg-gray-900 text-white"
+                    : "bg-white border border-gray-200 text-gray-700 hover:border-gray-300"
+                }`}
+              >
+                기획자
+              </button>
+              <button
+                type="button"
+                onClick={() => setOauthRole("dev-fe")}
+                className={`rounded-lg px-3 py-2.5 text-xs font-semibold transition-colors ${
+                  oauthRole === "dev-fe"
+                    ? "bg-gray-900 text-white"
+                    : "bg-white border border-gray-200 text-gray-700 hover:border-gray-300"
+                }`}
+              >
+                프론트엔드
+              </button>
+              <button
+                type="button"
+                onClick={() => setOauthRole("dev-be")}
+                className={`rounded-lg px-3 py-2.5 text-xs font-semibold transition-colors ${
+                  oauthRole === "dev-be"
+                    ? "bg-gray-900 text-white"
+                    : "bg-white border border-gray-200 text-gray-700 hover:border-gray-300"
+                }`}
+              >
+                백엔드
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={startGithubOAuthLogin}
+              disabled={selectedProvider !== "github"}
+              className={`mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-semibold transition-colors ${
+                selectedProvider === "github"
+                  ? "bg-gray-900 text-white hover:bg-gray-800"
+                  : "bg-gray-100 text-gray-400"
+              }`}
+            >
+              <Github className="h-4 w-4" />
+              GitHub OAuth 로그인
             </button>
           </div>
 

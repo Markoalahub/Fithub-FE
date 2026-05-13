@@ -6,10 +6,14 @@ export type AppTab = "pipeline" | "questions" | "settings";
 export type Task = {
   id: string;
   title: string;
+  description?: string;
   completed?: boolean;
   devChecked: boolean;
   pmConfirmed: boolean;
   isAiSuggested?: boolean;
+  pipelineId?: number;
+  pipelineStepId?: number;
+  issueId?: number;
 };
 
 export type Feature = {
@@ -82,6 +86,8 @@ export type KnowledgeDocument = {
 };
 
 export type ConnectedGithubRepository = {
+  repositoryId: number;
+  repoUrl: string;
   owner: string;
   name: string;
   fullName: string;
@@ -91,5 +97,9 @@ export type ConnectedGithubRepository = {
   defaultBranch: string;
   stars: number;
   forks: number;
+  openIssuesCount?: number;
+  projectId?: number;
+  category?: string;
+  githubRepoId?: number;
   connectedAt: string;
 };
