@@ -63,14 +63,14 @@ export default function OnboardingScreen({ onSelectRole }: OnboardingScreenProps
           </div>
 
           <p className="mt-4 text-sm text-gray-600">
-            먼저 직군을 선택해 주세요. 선택한 직군 기준으로 GitHub 로그인 후 바로 메인
+            먼저 직군을 선택해 주세요. 선택한 직군 기준으로 OAuth 로그인 후 바로 메인
             화면으로 이동합니다.
           </p>
 
           <div className="mt-4 inline-flex items-center rounded-lg border border-[#E5E5E5] bg-[#FAFAFA] px-3 py-2 text-xs text-gray-600">
             1. 직군 선택
             <span className="mx-2 text-gray-400">→</span>
-            2. GitHub 로그인
+            2. OAuth 로그인
           </div>
         </div>
 

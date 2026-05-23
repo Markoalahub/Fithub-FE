@@ -834,18 +834,22 @@ export default function PipelineCanvas({
                         파이프라인이 없습니다
                       </h3>
                       <p className="text-sm text-[#9E9E9E] mt-1">
-                        PRD 파일을 업로드하거나 직접 기능을 추가하세요.
+                        {onUploadPrd
+                          ? "PRD 파일을 업로드하거나 직접 기능을 추가하세요."
+                          : "상단 패널에서 프로젝트/파이프라인을 생성하거나 직접 기능을 추가하세요."}
                       </p>
                     </div>
                     <div className="flex flex-col gap-2 w-full max-w-xs mx-auto">
-                      <button
-                        data-ui-control="true"
-                        onClick={() => fileInputRef.current?.click()}
-                        className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-[#6366F1] px-5 py-3 text-sm font-semibold text-white hover:bg-[#5558E3] transition-colors"
-                      >
-                        <Sparkles className="h-4 w-4" />
-                        AI로 파이프라인 생성하기
-                      </button>
+                      {onUploadPrd && (
+                        <button
+                          data-ui-control="true"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-[#6366F1] px-5 py-3 text-sm font-semibold text-white hover:bg-[#5558E3] transition-colors"
+                        >
+                          <Sparkles className="h-4 w-4" />
+                          AI로 파이프라인 생성하기
+                        </button>
+                      )}
                       <button
                         data-ui-control="true"
                         onClick={handleOpenDirectFeatureDialog}
@@ -855,17 +859,19 @@ export default function PipelineCanvas({
                         직접 기능 추가하기
                       </button>
                     </div>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept=".pdf"
-                      className="hidden"
-                      onChange={(event) => {
-                        const file = event.target.files?.[0];
-                        if (file) onUploadPrd?.(file);
-                        event.target.value = "";
-                      }}
-                    />
+                    {onUploadPrd && (
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept=".pdf"
+                        className="hidden"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          if (file) onUploadPrd(file);
+                          event.target.value = "";
+                        }}
+                      />
+                    )}
                   </div>
                 ) : (
                   <div className="text-center space-y-4 max-w-sm">

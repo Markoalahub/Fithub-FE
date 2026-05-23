@@ -1,4 +1,4 @@
-import { ArrowLeft, Github } from "lucide-react";
+import { ArrowLeft, Github, MessageCircle } from "lucide-react";
 import appConfig from "@/app.config";
 import fithubServiceIcon from "../../assets/fithub-service-icon.svg";
 import type { UserRole } from "../../types";
@@ -21,14 +21,21 @@ const roleDescription: Record<UserRole, string> = {
 };
 
 export default function LoginScreen({ role, onBack }: LoginScreenProps) {
-  const startGithubOAuthLogin = () => {
+  const isPm = role === "pm";
+
+  const startOAuthLogin = () => {
     if (typeof window === "undefined") return;
 
-    const authBaseUrl = (
-      import.meta.env.VITE_BE_AUTH_BASE_URL ?? "http://localhost:8080/api/v1/auth"
-    ).replace(/\/$/, "");
-    const callbackUrl = `${window.location.origin}/auth/github/callback`;
-    const authUrl = new URL(`${authBaseUrl}/login`);
+    const baseUrl = (
+      import.meta.env.VITE_BE_BASE_URL ??
+      import.meta.env.VITE_BE_API_BASE_URL ??
+      "http://127.0.0.1:8080"
+    )
+      .replace(/\/+$/, "")
+      .replace(/\/api\/v[12]$/i, "");
+    const callbackUrl = `${window.location.origin}/auth/oauth/callback`;
+    const authPath = isPm ? "/api/v1/auth/kakao/login" : "/api/v1/auth/login";
+    const authUrl = new URL(`${baseUrl}${authPath}`);
     authUrl.searchParams.set("frontendRedirect", callbackUrl);
     authUrl.searchParams.set("role", role);
 
@@ -71,11 +78,19 @@ export default function LoginScreen({ role, onBack }: LoginScreenProps) {
 
           <button
             type="button"
-            onClick={startGithubOAuthLogin}
-            className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#1E1E1E] px-4 py-3 text-sm font-semibold text-white hover:bg-[#2A2A2A]"
+            onClick={startOAuthLogin}
+            className={`mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition-colors ${
+              isPm
+                ? "bg-[#FEE500] text-[#181600] hover:bg-[#F9E000]"
+                : "bg-[#1E1E1E] text-white hover:bg-[#2A2A2A]"
+            }`}
           >
-            <Github className="h-4 w-4" />
-            GitHub로 계속하기
+            {isPm ? (
+              <MessageCircle className="h-4 w-4" />
+            ) : (
+              <Github className="h-4 w-4" />
+            )}
+            {isPm ? "카카오로 계속하기" : "GitHub로 계속하기"}
           </button>
 
           <p className="mt-3 text-xs text-gray-500">

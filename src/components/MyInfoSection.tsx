@@ -14,6 +14,7 @@ const roleLabel: Record<string, string> = {
 
 const providerLabel: Record<string, string> = {
   github: "GitHub",
+  kakao: "Kakao",
 };
 
 const maskToken = (token: string | null) => {
