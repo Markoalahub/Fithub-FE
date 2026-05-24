@@ -1,12 +1,18 @@
 import { useEffect, useRef, useState } from "react";
+import { ChevronLeft } from "lucide-react";
 import PMDashboard from "./pages/PM/PMDashboard.tsx";
 import DevDashboard from "@/src/pages/Dev/DevDashboard";
 import AdminDashboard from "./pages/Admin/AdminDashboard.tsx";
 import OnboardingScreen from "./pages/Auth/OnboardingScreen";
 import LoginScreen from "./pages/Auth/LoginScreen.tsx";
+import TutorialOnboarding from "./pages/Auth/TutorialOnboarding";
+import DevTrackSelector from "./pages/Auth/DevTrackSelector";
 import AppHeader from "./components/layout/AppHeader";
 import MyInfoSection from "./components/MyInfoSection";
 import PipelineCanvas from "./components/PipelineCanvas";
+import PipelineLanding from "./components/PipelineLanding";
+import CustomDialog from "./components/CustomDialog";
+import type { DemoProject, PipelineCategoryOption } from "./components/PipelineLanding";
 import {
   createProject,
   createIssueFromPipelineStep,
@@ -227,10 +233,10 @@ const formatFileSize = (size: number) => {
 };
 
 const normalizeUserRole = (value: string | null | undefined): UserRole => {
-  if (value === "pm" || value === "dev-fe" || value === "dev-be") {
+  if (value === "pm" || value === "dev-fe" || value === "dev-be" || value === "dev") {
     return value;
   }
-  return "dev-fe";
+  return "dev";
 };
 
 const normalizeCategory = (value?: string) => (value ?? "").trim().toUpperCase();
@@ -466,6 +472,9 @@ type ToastItem = {
   tone: ToastTone;
 };
 
+type DemoPipeline = { projectId: number; categories: Array<"FE" | "BE"> };
+type PipelineLandingStep = "project-list" | "create-project" | "pipeline-form" | "canvas";
+
 const devTrackLabel: Record<DevTrack, string> = {
   frontend: "프론트엔드",
   backend: "백엔드",
@@ -474,6 +483,9 @@ const devTrackLabel: Record<DevTrack, string> = {
 export default function App() {
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [onboardingRole, setOnboardingRole] = useState<UserRole | null>(null);
+  const [hasSeenTutorial, setHasSeenTutorial] = useState<boolean>(
+    () => typeof window !== "undefined" && window.localStorage.getItem("fithub.seenTutorial") === "1",
+  );
   const [activeProjectId, setActiveProjectId] = useState<number | null>(() =>
     readStoredActiveProjectId(),
   );
@@ -504,13 +516,15 @@ export default function App() {
   const [generatingFileName, setGeneratingFileName] = useState<string | null>(
     null,
   );
-  const [pmProjectNameInput, setPmProjectNameInput] = useState("");
-  const [pmProjectDescriptionInput, setPmProjectDescriptionInput] = useState("");
-  const [pmPipelineCategory, setPmPipelineCategory] =
-    useState<PipelineGenerationCategory>("FE");
-  const [pmPipelineTechStack, setPmPipelineTechStack] = useState("");
-  const [pmPipelineRequirements, setPmPipelineRequirements] = useState("");
-  const [pmPipelineFile, setPmPipelineFile] = useState<File | null>(null);
+  // Pipeline landing flow state
+  const [demoProjects, setDemoProjects] = useState<DemoProject[]>([]);
+  const [selectedDemoProject, setSelectedDemoProject] = useState<DemoProject | null>(null);
+  const [demoPipelines, setDemoPipelines] = useState<DemoPipeline[]>([]);
+  const [pipelineLandingStep, setPipelineLandingStep] = useState<PipelineLandingStep>("project-list");
+  const [showCreateProjectDialog, setShowCreateProjectDialog] = useState(false);
+  const [hasShownCreateProjectDialog, setHasShownCreateProjectDialog] = useState<boolean>(
+    () => typeof window !== "undefined" && window.localStorage.getItem("fithub.shownCreateProjectDialog") === "1",
+  );
   const [frontendPipelineProposals, setFrontendPipelineProposals] = useState<
     PipelineProposal[]
   >([]);
@@ -759,7 +773,7 @@ export default function App() {
 
     setAuthUser(nextUser);
     setOnboardingRole(role);
-    setActiveTab("questions");
+    setActiveTab("pipeline");
     if (role === "pm") {
       setPmSelectedTrack("frontend");
       setPmSubSection("ai");
@@ -1095,11 +1109,11 @@ export default function App() {
     pushToast("AI 지식 베이스 문서를 등록했습니다.", "success");
   };
 
-  const handleCreateProjectByPm = async () => {
+  const handleCreateProjectByPm = async (params: { name: string; description: string }) => {
     if (!isPm) return;
 
-    const projectNameInput = pmProjectNameInput.trim();
-    const descriptionInput = pmProjectDescriptionInput.trim();
+    const projectNameInput = params.name.trim();
+    const descriptionInput = params.description.trim();
 
     if (!projectNameInput) {
       pushToast("프로젝트 이름을 입력해 주세요.", "warning");
@@ -1135,8 +1149,17 @@ export default function App() {
         );
       }
 
+      const newProject: DemoProject = {
+        id: response.projectId,
+        name: normalizedProjectName,
+        description: descriptionInput,
+      };
+      setDemoProjects((prev) => [...prev, newProject]);
+      setSelectedDemoProject(newProject);
+      setPipelineLandingStep("pipeline-form");
+
       pushToast(
-        `프로젝트를 생성했습니다. (ID: ${response.projectId})`,
+        `프로젝트 "${normalizedProjectName}"을(를) 생성했습니다.`,
         "success",
       );
     } catch (error) {
@@ -1152,90 +1175,90 @@ export default function App() {
     }
   };
 
-  const handlePmPipelineFileSelect = (
-    event: React.ChangeEvent<HTMLInputElement>,
-  ) => {
-    const selectedFile = event.target.files?.[0] ?? null;
-    event.target.value = "";
-
-    if (!selectedFile) {
-      return;
-    }
-
-    const isPdfFile =
-      selectedFile.type === "application/pdf" || /\.pdf$/i.test(selectedFile.name);
-    if (!isPdfFile) {
-      pushToast("PDF 파일만 업로드할 수 있습니다.", "warning");
-      return;
-    }
-
-    setPmPipelineFile(selectedFile);
-  };
-
-  const handleGeneratePmPipeline = async () => {
+  const handleGeneratePmPipeline = async (params: {
+    file: File;
+    category: PipelineCategoryOption;
+    techStack: string;
+    requirements: string;
+  }) => {
     if (!isPm) return;
 
     if (!activeProjectId) {
       pushToast("먼저 프로젝트를 생성해 주세요.", "warning");
       return;
     }
-    if (!pmPipelineFile) {
-      pushToast("PDF 파일을 선택해 주세요.", "warning");
-      return;
-    }
-    if (!pmPipelineTechStack.trim()) {
-      pushToast("기술 스택을 입력해 주세요.", "warning");
-      return;
-    }
-    if (!pmPipelineRequirements.trim()) {
-      pushToast("요구사항을 입력해 주세요.", "warning");
-      return;
-    }
 
-    const targetTrack: DevTrack =
-      pmPipelineCategory === "BE" ? "backend" : "frontend";
+    const apiCategories: PipelineGenerationCategory[] =
+      params.category === "ALL" ? ["FE", "BE"] : [params.category];
 
     setIsGeneratingPipeline(true);
-    setGeneratingFileName(pmPipelineFile.name);
-    resetTrackCollaborationState(targetTrack);
-    setTrackFeatures(targetTrack, []);
+    setGeneratingFileName(params.file.name);
+
+    for (const cat of apiCategories) {
+      const track: DevTrack = cat === "BE" ? "backend" : "frontend";
+      resetTrackCollaborationState(track);
+      setTrackFeatures(track, []);
+    }
+
     pushToast(
-      `${devTrackLabel[targetTrack]} 파이프라인용 PDF를 분석하고 있습니다.`,
+      params.category === "ALL"
+        ? "FE · BE 파이프라인을 분석하고 있습니다."
+        : `${devTrackLabel[params.category === "BE" ? "backend" : "frontend"]} 파이프라인 PDF를 분석하고 있습니다.`,
       "info",
     );
 
     try {
-      const response = await generateProjectPipeline({
-        file: pmPipelineFile,
-        projectId: activeProjectId,
-        category: pmPipelineCategory,
-        techStack: pmPipelineTechStack.trim(),
-        requirements: pmPipelineRequirements.trim(),
+      let totalFeatures = 0;
+      for (const cat of apiCategories) {
+        const track: DevTrack = cat === "BE" ? "backend" : "frontend";
+        const response = await generateProjectPipeline({
+          file: params.file,
+          projectId: activeProjectId,
+          category: cat,
+          techStack: params.techStack,
+          requirements: params.requirements,
+        });
+
+        const nextFeatures = mapGeneratedFeatsToFeatures(response.feats);
+        setTrackFeatures(track, nextFeatures);
+        totalFeatures += nextFeatures.length;
+      }
+
+      setDemoPipelines((prev) => {
+        const existing = prev.find((p) => p.projectId === activeProjectId);
+        if (existing) {
+          return prev.map((p) =>
+            p.projectId === activeProjectId
+              ? { ...p, categories: [...new Set([...p.categories, ...apiCategories])] }
+              : p,
+          );
+        }
+        return [...prev, { projectId: activeProjectId, categories: apiCategories }];
       });
-
-      const nextFeatures = mapGeneratedFeatsToFeatures(response.feats);
-
-      setTrackFeatures(targetTrack, nextFeatures);
-      setPmSelectedTrack(targetTrack);
-      setActiveTab("pipeline");
 
       setKnowledgeDocs((prev) => [
         {
           id: createId(),
-          name: pmPipelineFile.name,
+          name: params.file.name,
           uploadedAt: new Date().toLocaleDateString("ko-KR"),
-          sizeLabel: formatFileSize(pmPipelineFile.size),
+          sizeLabel: formatFileSize(params.file.size),
         },
         ...prev,
       ]);
 
-      if (nextFeatures.length === 0) {
+      setPmSelectedTrack(params.category === "BE" ? "backend" : "frontend");
+      setPipelineLandingStep("canvas");
+      setActiveTab("pipeline");
+
+      if (totalFeatures === 0) {
         pushToast("응답은 받았지만 생성된 파이프라인이 없습니다.", "warning");
         return;
       }
 
       pushToast(
-        `${devTrackLabel[targetTrack]} 파이프라인 ${nextFeatures.length}개를 생성했습니다.`,
+        params.category === "ALL"
+          ? "FE · BE 파이프라인을 모두 생성했습니다."
+          : `파이프라인 ${totalFeatures}개를 생성했습니다.`,
         "success",
       );
     } catch (error) {
@@ -1274,6 +1297,16 @@ export default function App() {
       }, []),
     );
   }, [features]);
+
+  useEffect(() => {
+    if (!isPm || activeTab !== "pipeline" || hasShownCreateProjectDialog || demoProjects.length > 0) return;
+    setShowCreateProjectDialog(true);
+    setHasShownCreateProjectDialog(true);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("fithub.shownCreateProjectDialog", "1");
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, isPm]);
 
   useEffect(() => {
     setPipelineProposals((prev) =>
@@ -2053,8 +2086,26 @@ export default function App() {
   };
 
   if (!authUser) {
+    if (!hasSeenTutorial) {
+      return (
+        <TutorialOnboarding
+          onComplete={() => {
+            if (typeof window !== "undefined") {
+              window.localStorage.setItem("fithub.seenTutorial", "1");
+            }
+            setHasSeenTutorial(true);
+          }}
+        />
+      );
+    }
+
     if (!onboardingRole) {
-      return <OnboardingScreen onSelectRole={setOnboardingRole} />;
+      return (
+        <OnboardingScreen
+          onSelectRole={setOnboardingRole}
+          onOpenTutorial={() => setHasSeenTutorial(false)}
+        />
+      );
     }
 
     return (
@@ -2064,6 +2115,19 @@ export default function App() {
       />
     );
   }
+
+  if (authUser.role === "dev") {
+    return (
+      <DevTrackSelector
+        onSelectTrack={(track) =>
+          setAuthUser((prev) => (prev ? { ...prev, role: track } : prev))
+        }
+      />
+    );
+  }
+
+  // By this point role is guaranteed to not be "dev"
+  const resolvedRole = authUser.role as "pm" | "dev-fe" | "dev-be";
 
   return (
     <div className="h-screen flex flex-col bg-[#F5F5F5] text-gray-900 overflow-hidden">
@@ -2083,207 +2147,167 @@ export default function App() {
         {/* Pipeline tab */}
         {activeTab === "pipeline" && (
           <div className="flex flex-1 flex-col overflow-hidden">
-            {isPm && (
-              <section className="mx-6 mt-6 mb-3 rounded-2xl border border-gray-200 bg-white p-5">
-                <div className="mb-4 flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-gray-900">
-                    프로젝트 생성 후 파이프라인 생성
-                  </h3>
-                  <span className="rounded-md bg-gray-100 px-2 py-1 text-xs text-gray-700">
-                    활성 프로젝트 ID: {activeProjectId ?? "없음"}
-                  </span>
-                </div>
+            {/* First-time "create project" dialog — PM only, shown once */}
+            <CustomDialog
+              open={showCreateProjectDialog}
+              variant="confirm"
+              title="프로젝트를 생성하시겠습니까?"
+              description="파이프라인 워크스페이스를 만들려면 먼저 프로젝트를 생성해야 합니다."
+              confirmLabel="프로젝트 생성"
+              cancelLabel="나중에"
+              onConfirm={() => {
+                setShowCreateProjectDialog(false);
+                setPipelineLandingStep("create-project");
+              }}
+              onCancel={() => {
+                setShowCreateProjectDialog(false);
+                setPipelineLandingStep("project-list");
+              }}
+            />
 
-                <div className="grid gap-4 lg:grid-cols-2">
-                  <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                    <p className="text-xs font-semibold text-gray-900">1) 프로젝트 생성</p>
-                    <div className="mt-3 space-y-2">
-                      <input
-                        type="text"
-                        value={pmProjectNameInput}
-                        onChange={(event) => setPmProjectNameInput(event.target.value)}
-                        placeholder="프로젝트 이름"
-                        className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:border-gray-900 focus:outline-none"
-                      />
-                      <textarea
-                        rows={3}
-                        value={pmProjectDescriptionInput}
-                        onChange={(event) =>
-                          setPmProjectDescriptionInput(event.target.value)
-                        }
-                        placeholder="프로젝트 설명"
-                        className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:border-gray-900 focus:outline-none"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          void handleCreateProjectByPm();
-                        }}
-                        disabled={isCreatingProject}
-                        className="inline-flex items-center justify-center rounded-lg bg-gray-900 px-3 py-2 text-sm font-semibold text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {isCreatingProject ? "생성 중..." : "프로젝트 생성"}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                    <p className="text-xs font-semibold text-gray-900">2) 파이프라인 생성</p>
-                    <div className="mt-3 space-y-2">
-                      <input
-                        type="file"
-                        accept=".pdf,application/pdf"
-                        onChange={handlePmPipelineFileSelect}
-                        disabled={!activeProjectId || isGeneratingPipeline}
-                        className="block w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-gray-100 file:px-2.5 file:py-1 file:text-xs file:font-medium"
-                      />
-                      {pmPipelineFile && (
-                        <p className="text-xs text-gray-600">
-                          선택 파일: {pmPipelineFile.name}
-                        </p>
-                      )}
-                      <select
-                        value={pmPipelineCategory}
-                        onChange={(event) =>
-                          setPmPipelineCategory(
-                            event.target.value as PipelineGenerationCategory,
-                          )
-                        }
-                        disabled={!activeProjectId || isGeneratingPipeline}
-                        className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:border-gray-900 focus:outline-none"
-                      >
-                        <option value="FE">FE</option>
-                        <option value="BE">BE</option>
-                      </select>
-                      <input
-                        type="text"
-                        value={pmPipelineTechStack}
-                        onChange={(event) => setPmPipelineTechStack(event.target.value)}
-                        placeholder="기술 스택 (예: react, expo)"
-                        disabled={!activeProjectId || isGeneratingPipeline}
-                        className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:border-gray-900 focus:outline-none"
-                      />
-                      <textarea
-                        rows={3}
-                        value={pmPipelineRequirements}
-                        onChange={(event) =>
-                          setPmPipelineRequirements(event.target.value)
-                        }
-                        placeholder="요구사항"
-                        disabled={!activeProjectId || isGeneratingPipeline}
-                        className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:border-gray-900 focus:outline-none"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          void handleGeneratePmPipeline();
-                        }}
-                        disabled={!activeProjectId || isGeneratingPipeline}
-                        className="inline-flex items-center justify-center rounded-lg bg-[#6366F1] px-3 py-2 text-sm font-semibold text-white hover:bg-[#5558E3] disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {isGeneratingPipeline ? "생성 중..." : "파이프라인 생성"}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </section>
-            )}
-
-            <div className={isPm ? "flex-1 overflow-hidden px-6 pb-6" : "flex-1 overflow-hidden"}>
-              <PipelineCanvas
-                role={authUser.role}
-                features={features}
-                cardPositions={cardPositions}
-                onUpdateCardPosition={updateCardPosition}
-                pipelineProposals={pipelineProposals}
+            {/* PM: show landing wizard until canvas step */}
+            {isPm && pipelineLandingStep !== "canvas" && (
+              <PipelineLanding
+                step={pipelineLandingStep}
+                projects={demoProjects}
+                selectedProject={selectedDemoProject}
+                isCreatingProject={isCreatingProject}
                 isGeneratingPipeline={isGeneratingPipeline}
                 generatingFileName={generatingFileName}
-                // PM actions
-                onEditFeature={(featureId, newName) =>
-                  createPipelineProposal({
-                    action: "edit-feature",
-                    featureId,
-                    proposedValue: newName,
-                  })
-                }
-                onDeleteFeature={(featureId) =>
-                  createPipelineProposal({ action: "delete-feature", featureId })
-                }
-                onAddTask={(featureId, taskTitle) =>
-                  createPipelineProposal({
-                    action: "add-task",
-                    featureId,
-                    proposedValue: taskTitle,
-                  })
-                }
-                onEditTask={(featureId, taskId, newTitle) =>
-                  createPipelineProposal({
-                    action: "edit-task",
-                    featureId,
-                    taskId,
-                    proposedValue: newTitle,
-                  })
-                }
-                onDeleteTask={(featureId, taskId) =>
-                  createPipelineProposal({
-                    action: "delete-task",
-                    featureId,
-                    taskId,
-                  })
-                }
-                onTogglePmTaskConfirm={togglePmTaskConfirm}
-                onAddNewFeature={(featureName) =>
-                  createPipelineProposal({
-                    action: "add-feature",
-                    proposedValue: featureName,
-                  })
-                }
-                // Dev actions
-                onToggleDevTaskCheck={(featureId, taskId) => {
-                  void toggleDevTaskCheck(featureId, taskId);
+                onSelectProject={(proj) => {
+                  setSelectedDemoProject(proj);
+                  syncActiveProjectId(proj.id);
+                  const existing = demoPipelines.find((p) => p.projectId === proj.id);
+                  setPipelineLandingStep(existing ? "canvas" : "pipeline-form");
                 }}
-                onPublishTaskToGithubIssue={(featureId, taskId) => {
-                  void publishTaskToGithubIssue(featureId, taskId);
-                }}
-                onCreateTaskProposal={(featureId, proposedValue) =>
-                  createPipelineProposal({
-                    action: "add-task",
-                    featureId,
-                    proposedValue,
-                    role: authUser.role,
-                  })
-                }
-                // Proposal panel
-                onAddPipelineProposalMessage={(proposalId, content) =>
-                  addPipelineProposalMessage(
-                    proposalId,
-                    isPm ? "pm" : authUser.role,
-                    content,
-                  )
-                }
-                onUpdatePipelineProposalMessage={(proposalId, messageId, content) =>
-                  updatePipelineProposalMessage(
-                    proposalId,
-                    messageId,
-                    isPm ? "pm" : authUser.role,
-                    content,
-                  )
-                }
-                onDeletePipelineProposalMessage={(proposalId, messageId) =>
-                  deletePipelineProposalMessage(
-                    proposalId,
-                    messageId,
-                    isPm ? "pm" : authUser.role,
-                  )
-                }
-                onUpdatePipelineProposalValue={updatePipelineProposalValue}
-                onTogglePipelineProposalConfirm={
-                  isPm
-                    ? togglePipelineProposalConfirmByPm
-                    : togglePipelineProposalConfirmByDev
-                }
+                onGoToCreateProject={() => setPipelineLandingStep("create-project")}
+                onCreateProject={(params) => handleCreateProjectByPm(params)}
+                onGeneratePipeline={(params) => handleGeneratePmPipeline(params)}
+                onCancelCreateProject={() => setPipelineLandingStep("project-list")}
+                onBackToPipelines={() => setPipelineLandingStep("project-list")}
+                onPushToast={pushToast}
               />
-            </div>
+            )}
+
+            {/* Canvas: shown for DEV always, or when PM has completed the wizard */}
+            {(!isPm || pipelineLandingStep === "canvas") && (
+              <div className="flex flex-1 flex-col overflow-hidden">
+                {/* PM breadcrumb bar */}
+                {isPm && selectedDemoProject && (
+                  <div className="flex shrink-0 items-center gap-2 border-b border-gray-100 bg-white px-5 py-2">
+                    <button
+                      onClick={() => setPipelineLandingStep("project-list")}
+                      className="flex items-center gap-1 text-xs text-gray-400 transition-colors hover:text-gray-700"
+                    >
+                      <ChevronLeft className="h-3 w-3" /> 프로젝트 목록
+                    </button>
+                    <span className="text-xs text-gray-200">/</span>
+                    <span className="text-xs font-medium text-gray-900">{selectedDemoProject.name}</span>
+                    <button
+                      onClick={() => setPipelineLandingStep("pipeline-form")}
+                      className="ml-auto text-xs text-indigo-500 transition-colors hover:text-indigo-700"
+                    >
+                      + 파이프라인 추가
+                    </button>
+                  </div>
+                )}
+                <div className="flex-1 overflow-hidden">
+                  <PipelineCanvas
+                    role={authUser.role}
+                    features={features}
+                    cardPositions={cardPositions}
+                    onUpdateCardPosition={updateCardPosition}
+                    pipelineProposals={pipelineProposals}
+                    isGeneratingPipeline={isGeneratingPipeline}
+                    generatingFileName={generatingFileName}
+                    // PM actions
+                    onEditFeature={(featureId, newName) =>
+                      createPipelineProposal({
+                        action: "edit-feature",
+                        featureId,
+                        proposedValue: newName,
+                      })
+                    }
+                    onDeleteFeature={(featureId) =>
+                      createPipelineProposal({ action: "delete-feature", featureId })
+                    }
+                    onAddTask={(featureId, taskTitle) =>
+                      createPipelineProposal({
+                        action: "add-task",
+                        featureId,
+                        proposedValue: taskTitle,
+                      })
+                    }
+                    onEditTask={(featureId, taskId, newTitle) =>
+                      createPipelineProposal({
+                        action: "edit-task",
+                        featureId,
+                        taskId,
+                        proposedValue: newTitle,
+                      })
+                    }
+                    onDeleteTask={(featureId, taskId) =>
+                      createPipelineProposal({
+                        action: "delete-task",
+                        featureId,
+                        taskId,
+                      })
+                    }
+                    onTogglePmTaskConfirm={togglePmTaskConfirm}
+                    onAddNewFeature={(featureName) =>
+                      createPipelineProposal({
+                        action: "add-feature",
+                        proposedValue: featureName,
+                      })
+                    }
+                    // Dev actions
+                    onToggleDevTaskCheck={(featureId, taskId) => {
+                      void toggleDevTaskCheck(featureId, taskId);
+                    }}
+                    onPublishTaskToGithubIssue={(featureId, taskId) => {
+                      void publishTaskToGithubIssue(featureId, taskId);
+                    }}
+                    onCreateTaskProposal={(featureId, proposedValue) =>
+                      createPipelineProposal({
+                        action: "add-task",
+                        featureId,
+                        proposedValue,
+                        role: resolvedRole,
+                      })
+                    }
+                    // Proposal panel
+                    onAddPipelineProposalMessage={(proposalId, content) =>
+                      addPipelineProposalMessage(
+                        proposalId,
+                        isPm ? "pm" : resolvedRole,
+                        content,
+                      )
+                    }
+                    onUpdatePipelineProposalMessage={(proposalId, messageId, content) =>
+                      updatePipelineProposalMessage(
+                        proposalId,
+                        messageId,
+                        isPm ? "pm" : resolvedRole,
+                        content,
+                      )
+                    }
+                    onDeletePipelineProposalMessage={(proposalId, messageId) =>
+                      deletePipelineProposalMessage(
+                        proposalId,
+                        messageId,
+                        isPm ? "pm" : resolvedRole,
+                      )
+                    }
+                    onUpdatePipelineProposalValue={updatePipelineProposalValue}
+                    onTogglePipelineProposalConfirm={
+                      isPm
+                        ? togglePipelineProposalConfirmByPm
+                        : togglePipelineProposalConfirmByDev
+                    }
+                  />
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -2346,18 +2370,18 @@ export default function App() {
               isConnectingGithubRepo={isConnectingGithubRepo}
               featureQuestions={featureQuestions}
               onAddQuestionMessage={(questionId, content) =>
-                addQuestionMessage(questionId, authUser.role, content)
+                addQuestionMessage(questionId, resolvedRole, content)
               }
               onUpdateQuestionMessage={(questionId, messageId, content) =>
                 updateQuestionMessage(
                   questionId,
                   messageId,
-                  authUser.role,
+                  resolvedRole,
                   content,
                 )
               }
               onDeleteQuestionMessage={(questionId, messageId) =>
-                deleteQuestionMessage(questionId, messageId, authUser.role)
+                deleteQuestionMessage(questionId, messageId, resolvedRole)
               }
               onConfirmQuestionByDev={confirmQuestionByDev}
               onSaveProjectName={saveProjectName}
@@ -2454,18 +2478,18 @@ export default function App() {
                 isConnectingGithubRepo={isConnectingGithubRepo}
                 featureQuestions={featureQuestions}
                 onAddQuestionMessage={(questionId, content) =>
-                  addQuestionMessage(questionId, authUser.role, content)
+                  addQuestionMessage(questionId, resolvedRole, content)
                 }
                 onUpdateQuestionMessage={(questionId, messageId, content) =>
                   updateQuestionMessage(
                     questionId,
                     messageId,
-                    authUser.role,
+                    resolvedRole,
                     content,
                   )
                 }
                 onDeleteQuestionMessage={(questionId, messageId) =>
-                  deleteQuestionMessage(questionId, messageId, authUser.role)
+                  deleteQuestionMessage(questionId, messageId, resolvedRole)
                 }
                 onConfirmQuestionByDev={confirmQuestionByDev}
                 onSaveProjectName={saveProjectName}
