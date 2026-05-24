@@ -59,7 +59,7 @@ export default function LoginScreen({ role, onBack }: LoginScreenProps) {
           <div className={`bg-gradient-to-br ${roleGradient[role]} px-7 py-5 flex items-center gap-3`}>
             <img
               src={fithubServiceIcon}
-              alt="Fithub Service Icon"
+              alt="Fithub Icon"
               className="h-9 w-9 rounded-xl bg-white/20 p-0.5"
             />
             <div>

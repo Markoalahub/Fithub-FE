@@ -1,51 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none" role="img" aria-label="Fithub Service Icon">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#4338CA"/>
-      <stop offset="100%" stop-color="#6366F1"/>
-    </linearGradient>
-    <filter id="shadow" x="-15%" y="-15%" width="130%" height="130%">
-      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#312E81" flood-opacity="0.25"/>
-    </filter>
-  </defs>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Fithub Icon">
+  <rect width="512" height="512" rx="112" fill="#2F343B" />
 
-  <!-- Background rounded square -->
-  <rect width="512" height="512" rx="115" fill="url(#bg)" filter="url(#shadow)"/>
+  <path d="M176 100 H350 A26 26 0 0 1 350 152 H176 Z" fill="#FFFFFF" />
+  <path d="M176 230 H310 A26 26 0 0 1 310 282 H176 Z" fill="#FFFFFF" />
+  <path d="M176 360 H275 A23 23 0 0 1 275 406 H176 Z" fill="#FFFFFF" />
 
-  <!-- Subtle top highlight -->
-  <rect x="2" y="2" width="508" height="200" rx="113" fill="white" fill-opacity="0.07"/>
+  <line x1="376" y1="126" x2="396" y2="126" stroke="#FFFFFF" stroke-width="12" stroke-linecap="round" />
+  <line x1="336" y1="256" x2="356" y2="256" stroke="#FFFFFF" stroke-width="10" stroke-linecap="round" />
+  <line x1="298" y1="383" x2="316" y2="383" stroke="#FFFFFF" stroke-width="9" stroke-linecap="round" />
 
-  <!-- Connector: PM to AI -->
-  <path d="M186 256 Q221 256 221 256" stroke="white" stroke-width="7" stroke-linecap="round" stroke-opacity="0.6"/>
+  <circle cx="420" cy="126" r="24" fill="none" stroke="#FFFFFF" stroke-width="12" />
+  <circle cx="378" cy="256" r="22" fill="none" stroke="#FFFFFF" stroke-width="10" />
+  <circle cx="336" cy="383" r="20" fill="none" stroke="#FFFFFF" stroke-width="9" />
 
-  <!-- Connector: AI to DEV -->
-  <path d="M291 256 Q326 256 326 256" stroke="white" stroke-width="7" stroke-linecap="round" stroke-opacity="0.6"/>
-
-  <!-- PM node (left circle) -->
-  <circle cx="148" cy="256" r="40" fill="white" fill-opacity="0.15"/>
-  <circle cx="148" cy="256" r="30" fill="white"/>
-  <!-- PM icon: person -->
-  <circle cx="148" cy="247" r="8" fill="#4338CA"/>
-  <path d="M132 268 Q148 260 164 268" stroke="#4338CA" stroke-width="4" stroke-linecap="round" fill="none"/>
-
-  <!-- AI node (center diamond) -->
-  <g transform="translate(256,256)">
-    <rect x="-32" y="-32" width="64" height="64" rx="8" fill="white" fill-opacity="0.2" transform="rotate(45)"/>
-    <rect x="-24" y="-24" width="48" height="48" rx="6" fill="white" transform="rotate(45)"/>
-    <!-- Lightning bolt for AI -->
-    <path d="M4 -12 L-4 0 L2 0 L-4 12 L8 -2 L1 -2 Z" fill="#4338CA" stroke="none"/>
-  </g>
-
-  <!-- DEV node (right circle) -->
-  <circle cx="364" cy="256" r="40" fill="white" fill-opacity="0.15"/>
-  <circle cx="364" cy="256" r="30" fill="white"/>
-  <!-- DEV icon: code brackets -->
-  <path d="M352 249 L344 256 L352 263" stroke="#4338CA" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-  <path d="M376 249 L384 256 L376 263" stroke="#4338CA" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-  <line x1="360" y1="246" x2="368" y2="266" stroke="#4338CA" stroke-width="3" stroke-linecap="round"/>
-
-  <!-- Labels -->
-  <text x="148" y="314" text-anchor="middle" font-family="system-ui,-apple-system,sans-serif" font-size="20" font-weight="600" fill="white" fill-opacity="0.7">PM</text>
-  <text x="256" y="318" text-anchor="middle" font-family="system-ui,-apple-system,sans-serif" font-size="20" font-weight="600" fill="white" fill-opacity="0.7">AI</text>
-  <text x="364" y="314" text-anchor="middle" font-family="system-ui,-apple-system,sans-serif" font-size="20" font-weight="600" fill="white" fill-opacity="0.7">DEV</text>
+  <rect x="112" y="92" width="72" height="328" rx="30" fill="#FFFFFF" />
 </svg>

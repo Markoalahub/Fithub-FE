@@ -50,7 +50,7 @@ export default function AppHeader({
       <div className="flex items-center gap-2.5 shrink-0">
         <img
           src={fithubServiceIcon}
-          alt="Fithub Service Icon"
+          alt="Fithub Icon"
           className="h-6 w-6"
         />
         <span
