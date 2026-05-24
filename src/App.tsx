@@ -1,22 +1,30 @@
 import { useEffect, useRef, useState } from "react";
+import { ChevronLeft } from "lucide-react";
 import PMDashboard from "./pages/PM/PMDashboard.tsx";
 import DevDashboard from "@/src/pages/Dev/DevDashboard";
 import AdminDashboard from "./pages/Admin/AdminDashboard.tsx";
 import OnboardingScreen from "./pages/Auth/OnboardingScreen";
 import LoginScreen from "./pages/Auth/LoginScreen.tsx";
+import TutorialOnboarding from "./pages/Auth/TutorialOnboarding";
+import DevTrackSelector from "./pages/Auth/DevTrackSelector";
 import AppHeader from "./components/layout/AppHeader";
 import MyInfoSection from "./components/MyInfoSection";
 import PipelineCanvas from "./components/PipelineCanvas";
+import PipelineLanding from "./components/PipelineLanding";
+import CustomDialog from "./components/CustomDialog";
+import type { DemoProject, PipelineCategoryOption } from "./components/PipelineLanding";
 import {
+  createProject,
   createIssueFromPipelineStep,
   fetchAvailableGithubRepositories,
   fetchProjectGithubRepositories,
-  generateAllPipelines,
+  generateProjectPipeline,
   parseGithubRepoInput,
   syncIssueToGithub,
   syncProjectGithubRepositories,
   updatePipelineStep,
-  type Pipeline,
+  type GeneratedPipelineFeature,
+  type PipelineGenerationCategory,
   type RepositoryCategory,
 } from "./services/api";
 import type {
@@ -94,14 +102,13 @@ const buildPipelineProposalIntroMessage = ({
 const makeTaskId = (featureId: number) =>
   `${featureId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 
-const PROJECT_ID_ENV = Number(import.meta.env.VITE_PROJECT_ID ?? 1);
-const DEFAULT_PROJECT_ID =
-  Number.isFinite(PROJECT_ID_ENV) && PROJECT_ID_ENV > 0 ? PROJECT_ID_ENV : 1;
 const TRACK_CATEGORY: Record<DevTrack, RepositoryCategory> = {
   frontend: "FE",
   backend: "BE",
 };
-const GITHUB_CALLBACK_PATH = "/auth/github/callback";
+const OAUTH_CALLBACK_PATH = "/auth/oauth/callback";
+const LEGACY_GITHUB_CALLBACK_PATH = "/auth/github/callback";
+const ACTIVE_PROJECT_ID_STORAGE_KEY = "fithub.activeProjectId";
 
 const LEGACY_PROJECT_NAME_STORAGE_KEY = "fithub.projectName";
 const LEGACY_CONNECTED_GITHUB_REPO_STORAGE_KEY = "fithub.connectedGithubRepo";
@@ -109,6 +116,25 @@ const getProjectNameStorageKey = (track: "frontend" | "backend") =>
   `${LEGACY_PROJECT_NAME_STORAGE_KEY}.${track}`;
 const getConnectedGithubRepoStorageKey = (track: "frontend" | "backend") =>
   `${LEGACY_CONNECTED_GITHUB_REPO_STORAGE_KEY}.${track}`;
+
+const parsePositiveNumber = (value: string | null | undefined) => {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue) || numericValue <= 0) {
+    return null;
+  }
+  return numericValue;
+};
+
+const readStoredActiveProjectId = () => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const fromStorage = parsePositiveNumber(
+    window.localStorage.getItem(ACTIVE_PROJECT_ID_STORAGE_KEY),
+  );
+  return fromStorage;
+};
 
 const readStoredProjectName = (track: "frontend" | "backend") => {
   if (typeof window === "undefined") {
@@ -207,44 +233,36 @@ const formatFileSize = (size: number) => {
 };
 
 const normalizeUserRole = (value: string | null | undefined): UserRole => {
-  if (value === "pm" || value === "dev-fe" || value === "dev-be") {
+  if (value === "pm" || value === "dev-fe" || value === "dev-be" || value === "dev") {
     return value;
   }
-  return "dev-fe";
+  return "dev";
 };
 
 const normalizeCategory = (value?: string) => (value ?? "").trim().toUpperCase();
 
-const mapGeneratedPipelinesToFeatures = (pipelines: Pipeline[]): Feature[] =>
-  [...pipelines]
-    .sort((a, b) => a.id - b.id)
-    .map((pipeline, index) => {
+const mapGeneratedFeatsToFeatures = (
+  feats: GeneratedPipelineFeature[],
+): Feature[] =>
+  [...feats]
+    .sort((a, b) => a.priority - b.priority || a.featId - b.featId)
+    .map((feat, index) => {
       const featureId = index + 1;
-      const featureName = pipeline.category
-        ? `${pipeline.category} Pipeline`
-        : `Pipeline ${pipeline.id}`;
+      const featureName = feat.featTitle?.trim() || `Feature ${feat.featId}`;
+      const details =
+        feat.featDetails.length > 0 ? feat.featDetails : ["세부 작업 내용 없음"];
 
       return {
         id: featureId,
         name: featureName,
-        tasks: pipeline.steps.map((step, stepIndex) => {
-          const stepTitle = step.title?.trim() || `Step ${stepIndex + 1}`;
-          const stepDescription = step.description?.trim();
-          const isCompleted = Boolean(step.isCompleted);
-
-          return {
-            id: `${featureId}-${step.id || stepIndex + 1}`,
-            title: stepTitle,
-            description: stepDescription,
-            completed: isCompleted,
-            devChecked: isCompleted,
-            pmConfirmed: false,
-            isAiSuggested:
-              normalizeCategory(step.origin) === "AI_GENERATED",
-            pipelineId: step.pipelineId || pipeline.id,
-            pipelineStepId: step.id || undefined,
-          };
-        }),
+        tasks: details.map((detail, detailIndex) => ({
+          id: `${featureId}-${detailIndex + 1}`,
+          title: detail.trim() || `Task ${detailIndex + 1}`,
+          completed: false,
+          devChecked: false,
+          pmConfirmed: false,
+          isAiSuggested: true,
+        })),
       };
     });
 
@@ -454,6 +472,9 @@ type ToastItem = {
   tone: ToastTone;
 };
 
+type DemoPipeline = { projectId: number; categories: Array<"FE" | "BE"> };
+type PipelineLandingStep = "project-list" | "create-project" | "pipeline-form" | "canvas";
+
 const devTrackLabel: Record<DevTrack, string> = {
   frontend: "프론트엔드",
   backend: "백엔드",
@@ -462,6 +483,12 @@ const devTrackLabel: Record<DevTrack, string> = {
 export default function App() {
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [onboardingRole, setOnboardingRole] = useState<UserRole | null>(null);
+  const [hasSeenTutorial, setHasSeenTutorial] = useState<boolean>(
+    () => typeof window !== "undefined" && window.localStorage.getItem("fithub.seenTutorial") === "1",
+  );
+  const [activeProjectId, setActiveProjectId] = useState<number | null>(() =>
+    readStoredActiveProjectId(),
+  );
   const [activeTab, setActiveTab] = useState<AppTab>("pipeline");
   const [pmSelectedTrack, setPmSelectedTrack] = useState<DevTrack>("frontend");
   const [frontendFeatures, setFrontendFeatures] =
@@ -485,8 +512,18 @@ export default function App() {
   const [knowledgeDocs, setKnowledgeDocs] = useState<KnowledgeDocument[]>([]);
   const [isGeneratingPipeline, setIsGeneratingPipeline] = useState(false);
   const [isConnectingGithubRepo, setIsConnectingGithubRepo] = useState(false);
+  const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [generatingFileName, setGeneratingFileName] = useState<string | null>(
     null,
+  );
+  // Pipeline landing flow state
+  const [demoProjects, setDemoProjects] = useState<DemoProject[]>([]);
+  const [selectedDemoProject, setSelectedDemoProject] = useState<DemoProject | null>(null);
+  const [demoPipelines, setDemoPipelines] = useState<DemoPipeline[]>([]);
+  const [pipelineLandingStep, setPipelineLandingStep] = useState<PipelineLandingStep>("project-list");
+  const [showCreateProjectDialog, setShowCreateProjectDialog] = useState(false);
+  const [hasShownCreateProjectDialog, setHasShownCreateProjectDialog] = useState<boolean>(
+    () => typeof window !== "undefined" && window.localStorage.getItem("fithub.shownCreateProjectDialog") === "1",
   );
   const [frontendPipelineProposals, setFrontendPipelineProposals] = useState<
     PipelineProposal[]
@@ -619,6 +656,38 @@ export default function App() {
     setBackendConnectedGithubRepo(nextRepo);
   };
 
+  const syncActiveProjectId = (projectId: number | null) => {
+    setActiveProjectId(projectId);
+    if (typeof window === "undefined") {
+      return;
+    }
+    if (!projectId) {
+      window.localStorage.removeItem(ACTIVE_PROJECT_ID_STORAGE_KEY);
+      return;
+    }
+    window.localStorage.setItem(ACTIVE_PROJECT_ID_STORAGE_KEY, String(projectId));
+  };
+
+  const setTrackFeatures = (track: DevTrack, nextFeatures: Feature[]) => {
+    if (track === "frontend") {
+      setFrontendFeatures(nextFeatures);
+      return;
+    }
+    setBackendFeatures(nextFeatures);
+  };
+
+  const resetTrackCollaborationState = (track: DevTrack) => {
+    if (track === "frontend") {
+      setFrontendPipelineProposals([]);
+      setFrontendFeatureQuestions([]);
+      setFrontendCardPositions(new Map());
+      return;
+    }
+    setBackendPipelineProposals([]);
+    setBackendFeatureQuestions([]);
+    setBackendCardPositions(new Map());
+  };
+
   const pushToast = (message: string, tone: ToastTone = "info") => {
     const id = createId();
     setToasts((prev) => [...prev.slice(-3), { id, message, tone }]);
@@ -637,34 +706,61 @@ export default function App() {
     if (typeof window === "undefined") {
       return;
     }
-    if (window.location.pathname !== GITHUB_CALLBACK_PATH) {
+    const callbackPaths = new Set([OAUTH_CALLBACK_PATH, LEGACY_GITHUB_CALLBACK_PATH]);
+    if (!callbackPaths.has(window.location.pathname)) {
       return;
     }
 
     const params = new URLSearchParams(window.location.search);
-    const accessToken = params.get("accessToken")?.trim();
-    const githubAccessToken = params.get("githubAccessToken")?.trim();
-    const refreshToken = params.get("refreshToken")?.trim();
+    const readParam = (...keys: string[]) => {
+      for (const key of keys) {
+        const value = params.get(key)?.trim();
+        if (value) {
+          return value;
+        }
+      }
+      return "";
+    };
+
+    const accessToken = readParam("accessToken");
+    const refreshToken = readParam("refreshToken");
+    const githubAccessToken = readParam("gitAccessToken", "githubAccessToken");
+    const kakaoAccessToken = readParam("kakaoAccessToken");
     const role = normalizeUserRole(params.get("role"));
-    const userId = params.get("userId")?.trim() || createId();
-    const username = params.get("username")?.trim() || "GitHub User";
-    const email = params.get("email")?.trim() || "";
+    const providerFromParam = params.get("provider")?.trim().toLowerCase();
+    const provider: AuthUser["provider"] =
+      providerFromParam === "kakao" || kakaoAccessToken ? "kakao" : "github";
+    const userId = readParam("userId", "id", "user_id") || createId();
+    const username =
+      readParam("username", "name") ||
+      (provider === "kakao" ? "Kakao User" : "GitHub User");
+    const email = readParam("email");
 
     if (!accessToken) {
-      pushToast("GitHub 로그인 토큰을 받지 못했습니다.", "warning");
+      pushToast("OAuth 로그인 토큰을 받지 못했습니다.", "warning");
       window.history.replaceState({}, "", "/");
       return;
     }
 
     window.localStorage.setItem("fithub.apiToken", accessToken);
     window.localStorage.setItem("fithub.authToken", accessToken);
-    if (githubAccessToken) {
+
+    if (refreshToken) {
+      window.localStorage.setItem("fithub.refreshToken", refreshToken);
+    } else {
+      window.localStorage.removeItem("fithub.refreshToken");
+    }
+
+    if (provider === "github" && githubAccessToken) {
       window.localStorage.setItem("fithub.githubAccessToken", githubAccessToken);
     } else {
       window.localStorage.removeItem("fithub.githubAccessToken");
     }
-    if (refreshToken) {
-      window.localStorage.setItem("fithub.refreshToken", refreshToken);
+
+    if (provider === "kakao" && kakaoAccessToken) {
+      window.localStorage.setItem("fithub.kakaoAccessToken", kakaoAccessToken);
+    } else {
+      window.localStorage.removeItem("fithub.kakaoAccessToken");
     }
 
     const nextUser: AuthUser = {
@@ -672,7 +768,7 @@ export default function App() {
       role,
       name: username,
       email,
-      provider: "github",
+      provider,
     };
 
     setAuthUser(nextUser);
@@ -680,10 +776,16 @@ export default function App() {
     setActiveTab("pipeline");
     if (role === "pm") {
       setPmSelectedTrack("frontend");
+      setPmSubSection("ai");
     }
 
     window.history.replaceState({}, "", "/");
-    pushToast("GitHub 로그인에 성공했습니다.", "success");
+    pushToast(
+      provider === "kakao"
+        ? "카카오 로그인에 성공했습니다."
+        : "GitHub 로그인에 성공했습니다.",
+      "success",
+    );
   }, []);
 
   useEffect(() => {
@@ -703,6 +805,7 @@ export default function App() {
       window.localStorage.removeItem("fithub.apiToken");
       window.localStorage.removeItem("fithub.authToken");
       window.localStorage.removeItem("fithub.githubAccessToken");
+      window.localStorage.removeItem("fithub.kakaoAccessToken");
       window.localStorage.removeItem("fithub.refreshToken");
     }
     pushToast("로그아웃 되었습니다.", "info");
@@ -764,12 +867,19 @@ export default function App() {
       pushToast("연결할 GitHub 저장소를 입력해 주세요.", "warning");
       return;
     }
+    if (!activeProjectId) {
+      pushToast(
+        "기획자가 프로젝트를 생성한 뒤에 저장소를 연결할 수 있습니다.",
+        "warning",
+      );
+      return;
+    }
 
     const category = TRACK_CATEGORY[activeTrack];
     setIsConnectingGithubRepo(true);
     try {
       const availableResponse =
-        await fetchAvailableGithubRepositories(DEFAULT_PROJECT_ID);
+        await fetchAvailableGithubRepositories(activeProjectId);
       const repository = resolveRepositoryCandidate(
         availableResponse.repositories,
         normalizedInput,
@@ -781,7 +891,7 @@ export default function App() {
       }
 
       const projectRepositories = await fetchProjectGithubRepositories(
-        DEFAULT_PROJECT_ID,
+        activeProjectId,
       );
       const existingRepository = projectRepositories.find(
         (repo) =>
@@ -793,7 +903,7 @@ export default function App() {
       const syncedRepositories =
         existingRepository
           ? [existingRepository]
-          : await syncProjectGithubRepositories(DEFAULT_PROJECT_ID, {
+          : await syncProjectGithubRepositories(activeProjectId, {
               githubRepoIds: [repository.id],
               categoryMappings: [
                 {
@@ -846,7 +956,7 @@ export default function App() {
       }
 
       pushToast(
-        `${connectedRepository.fullName} 저장소를 프로젝트(${DEFAULT_PROJECT_ID})에 연결했습니다.`,
+        `${connectedRepository.fullName} 저장소를 프로젝트(${activeProjectId})에 연결했습니다.`,
         "success",
       );
     } catch (error) {
@@ -986,69 +1096,70 @@ export default function App() {
       return;
     }
 
-    if (!connectedGithubRepo) {
-      pushToast(
-        "먼저 프로젝트 설정에서 GitHub 저장소를 연결한 뒤 파이프라인을 생성해 주세요.",
-        "warning",
-      );
-      if (isDevUser) {
-        setActiveTab("settings");
-      }
+    setKnowledgeDocs((prev) => [
+      {
+        id: createId(),
+        name: file.name,
+        uploadedAt: new Date().toLocaleDateString("ko-KR"),
+        sizeLabel: formatFileSize(file.size),
+      },
+      ...prev,
+    ]);
+
+    pushToast("AI 지식 베이스 문서를 등록했습니다.", "success");
+  };
+
+  const handleCreateProjectByPm = async (params: { name: string; description: string }) => {
+    if (!isPm) return;
+
+    const projectNameInput = params.name.trim();
+    const descriptionInput = params.description.trim();
+
+    if (!projectNameInput) {
+      pushToast("프로젝트 이름을 입력해 주세요.", "warning");
       return;
     }
 
-    setIsGeneratingPipeline(true);
-    setGeneratingFileName(file.name);
-    setFeatures([]);
-    setPipelineProposals([]);
-    setFeatureQuestions([]);
-    pushToast(
-      `${devTrackLabel[activeTrack]} 파이프라인용 PDF를 분석하고 있습니다.`,
-      "info",
-    );
-
+    setIsCreatingProject(true);
     try {
-      const response = await generateAllPipelines({
-        projectId: DEFAULT_PROJECT_ID,
-        prdFile: file,
+      const response = await createProject({
+        name: projectNameInput,
+        description: descriptionInput,
       });
 
-      const category = TRACK_CATEGORY[activeTrack];
-      const pipelines = response.pipelines ?? [];
-      const categoryPipelines = pipelines.filter(
-        (pipeline) => normalizeCategory(pipeline.category) === category,
-      );
-      const selectedPipelines =
-        categoryPipelines.length > 0 ? categoryPipelines : pipelines;
-      const nextFeatures = mapGeneratedPipelinesToFeatures(selectedPipelines);
-
-      setFeatures(nextFeatures);
-      setActiveTab("pipeline");
-
-      setKnowledgeDocs((prev) => [
-        {
-          id: createId(),
-          name: file.name,
-          uploadedAt: new Date().toLocaleDateString("ko-KR"),
-          sizeLabel: formatFileSize(file.size),
-        },
-        ...prev,
-      ]);
-
-      if (nextFeatures.length === 0) {
-        pushToast("응답은 받았지만 생성된 파이프라인이 없습니다.", "warning");
-        return;
+      if (!response.projectId) {
+        throw new Error("프로젝트 ID를 확인할 수 없습니다.");
       }
 
-      if (categoryPipelines.length === 0) {
-        pushToast(
-          `${category} 카테고리 파이프라인이 없어 전체 결과를 표시합니다.`,
-          "info",
+      syncActiveProjectId(response.projectId);
+
+      const normalizedProjectName =
+        response.projectName.trim() || projectNameInput;
+      setFrontendProjectName(normalizedProjectName);
+      setBackendProjectName(normalizedProjectName);
+
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(
+          getProjectNameStorageKey("frontend"),
+          normalizedProjectName,
+        );
+        window.localStorage.setItem(
+          getProjectNameStorageKey("backend"),
+          normalizedProjectName,
         );
       }
 
+      const newProject: DemoProject = {
+        id: response.projectId,
+        name: normalizedProjectName,
+        description: descriptionInput,
+      };
+      setDemoProjects((prev) => [...prev, newProject]);
+      setSelectedDemoProject(newProject);
+      setPipelineLandingStep("pipeline-form");
+
       pushToast(
-        `${devTrackLabel[activeTrack]} 파이프라인 ${nextFeatures.length}개를 생성해 반영했습니다. (projectId=${DEFAULT_PROJECT_ID})`,
+        `프로젝트 "${normalizedProjectName}"을(를) 생성했습니다.`,
         "success",
       );
     } catch (error) {
@@ -1056,7 +1167,106 @@ export default function App() {
       pushToast(
         error instanceof Error
           ? error.message
-          : "파이프라인 생성 API 호출에 실패했습니다. 서버 상태를 확인해 주세요.",
+          : "프로젝트 생성에 실패했습니다.",
+        "warning",
+      );
+    } finally {
+      setIsCreatingProject(false);
+    }
+  };
+
+  const handleGeneratePmPipeline = async (params: {
+    file: File;
+    category: PipelineCategoryOption;
+    techStack: string;
+    requirements: string;
+  }) => {
+    if (!isPm) return;
+
+    if (!activeProjectId) {
+      pushToast("먼저 프로젝트를 생성해 주세요.", "warning");
+      return;
+    }
+
+    const apiCategories: PipelineGenerationCategory[] =
+      params.category === "ALL" ? ["FE", "BE"] : [params.category];
+
+    setIsGeneratingPipeline(true);
+    setGeneratingFileName(params.file.name);
+
+    for (const cat of apiCategories) {
+      const track: DevTrack = cat === "BE" ? "backend" : "frontend";
+      resetTrackCollaborationState(track);
+      setTrackFeatures(track, []);
+    }
+
+    pushToast(
+      params.category === "ALL"
+        ? "FE · BE 파이프라인을 분석하고 있습니다."
+        : `${devTrackLabel[params.category === "BE" ? "backend" : "frontend"]} 파이프라인 PDF를 분석하고 있습니다.`,
+      "info",
+    );
+
+    try {
+      let totalFeatures = 0;
+      for (const cat of apiCategories) {
+        const track: DevTrack = cat === "BE" ? "backend" : "frontend";
+        const response = await generateProjectPipeline({
+          file: params.file,
+          projectId: activeProjectId,
+          category: cat,
+          techStack: params.techStack,
+          requirements: params.requirements,
+        });
+
+        const nextFeatures = mapGeneratedFeatsToFeatures(response.feats);
+        setTrackFeatures(track, nextFeatures);
+        totalFeatures += nextFeatures.length;
+      }
+
+      setDemoPipelines((prev) => {
+        const existing = prev.find((p) => p.projectId === activeProjectId);
+        if (existing) {
+          return prev.map((p) =>
+            p.projectId === activeProjectId
+              ? { ...p, categories: [...new Set([...p.categories, ...apiCategories])] }
+              : p,
+          );
+        }
+        return [...prev, { projectId: activeProjectId, categories: apiCategories }];
+      });
+
+      setKnowledgeDocs((prev) => [
+        {
+          id: createId(),
+          name: params.file.name,
+          uploadedAt: new Date().toLocaleDateString("ko-KR"),
+          sizeLabel: formatFileSize(params.file.size),
+        },
+        ...prev,
+      ]);
+
+      setPmSelectedTrack(params.category === "BE" ? "backend" : "frontend");
+      setPipelineLandingStep("canvas");
+      setActiveTab("pipeline");
+
+      if (totalFeatures === 0) {
+        pushToast("응답은 받았지만 생성된 파이프라인이 없습니다.", "warning");
+        return;
+      }
+
+      pushToast(
+        params.category === "ALL"
+          ? "FE · BE 파이프라인을 모두 생성했습니다."
+          : `파이프라인 ${totalFeatures}개를 생성했습니다.`,
+        "success",
+      );
+    } catch (error) {
+      console.error(error);
+      pushToast(
+        error instanceof Error
+          ? error.message
+          : "파이프라인 생성 API 호출에 실패했습니다.",
         "warning",
       );
     } finally {
@@ -1087,6 +1297,16 @@ export default function App() {
       }, []),
     );
   }, [features]);
+
+  useEffect(() => {
+    if (!isPm || activeTab !== "pipeline" || hasShownCreateProjectDialog || demoProjects.length > 0) return;
+    setShowCreateProjectDialog(true);
+    setHasShownCreateProjectDialog(true);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("fithub.shownCreateProjectDialog", "1");
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, isPm]);
 
   useEffect(() => {
     setPipelineProposals((prev) =>
@@ -1866,8 +2086,26 @@ export default function App() {
   };
 
   if (!authUser) {
+    if (!hasSeenTutorial) {
+      return (
+        <TutorialOnboarding
+          onComplete={() => {
+            if (typeof window !== "undefined") {
+              window.localStorage.setItem("fithub.seenTutorial", "1");
+            }
+            setHasSeenTutorial(true);
+          }}
+        />
+      );
+    }
+
     if (!onboardingRole) {
-      return <OnboardingScreen onSelectRole={setOnboardingRole} />;
+      return (
+        <OnboardingScreen
+          onSelectRole={setOnboardingRole}
+          onOpenTutorial={() => setHasSeenTutorial(false)}
+        />
+      );
     }
 
     return (
@@ -1877,6 +2115,19 @@ export default function App() {
       />
     );
   }
+
+  if (authUser.role === "dev") {
+    return (
+      <DevTrackSelector
+        onSelectTrack={(track) =>
+          setAuthUser((prev) => (prev ? { ...prev, role: track } : prev))
+        }
+      />
+    );
+  }
+
+  // By this point role is guaranteed to not be "dev"
+  const resolvedRole = authUser.role as "pm" | "dev-fe" | "dev-be";
 
   return (
     <div className="h-screen flex flex-col bg-[#F5F5F5] text-gray-900 overflow-hidden">
@@ -1895,100 +2146,169 @@ export default function App() {
       <div className="flex-1 flex overflow-hidden pt-12">
         {/* Pipeline tab */}
         {activeTab === "pipeline" && (
-          <PipelineCanvas
-            role={authUser.role}
-            features={features}
-            cardPositions={cardPositions}
-            onUpdateCardPosition={updateCardPosition}
-            pipelineProposals={pipelineProposals}
-            isGeneratingPipeline={isGeneratingPipeline}
-            generatingFileName={generatingFileName}
-            // PM actions
-            onEditFeature={(featureId, newName) =>
-              createPipelineProposal({
-                action: "edit-feature",
-                featureId,
-                proposedValue: newName,
-              })
-            }
-            onDeleteFeature={(featureId) =>
-              createPipelineProposal({ action: "delete-feature", featureId })
-            }
-            onAddTask={(featureId, taskTitle) =>
-              createPipelineProposal({
-                action: "add-task",
-                featureId,
-                proposedValue: taskTitle,
-              })
-            }
-            onEditTask={(featureId, taskId, newTitle) =>
-              createPipelineProposal({
-                action: "edit-task",
-                featureId,
-                taskId,
-                proposedValue: newTitle,
-              })
-            }
-            onDeleteTask={(featureId, taskId) =>
-              createPipelineProposal({
-                action: "delete-task",
-                featureId,
-                taskId,
-              })
-            }
-            onTogglePmTaskConfirm={togglePmTaskConfirm}
-            onAddNewFeature={(featureName) =>
-              createPipelineProposal({
-                action: "add-feature",
-                proposedValue: featureName,
-              })
-            }
-            onUploadPrd={handleUploadKnowledgePdf}
-            // Dev actions
-            onToggleDevTaskCheck={(featureId, taskId) => {
-              void toggleDevTaskCheck(featureId, taskId);
-            }}
-            onPublishTaskToGithubIssue={(featureId, taskId) => {
-              void publishTaskToGithubIssue(featureId, taskId);
-            }}
-            onCreateTaskProposal={(featureId, proposedValue) =>
-              createPipelineProposal({
-                action: "add-task",
-                featureId,
-                proposedValue,
-                role: authUser.role,
-              })
-            }
-            // Proposal panel
-            onAddPipelineProposalMessage={(proposalId, content) =>
-              addPipelineProposalMessage(
-                proposalId,
-                isPm ? "pm" : authUser.role,
-                content,
-              )
-            }
-            onUpdatePipelineProposalMessage={(proposalId, messageId, content) =>
-              updatePipelineProposalMessage(
-                proposalId,
-                messageId,
-                isPm ? "pm" : authUser.role,
-                content,
-              )
-            }
-            onDeletePipelineProposalMessage={(proposalId, messageId) =>
-              deletePipelineProposalMessage(
-                proposalId,
-                messageId,
-                isPm ? "pm" : authUser.role,
-              )
-            }
-            onUpdatePipelineProposalValue={updatePipelineProposalValue}
-            onTogglePipelineProposalConfirm={
-              isPm
-                ? togglePipelineProposalConfirmByPm
-                : togglePipelineProposalConfirmByDev
-            }
-          />
+          <div className="flex flex-1 flex-col overflow-hidden">
+            {/* First-time "create project" dialog — PM only, shown once */}
+            <CustomDialog
+              open={showCreateProjectDialog}
+              variant="confirm"
+              title="프로젝트를 생성하시겠습니까?"
+              description="파이프라인 워크스페이스를 만들려면 먼저 프로젝트를 생성해야 합니다."
+              confirmLabel="프로젝트 생성"
+              cancelLabel="나중에"
+              onConfirm={() => {
+                setShowCreateProjectDialog(false);
+                setPipelineLandingStep("create-project");
+              }}
+              onCancel={() => {
+                setShowCreateProjectDialog(false);
+                setPipelineLandingStep("project-list");
+              }}
+            />
+
+            {/* PM: show landing wizard until canvas step */}
+            {isPm && pipelineLandingStep !== "canvas" && (
+              <PipelineLanding
+                step={pipelineLandingStep}
+                projects={demoProjects}
+                selectedProject={selectedDemoProject}
+                isCreatingProject={isCreatingProject}
+                isGeneratingPipeline={isGeneratingPipeline}
+                generatingFileName={generatingFileName}
+                onSelectProject={(proj) => {
+                  setSelectedDemoProject(proj);
+                  syncActiveProjectId(proj.id);
+                  const existing = demoPipelines.find((p) => p.projectId === proj.id);
+                  setPipelineLandingStep(existing ? "canvas" : "pipeline-form");
+                }}
+                onGoToCreateProject={() => setPipelineLandingStep("create-project")}
+                onCreateProject={(params) => handleCreateProjectByPm(params)}
+                onGeneratePipeline={(params) => handleGeneratePmPipeline(params)}
+                onCancelCreateProject={() => setPipelineLandingStep("project-list")}
+                onBackToPipelines={() => setPipelineLandingStep("project-list")}
+                onPushToast={pushToast}
+              />
+            )}
+
+            {/* Canvas: shown for DEV always, or when PM has completed the wizard */}
+            {(!isPm || pipelineLandingStep === "canvas") && (
+              <div className="flex flex-1 flex-col overflow-hidden">
+                {/* PM breadcrumb bar */}
+                {isPm && selectedDemoProject && (
+                  <div className="flex shrink-0 items-center gap-2 border-b border-gray-100 bg-white px-5 py-2">
+                    <button
+                      onClick={() => setPipelineLandingStep("project-list")}
+                      className="flex items-center gap-1 text-xs text-gray-400 transition-colors hover:text-gray-700"
+                    >
+                      <ChevronLeft className="h-3 w-3" /> 프로젝트 목록
+                    </button>
+                    <span className="text-xs text-gray-200">/</span>
+                    <span className="text-xs font-medium text-gray-900">{selectedDemoProject.name}</span>
+                    <button
+                      onClick={() => setPipelineLandingStep("pipeline-form")}
+                      className="ml-auto text-xs text-indigo-500 transition-colors hover:text-indigo-700"
+                    >
+                      + 파이프라인 추가
+                    </button>
+                  </div>
+                )}
+                <div className="flex-1 overflow-hidden">
+                  <PipelineCanvas
+                    role={authUser.role}
+                    features={features}
+                    cardPositions={cardPositions}
+                    onUpdateCardPosition={updateCardPosition}
+                    pipelineProposals={pipelineProposals}
+                    isGeneratingPipeline={isGeneratingPipeline}
+                    generatingFileName={generatingFileName}
+                    // PM actions
+                    onEditFeature={(featureId, newName) =>
+                      createPipelineProposal({
+                        action: "edit-feature",
+                        featureId,
+                        proposedValue: newName,
+                      })
+                    }
+                    onDeleteFeature={(featureId) =>
+                      createPipelineProposal({ action: "delete-feature", featureId })
+                    }
+                    onAddTask={(featureId, taskTitle) =>
+                      createPipelineProposal({
+                        action: "add-task",
+                        featureId,
+                        proposedValue: taskTitle,
+                      })
+                    }
+                    onEditTask={(featureId, taskId, newTitle) =>
+                      createPipelineProposal({
+                        action: "edit-task",
+                        featureId,
+                        taskId,
+                        proposedValue: newTitle,
+                      })
+                    }
+                    onDeleteTask={(featureId, taskId) =>
+                      createPipelineProposal({
+                        action: "delete-task",
+                        featureId,
+                        taskId,
+                      })
+                    }
+                    onTogglePmTaskConfirm={togglePmTaskConfirm}
+                    onAddNewFeature={(featureName) =>
+                      createPipelineProposal({
+                        action: "add-feature",
+                        proposedValue: featureName,
+                      })
+                    }
+                    // Dev actions
+                    onToggleDevTaskCheck={(featureId, taskId) => {
+                      void toggleDevTaskCheck(featureId, taskId);
+                    }}
+                    onPublishTaskToGithubIssue={(featureId, taskId) => {
+                      void publishTaskToGithubIssue(featureId, taskId);
+                    }}
+                    onCreateTaskProposal={(featureId, proposedValue) =>
+                      createPipelineProposal({
+                        action: "add-task",
+                        featureId,
+                        proposedValue,
+                        role: resolvedRole,
+                      })
+                    }
+                    // Proposal panel
+                    onAddPipelineProposalMessage={(proposalId, content) =>
+                      addPipelineProposalMessage(
+                        proposalId,
+                        isPm ? "pm" : resolvedRole,
+                        content,
+                      )
+                    }
+                    onUpdatePipelineProposalMessage={(proposalId, messageId, content) =>
+                      updatePipelineProposalMessage(
+                        proposalId,
+                        messageId,
+                        isPm ? "pm" : resolvedRole,
+                        content,
+                      )
+                    }
+                    onDeletePipelineProposalMessage={(proposalId, messageId) =>
+                      deletePipelineProposalMessage(
+                        proposalId,
+                        messageId,
+                        isPm ? "pm" : resolvedRole,
+                      )
+                    }
+                    onUpdatePipelineProposalValue={updatePipelineProposalValue}
+                    onTogglePipelineProposalConfirm={
+                      isPm
+                        ? togglePipelineProposalConfirmByPm
+                        : togglePipelineProposalConfirmByDev
+                    }
+                  />
+                </div>
+              </div>
+            )}
+          </div>
         )}
 
         {/* Questions tab - PM */}
@@ -2044,24 +2364,24 @@ export default function App() {
           <div className="flex-1 overflow-y-auto p-6">
             <DevDashboard
               section="feedback"
-              projectId={DEFAULT_PROJECT_ID}
+              projectId={activeProjectId}
               projectName={projectName}
               connectedGithubRepo={connectedGithubRepo}
               isConnectingGithubRepo={isConnectingGithubRepo}
               featureQuestions={featureQuestions}
               onAddQuestionMessage={(questionId, content) =>
-                addQuestionMessage(questionId, authUser.role, content)
+                addQuestionMessage(questionId, resolvedRole, content)
               }
               onUpdateQuestionMessage={(questionId, messageId, content) =>
                 updateQuestionMessage(
                   questionId,
                   messageId,
-                  authUser.role,
+                  resolvedRole,
                   content,
                 )
               }
               onDeleteQuestionMessage={(questionId, messageId) =>
-                deleteQuestionMessage(questionId, messageId, authUser.role)
+                deleteQuestionMessage(questionId, messageId, resolvedRole)
               }
               onConfirmQuestionByDev={confirmQuestionByDev}
               onSaveProjectName={saveProjectName}
@@ -2152,24 +2472,24 @@ export default function App() {
             {devSettingsSubSection === "project" ? (
               <DevDashboard
                 section="project"
-                projectId={DEFAULT_PROJECT_ID}
+                projectId={activeProjectId}
                 projectName={projectName}
                 connectedGithubRepo={connectedGithubRepo}
                 isConnectingGithubRepo={isConnectingGithubRepo}
                 featureQuestions={featureQuestions}
                 onAddQuestionMessage={(questionId, content) =>
-                  addQuestionMessage(questionId, authUser.role, content)
+                  addQuestionMessage(questionId, resolvedRole, content)
                 }
                 onUpdateQuestionMessage={(questionId, messageId, content) =>
                   updateQuestionMessage(
                     questionId,
                     messageId,
-                    authUser.role,
+                    resolvedRole,
                     content,
                   )
                 }
                 onDeleteQuestionMessage={(questionId, messageId) =>
-                  deleteQuestionMessage(questionId, messageId, authUser.role)
+                  deleteQuestionMessage(questionId, messageId, resolvedRole)
                 }
                 onConfirmQuestionByDev={confirmQuestionByDev}
                 onSaveProjectName={saveProjectName}

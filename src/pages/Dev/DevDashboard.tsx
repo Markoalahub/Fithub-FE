@@ -25,7 +25,7 @@ import type {
 
 interface DevDashboardProps {
   section: "feedback" | "project";
-  projectId: number;
+  projectId: number | null;
   projectName: string;
   connectedGithubRepo: ConnectedGithubRepository | null;
   isConnectingGithubRepo: boolean;
@@ -121,6 +121,14 @@ export default function DevDashboard({
   useEffect(() => { setRepositoryInput(connectedGithubRepo?.htmlUrl ?? ""); }, [connectedGithubRepo?.htmlUrl]);
 
   const loadPublicRepositories = async () => {
+    if (!projectId) {
+      setPublicRepositories([]);
+      setPublicRepositoriesError(
+        "기획자가 프로젝트를 생성한 뒤에 저장소 연결을 진행할 수 있습니다.",
+      );
+      return;
+    }
+
     setIsLoadingPublicRepositories(true);
     setPublicRepositoriesError(null);
     try {
@@ -231,12 +239,13 @@ export default function DevDashboard({
                 type="text"
                 value={repositoryInput}
                 onChange={(e) => setRepositoryInput(e.target.value)}
+                disabled={!projectId}
                 className="w-full sm:flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 focus:border-gray-900 focus:outline-none focus:ring-0"
                 placeholder="https://github.com/owner/repo 또는 owner/repo"
               />
               <button
                 type="submit"
-                disabled={isConnectingGithubRepo}
+                disabled={isConnectingGithubRepo || !projectId}
                 className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {isConnectingGithubRepo ? (
@@ -246,7 +255,11 @@ export default function DevDashboard({
                 )}
               </button>
             </form>
-            <p className="mt-2 text-xs text-gray-400">공개 저장소만 연결할 수 있습니다.</p>
+            <p className="mt-2 text-xs text-gray-400">
+              {!projectId
+                ? "기획자가 프로젝트를 먼저 생성해야 합니다."
+                : "공개 저장소만 연결할 수 있습니다."}
+            </p>
           </div>
 
           <div>
@@ -259,7 +272,7 @@ export default function DevDashboard({
                 onClick={() => {
                   void loadPublicRepositories();
                 }}
-                disabled={isLoadingPublicRepositories}
+                disabled={isLoadingPublicRepositories || !projectId}
                 className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {isLoadingPublicRepositories && (
@@ -324,6 +337,7 @@ export default function DevDashboard({
                             }}
                             disabled={
                               isConnected ||
+                              !projectId ||
                               isConnectingGithubRepo ||
                               isConnectingThisRepository
                             }

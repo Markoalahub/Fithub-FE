@@ -1,6 +1,16 @@
-const BE_API_BASE_URL = (
-  import.meta.env.VITE_BE_API_BASE_URL ?? "http://127.0.0.1:8080/api/v1"
-).replace(/\/$/, "");
+const normalizeBaseRoot = (value: string) =>
+  value.replace(/\/+$/, "").replace(/\/api\/v[12]$/i, "");
+
+const BE_BASE_URL = normalizeBaseRoot(
+  (
+    import.meta.env.VITE_BE_BASE_URL ??
+    import.meta.env.VITE_BE_API_BASE_URL ??
+    "http://127.0.0.1:8080"
+  ).trim(),
+);
+export const OAUTH_BASE_URL = `${BE_BASE_URL}/oauth2`;
+const API_V1_BASE_URL = `${BE_BASE_URL}/api/v1`;
+const API_V2_BASE_URL = `${BE_BASE_URL}/api/v2`;
 const GITHUB_API_BASE_URL = (
   import.meta.env.VITE_GITHUB_API_BASE_URL ?? "https://api.github.com"
 ).replace(/\/$/, "");
@@ -75,6 +85,29 @@ export type GenerateAllPipelinesResponse = {
   projectId: number;
   totalCategories: number;
   pipelines: Pipeline[];
+};
+
+export type CreateProjectResponse = {
+  projectId: number;
+  projectName: string;
+};
+
+export type PipelineGenerationCategory = "FE" | "BE";
+
+export type GeneratedPipelineFeature = {
+  featId: number;
+  featTitle: string;
+  featDetails: string[];
+  priority: number;
+};
+
+export type GenerateProjectPipelineResponse = {
+  pipeId: number;
+  projectId: number;
+  category: string;
+  version: number;
+  techStack: string;
+  feats: GeneratedPipelineFeature[];
 };
 
 export type UpdatePipelineStepRequest = {
@@ -185,7 +218,7 @@ const readObjectValue = (
 function buildUrl(
   path: string,
   query?: RequestOptions["query"],
-  baseUrl = BE_API_BASE_URL,
+  baseUrl = API_V1_BASE_URL,
 ) {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   const url = new URL(`${baseUrl}${normalizedPath}`);
@@ -246,7 +279,7 @@ async function apiRequest<T>(
     query,
     headers,
     authMode = "none",
-    baseUrl = BE_API_BASE_URL,
+    baseUrl = API_V1_BASE_URL,
     ...init
   } = options;
   const mergedHeaders = new Headers(headers ?? {});
@@ -410,6 +443,24 @@ const normalizeIssueSync = (value: Record<string, unknown>): IssueSyncRecord => 
       | string
       | undefined) ?? undefined,
 });
+
+const normalizeGeneratedPipelineFeature = (
+  value: Record<string, unknown>,
+): GeneratedPipelineFeature => {
+  const detailsRaw = readObjectValue(value, "feat_details", "featDetails");
+  const featDetails = Array.isArray(detailsRaw)
+    ? detailsRaw
+        .map((detail) => String(detail ?? "").trim())
+        .filter((detail) => detail.length > 0)
+    : [];
+
+  return {
+    featId: Number(readObjectValue(value, "feat_id", "featId") ?? 0),
+    featTitle: String(readObjectValue(value, "feat_title", "featTitle") ?? ""),
+    featDetails,
+    priority: Number(readObjectValue(value, "priority") ?? 0),
+  };
+};
 
 export const parseGithubRepoInput = (input: string) => {
   const trimmed = input.trim();
@@ -594,6 +645,74 @@ export async function generateAllPipelines({
         pipelines.length,
     ),
     pipelines,
+  };
+}
+
+export async function createProject(payload: {
+  name: string;
+  description: string;
+}): Promise<CreateProjectResponse> {
+  const response = await apiRequest<Record<string, unknown>>("/projects", {
+    method: "POST",
+    body: JSON.stringify(payload),
+    authMode: "required",
+    baseUrl: API_V1_BASE_URL,
+  });
+
+  const projectId = Number(
+    readObjectValue(response, "project_id", "projectId") ?? 0,
+  );
+  const projectName = String(
+    readObjectValue(response, "project_name", "projectName") ?? payload.name,
+  );
+
+  return {
+    projectId,
+    projectName,
+  };
+}
+
+export async function generateProjectPipeline(payload: {
+  file: File;
+  projectId: number;
+  category: PipelineGenerationCategory;
+  techStack: string;
+  requirements: string;
+}): Promise<GenerateProjectPipelineResponse> {
+  const formData = new FormData();
+  formData.append("file", payload.file);
+  formData.append("project_id", String(payload.projectId));
+  formData.append("category", payload.category);
+  formData.append("tech_stack", payload.techStack);
+  formData.append("requirements", payload.requirements);
+
+  const response = await apiRequest<Record<string, unknown>>(
+    "/pipelines/generate",
+    {
+      method: "POST",
+      body: formData,
+      authMode: "required",
+      baseUrl: API_V2_BASE_URL,
+    },
+  );
+
+  const featsRaw = Array.isArray(readObjectValue(response, "feats"))
+    ? (readObjectValue(response, "feats") as Record<string, unknown>[])
+    : [];
+
+  return {
+    pipeId: Number(readObjectValue(response, "pipe_id", "pipeId") ?? 0),
+    projectId: Number(
+      readObjectValue(response, "project_id", "projectId") ?? payload.projectId,
+    ),
+    category: String(readObjectValue(response, "category") ?? payload.category),
+    version: Number(readObjectValue(response, "version") ?? 0),
+    techStack: String(
+      readObjectValue(response, "tech_stack", "techStack") ?? payload.techStack,
+    ),
+    feats: featsRaw.map((feat) =>
+      normalizeGeneratedPipelineFeature(feat as Record<string, unknown>),
+    ),
   };
 }
 

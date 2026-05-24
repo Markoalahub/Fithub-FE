@@ -1,7 +1,6 @@
 import { Activity, GitPullRequest, LogOut, Settings } from "lucide-react";
 import type { AppTab } from "../../types/index";
 import type { AuthUser } from "../../types/auth";
-import fithubServiceIcon from "../../assets/fithub-service-icon.svg";
 
 type DevTrack = "frontend" | "backend";
 
@@ -48,11 +47,6 @@ export default function AppHeader({
     <header className="fixed top-0 left-0 right-0 z-50 h-12 bg-[#1E1E1E] border-b border-[#3A3A3A] flex items-center px-4 gap-4">
       {/* Logo + Project Name */}
       <div className="flex items-center gap-2.5 shrink-0">
-        <img
-          src={fithubServiceIcon}
-          alt="Fithub Service Icon"
-          className="h-6 w-6"
-        />
         <span
           className="text-white/90 text-sm font-semibold truncate max-w-[120px]"
           title={`서비스: Fithub · 프로젝트: ${projectName}`}
