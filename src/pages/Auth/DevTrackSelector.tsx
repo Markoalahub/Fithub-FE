@@ -1,5 +1,4 @@
 import { ArrowRight, Monitor, Server } from "lucide-react";
-import fithubServiceIcon from "../../assets/fithub-service-icon.svg";
 
 interface DevTrackSelectorProps {
   onSelectTrack: (role: "dev-fe" | "dev-be") => void;
@@ -36,24 +35,12 @@ const tracks: Array<{
 
 export default function DevTrackSelector({ onSelectTrack }: DevTrackSelectorProps) {
   return (
-    <div className="min-h-screen bg-[#F5F5F5] px-6 py-10 text-gray-900">
-      <div className="mx-auto w-full max-w-3xl">
-        {/* Header */}
-        <div className="rounded-2xl border border-[#E5E5E5] bg-white p-7 mb-5">
-          <div className="flex items-center gap-3">
-            <img
-              src={fithubServiceIcon}
-              alt="Fithub"
-              className="h-10 w-10 rounded-xl border border-[#E5E5E5] p-0.5"
-            />
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">Fithub</p>
-              <h1 className="text-2xl font-bold text-gray-900">개발 직군을 선택해 주세요</h1>
-            </div>
-          </div>
-          <p className="mt-3 text-sm text-gray-500 leading-relaxed">
-            담당하는 개발 영역을 선택하면 맞춤형 워크플로우로 바로 시작할 수 있습니다.
-          </p>
+    <div className="min-h-screen bg-[#F5F5F5] flex flex-col items-center justify-center px-6 py-10 text-gray-900">
+      <div className="w-full max-w-3xl">
+        {/* Minimal branding */}
+        <div className="mb-8 flex flex-col items-center gap-1.5 auth-fade-up">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Fithub</p>
+          <h1 className="text-2xl font-bold text-gray-900">개발 직군을 선택해 주세요</h1>
         </div>
 
         {/* Track cards */}

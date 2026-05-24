@@ -1,5 +1,4 @@
 import { ArrowLeft, Github, MessageCircle } from "lucide-react";
-import fithubServiceIcon from "../../assets/fithub-service-icon.svg";
 import type { UserRole } from "../../types";
 
 interface LoginScreenProps {
@@ -51,13 +50,8 @@ export default function LoginScreen({ role, onBack }: LoginScreenProps) {
         <div className="flex flex-1 items-center justify-center py-6 sm:py-10">
           <section className="w-full max-w-xl rounded-3xl border border-[#E5E5E5] bg-white p-8 shadow-sm sm:p-10 min-h-[520px] flex flex-col justify-center auth-fade-up auth-delay-1">
             <div className="mx-auto flex w-full max-w-sm flex-col items-center text-center">
-              <img
-                src={fithubServiceIcon}
-                alt="Fithub Icon"
-                className="h-16 w-16 rounded-2xl border border-[#E5E5E5] p-1"
-              />
-              <p className="mt-6 text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">FITHUB</p>
-              <h1 className="mt-2 text-2xl font-bold text-gray-900">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">FITHUB</p>
+              <h1 className="mt-1.5 text-2xl font-bold text-gray-900">
                 {roleLabel[role]} 로그인
               </h1>
               <p className="mt-2 text-sm text-gray-500">

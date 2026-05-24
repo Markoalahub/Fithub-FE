@@ -1,5 +1,16 @@
 import { useRef, useState } from "react";
-import { ChevronLeft, FileText, FolderOpen, Plus, Upload, X, Zap } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  FileText,
+  FolderOpen,
+  Layers,
+  Plus,
+  Server,
+  Upload,
+  X,
+  Zap,
+} from "lucide-react";
 
 export type DemoProject = { id: number; name: string; description: string };
 export type PipelineCategoryOption = "FE" | "BE" | "ALL";
@@ -25,17 +36,21 @@ interface PipelineLandingProps {
   onPushToast: (message: string, tone: "success" | "info" | "warning") => void;
 }
 
-const CATEGORY_OPTIONS: { value: PipelineCategoryOption; label: string }[] = [
-  { value: "FE", label: "FE" },
-  { value: "BE", label: "BE" },
-  { value: "ALL", label: "FE + BE" },
+const CATEGORY_OPTIONS: {
+  value: PipelineCategoryOption;
+  label: string;
+  description: string;
+  Icon: React.FC<{ className?: string }>;
+}[] = [
+  { value: "FE", label: "FE", description: "프론트엔드", Icon: ({ className }) => <Layers className={className} /> },
+  { value: "BE", label: "BE", description: "백엔드", Icon: ({ className }) => <Server className={className} /> },
+  {
+    value: "ALL",
+    label: "ALL",
+    description: "FE + BE",
+    Icon: ({ className }) => <Zap className={className} />,
+  },
 ];
-
-const CATEGORY_DESCRIPTIONS: Record<PipelineCategoryOption, string> = {
-  FE: "프론트엔드 파이프라인을 생성합니다",
-  BE: "백엔드 파이프라인을 생성합니다",
-  ALL: "FE와 BE 파이프라인을 모두 생성합니다",
-};
 
 export default function PipelineLanding({
   step,
@@ -72,34 +87,17 @@ export default function PipelineLanding({
     setPdfFile(file);
   };
 
-  const handleDragEnter = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragOver(true);
-  };
-
+  const handleDragEnter = (e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); setIsDragOver(true); };
   const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!dropZoneRef.current?.contains(e.relatedTarget as Node)) {
-      setIsDragOver(false);
-    }
+    e.preventDefault(); e.stopPropagation();
+    if (!dropZoneRef.current?.contains(e.relatedTarget as Node)) setIsDragOver(false);
   };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    e.dataTransfer.dropEffect = "copy";
-  };
-
+  const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = "copy"; };
   const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragOver(false);
+    e.preventDefault(); e.stopPropagation(); setIsDragOver(false);
     const file = e.dataTransfer.files[0];
     if (file) validateAndSetPdf(file);
   };
-
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = "";
@@ -108,10 +106,7 @@ export default function PipelineLanding({
 
   const handleSubmitCreateProject = async () => {
     const name = nameInput.trim();
-    if (!name) {
-      onPushToast("프로젝트 이름을 입력해 주세요.", "warning");
-      return;
-    }
+    if (!name) { onPushToast("프로젝트 이름을 입력해 주세요.", "warning"); return; }
     await onCreateProject({ name, description: descriptionInput.trim() });
   };
 
@@ -119,12 +114,7 @@ export default function PipelineLanding({
     if (!pdfFile) { onPushToast("PDF 파일을 선택해 주세요.", "warning"); return; }
     if (!techStackInput.trim()) { onPushToast("기술 스택을 입력해 주세요.", "warning"); return; }
     if (!requirementsInput.trim()) { onPushToast("요구사항을 입력해 주세요.", "warning"); return; }
-    await onGeneratePipeline({
-      file: pdfFile,
-      category: categoryOption,
-      techStack: techStackInput.trim(),
-      requirements: requirementsInput.trim(),
-    });
+    await onGeneratePipeline({ file: pdfFile, category: categoryOption, techStack: techStackInput.trim(), requirements: requirementsInput.trim() });
   };
 
   return (
@@ -134,15 +124,16 @@ export default function PipelineLanding({
       {step === "project-list" && (
         <div className="flex flex-1 items-center justify-center p-8">
           <div className="w-full max-w-xl">
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex items-end justify-between mb-6 auth-fade-up">
               <div>
-                <h2 className="text-lg font-semibold text-gray-900">프로젝트</h2>
-                <p className="text-xs text-gray-400 mt-0.5">파이프라인을 생성할 프로젝트를 선택하세요</p>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-1">Fithub</p>
+                <h2 className="text-xl font-bold text-gray-900">프로젝트</h2>
+                <p className="text-sm text-gray-400 mt-0.5">파이프라인을 생성할 프로젝트를 선택하세요</p>
               </div>
               {projects.length > 0 && (
                 <button
                   onClick={onGoToCreateProject}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-3 py-2 text-xs font-semibold text-white hover:bg-gray-800 transition-colors"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-3.5 py-2 text-xs font-semibold text-white hover:bg-gray-700 transition-colors"
                 >
                   <Plus className="h-3.5 w-3.5" /> 새 프로젝트
                 </button>
@@ -150,39 +141,41 @@ export default function PipelineLanding({
             </div>
 
             {projects.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-12 flex flex-col items-center text-center shadow-sm">
-                <div className="rounded-2xl bg-gray-100 p-4 mb-4">
-                  <FolderOpen className="h-8 w-8 text-gray-400" />
+              <div className="rounded-2xl border border-[#E5E5E5] bg-white p-12 flex flex-col items-center text-center shadow-sm auth-fade-up auth-delay-1">
+                <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-50 to-violet-100 mb-5 shadow-inner">
+                  <FolderOpen className="h-9 w-9 text-indigo-500" strokeWidth={1.5} />
                 </div>
-                <h3 className="text-sm font-semibold text-gray-900 mb-1">아직 프로젝트가 없습니다</h3>
-                <p className="text-xs text-gray-400 mb-6 leading-relaxed">
-                  첫 번째 프로젝트를 만들어<br />파이프라인을 시작해 보세요
+                <h3 className="text-base font-bold text-gray-900 mb-1.5">아직 프로젝트가 없습니다</h3>
+                <p className="text-sm text-gray-400 mb-7 leading-relaxed">
+                  첫 번째 프로젝트를 만들고<br />AI 파이프라인을 시작해 보세요
                 </p>
                 <button
                   onClick={onGoToCreateProject}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-gray-800 transition-colors"
+                  className="inline-flex items-center gap-2 rounded-xl bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-gray-700 transition-colors"
                 >
                   <Plus className="h-4 w-4" /> 새 프로젝트 만들기
                 </button>
               </div>
             ) : (
-              <div className="space-y-2">
-                {projects.map((project) => (
+              <div className="space-y-2 auth-fade-up auth-delay-1">
+                {projects.map((project, i) => (
                   <button
                     key={project.id}
                     onClick={() => onSelectProject(project)}
-                    className="w-full rounded-xl border border-gray-200 bg-white p-4 text-left hover:border-gray-900 hover:shadow-sm transition-all group"
+                    style={{ animationDelay: `${120 + i * 60}ms` }}
+                    className="w-full rounded-xl border border-[#E5E5E5] bg-white px-4 py-3.5 text-left hover:border-indigo-200 hover:shadow-md hover:shadow-indigo-50/60 transition-all group auth-fade-up"
                   >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 group-hover:bg-indigo-50 transition-colors">
+                        <FolderOpen className="h-4.5 w-4.5 text-gray-400 group-hover:text-indigo-500 transition-colors" strokeWidth={1.5} />
+                      </div>
+                      <div className="min-w-0 flex-1">
                         <p className="text-sm font-semibold text-gray-900">{project.name}</p>
                         {project.description && (
                           <p className="text-xs text-gray-400 mt-0.5 truncate">{project.description}</p>
                         )}
                       </div>
-                      <span className="text-xs text-gray-400 group-hover:text-gray-700 shrink-0 transition-colors">
-                        선택 →
-                      </span>
+                      <ChevronRight className="h-4 w-4 text-gray-300 group-hover:text-gray-500 transition-colors shrink-0" />
                     </div>
                   </button>
                 ))}
@@ -196,29 +189,26 @@ export default function PipelineLanding({
       {step === "create-project" && (
         <div className="flex flex-1 items-center justify-center p-8">
           <div className="w-full max-w-md">
-            <div className="flex items-center gap-1.5 text-xs text-gray-400 mb-6">
-              <button
-                onClick={onCancelCreateProject}
-                className="flex items-center gap-1 hover:text-gray-700 transition-colors"
-              >
-                <ChevronLeft className="h-3.5 w-3.5" /> 프로젝트 목록
-              </button>
-              <span className="text-gray-200">/</span>
-              <span className="font-medium text-gray-900">새 프로젝트</span>
-            </div>
+            <button
+              onClick={onCancelCreateProject}
+              className="mb-5 inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-700 transition-colors auth-fade-up"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" /> 프로젝트 목록으로
+            </button>
 
-            <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-              <div className="flex items-center gap-3 mb-5">
-                <div className="rounded-xl bg-gray-100 p-2.5">
-                  <FolderOpen className="h-5 w-5 text-gray-700" />
+            <div className="rounded-2xl border border-[#E5E5E5] bg-white overflow-hidden shadow-sm auth-fade-up auth-delay-1">
+              {/* Card header strip */}
+              <div className="bg-gradient-to-br from-gray-900 to-gray-700 px-6 py-5 flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10">
+                  <FolderOpen className="h-5 w-5 text-white" strokeWidth={1.5} />
                 </div>
                 <div>
-                  <h2 className="text-sm font-semibold text-gray-900">새 프로젝트 만들기</h2>
-                  <p className="text-xs text-gray-400">프로젝트 정보를 입력해 주세요</p>
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-white/50">Project</p>
+                  <h2 className="text-base font-bold text-white">새 프로젝트 만들기</h2>
                 </div>
               </div>
 
-              <div className="space-y-3">
+              <div className="p-6 space-y-4">
                 <div>
                   <label className="block text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-1.5">
                     프로젝트 이름 <span className="text-red-400 normal-case">*</span>
@@ -235,7 +225,7 @@ export default function PipelineLanding({
                     placeholder="예: Fithub 모바일 앱"
                     maxLength={60}
                     autoFocus
-                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-300 focus:border-gray-900 focus:outline-none"
+                    className="w-full rounded-lg border border-[#E5E5E5] bg-white px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-300 focus:border-gray-900 focus:outline-none transition-colors"
                   />
                 </div>
                 <div>
@@ -248,25 +238,25 @@ export default function PipelineLanding({
                     onChange={(e) => setDescriptionInput(e.target.value)}
                     placeholder="프로젝트에 대한 간단한 설명 (선택사항)"
                     maxLength={200}
-                    className="w-full resize-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-300 focus:border-gray-900 focus:outline-none"
+                    className="w-full resize-none rounded-lg border border-[#E5E5E5] bg-white px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-300 focus:border-gray-900 focus:outline-none transition-colors"
                   />
                 </div>
-              </div>
 
-              <div className="flex items-center justify-end gap-2 mt-5 pt-4 border-t border-gray-100">
-                <button
-                  onClick={onCancelCreateProject}
-                  className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
-                >
-                  취소
-                </button>
-                <button
-                  onClick={() => void handleSubmitCreateProject()}
-                  disabled={isCreatingProject || !nameInput.trim()}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800 disabled:bg-gray-200 disabled:text-gray-400 transition-colors"
-                >
-                  {isCreatingProject ? "생성 중..." : "프로젝트 생성"}
-                </button>
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#F0F0F0]">
+                  <button
+                    onClick={onCancelCreateProject}
+                    className="rounded-lg border border-[#E5E5E5] px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+                  >
+                    취소
+                  </button>
+                  <button
+                    onClick={() => void handleSubmitCreateProject()}
+                    disabled={isCreatingProject || !nameInput.trim()}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-700 disabled:bg-gray-200 disabled:text-gray-400 transition-colors"
+                  >
+                    {isCreatingProject ? "생성 중..." : "프로젝트 생성"}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -277,159 +267,163 @@ export default function PipelineLanding({
       {step === "pipeline-form" && (
         <div className="flex flex-1 items-start justify-center p-8">
           <div className="w-full max-w-lg">
-            <div className="flex items-center gap-1.5 text-xs text-gray-400 mb-6">
-              <button
-                onClick={onBackToPipelines}
-                className="flex items-center gap-1 hover:text-gray-700 transition-colors"
-              >
-                <ChevronLeft className="h-3.5 w-3.5" /> 프로젝트 목록
-              </button>
-              <span className="text-gray-200">/</span>
-              <span className="text-gray-600">{selectedProject?.name ?? "프로젝트"}</span>
-              <span className="text-gray-200">/</span>
-              <span className="font-medium text-gray-900">파이프라인 생성</span>
-            </div>
+            <button
+              onClick={onBackToPipelines}
+              className="mb-5 inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-700 transition-colors auth-fade-up"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+              {selectedProject?.name ?? "프로젝트"}
+            </button>
 
-            <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-              <div className="flex items-center gap-3 mb-5">
-                <div className="rounded-xl bg-gray-100 p-2.5">
-                  <Zap className="h-5 w-5 text-gray-700" />
+            <div className="rounded-2xl border border-[#E5E5E5] bg-white overflow-hidden shadow-sm auth-fade-up auth-delay-1">
+              {/* Card header strip */}
+              <div className="bg-gradient-to-br from-indigo-600 to-violet-600 px-6 py-5 flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/15">
+                  <Zap className="h-5 w-5 text-white" strokeWidth={1.5} />
                 </div>
                 <div>
-                  <h2 className="text-sm font-semibold text-gray-900">파이프라인 생성</h2>
-                  <p className="text-xs text-gray-400">PRD · 기획서 PDF를 업로드하면 AI가 파이프라인을 자동 생성합니다</p>
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-white/50">AI Pipeline</p>
+                  <h2 className="text-base font-bold text-white">파이프라인 생성</h2>
                 </div>
               </div>
 
-              {isGeneratingPipeline ? (
-                <div className="flex flex-col items-center justify-center py-14 text-center">
-                  <div className="mb-5 h-9 w-9 animate-spin rounded-full border-2 border-gray-900 border-t-transparent" />
-                  <p className="text-sm font-semibold text-gray-900">AI가 파이프라인을 분석하고 있습니다</p>
-                  {generatingFileName && (
-                    <p className="mt-1.5 max-w-[260px] truncate text-xs text-gray-400">{generatingFileName}</p>
-                  )}
-                  <p className="mt-2 text-xs text-gray-400">잠시만 기다려 주세요...</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {/* PDF Drop Zone */}
-                  <div>
-                    <label className="mb-2 block text-[10px] font-semibold uppercase tracking-widest text-gray-400">
-                      PRD / 기획서 PDF <span className="normal-case text-red-400">*</span>
-                    </label>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept=".pdf,application/pdf"
-                      onChange={handleFileInputChange}
-                      className="hidden"
-                    />
-                    <div
-                      ref={dropZoneRef}
-                      onDragEnter={handleDragEnter}
-                      onDragLeave={handleDragLeave}
-                      onDragOver={handleDragOver}
-                      onDrop={handleDrop}
-                      onClick={() => fileInputRef.current?.click()}
-                      className={`flex min-h-[100px] cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed p-6 transition-colors ${
-                        isDragOver
-                          ? "border-gray-900 bg-gray-50"
-                          : pdfFile
-                            ? "border-indigo-300 bg-indigo-50/40"
-                            : "border-gray-200 hover:border-gray-400 hover:bg-gray-50/60"
-                      }`}
+              <div className="p-6">
+                {isGeneratingPipeline ? (
+                  <div className="flex flex-col items-center justify-center py-16 text-center">
+                    <div className="mb-5 h-10 w-10 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
+                    <p className="text-sm font-bold text-gray-900">AI가 파이프라인을 분석하고 있습니다</p>
+                    {generatingFileName && (
+                      <p className="mt-2 max-w-[240px] truncate text-xs text-gray-400">{generatingFileName}</p>
+                    )}
+                    <p className="mt-1 text-xs text-gray-400">잠시만 기다려 주세요...</p>
+                  </div>
+                ) : (
+                  <div className="space-y-5">
+                    {/* PDF Drop Zone */}
+                    <div>
+                      <label className="mb-2 block text-[10px] font-semibold uppercase tracking-widest text-gray-400">
+                        PRD / 기획서 PDF <span className="normal-case text-red-400">*</span>
+                      </label>
+                      <input ref={fileInputRef} type="file" accept=".pdf,application/pdf" onChange={handleFileInputChange} className="hidden" />
+                      <div
+                        ref={dropZoneRef}
+                        onDragEnter={handleDragEnter}
+                        onDragLeave={handleDragLeave}
+                        onDragOver={handleDragOver}
+                        onDrop={handleDrop}
+                        onClick={() => fileInputRef.current?.click()}
+                        className={`flex min-h-[130px] cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed p-6 transition-all ${
+                          isDragOver
+                            ? "border-indigo-400 bg-indigo-50"
+                            : pdfFile
+                              ? "border-indigo-300 bg-indigo-50/50"
+                              : "border-[#E5E5E5] hover:border-gray-400 hover:bg-gray-50/60"
+                        }`}
+                      >
+                        {pdfFile ? (
+                          <div className="flex items-center gap-2.5">
+                            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-100">
+                              <FileText className="h-4.5 w-4.5 text-indigo-600" strokeWidth={1.5} />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="max-w-[220px] truncate text-sm font-medium text-gray-900">{pdfFile.name}</p>
+                              <p className="text-xs text-gray-400 mt-0.5">PDF · 클릭하여 다시 선택</p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); setPdfFile(null); }}
+                              className="ml-1 shrink-0 rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        ) : isDragOver ? (
+                          <div className="flex flex-col items-center gap-2">
+                            <Upload className="h-7 w-7 text-indigo-500" strokeWidth={1.5} />
+                            <p className="text-sm font-bold text-indigo-700">여기에 PDF를 놓으세요</p>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col items-center gap-2">
+                            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gray-100">
+                              <Upload className="h-5 w-5 text-gray-400" strokeWidth={1.5} />
+                            </div>
+                            <p className="text-sm font-medium text-gray-600">PDF를 끌어다 놓거나 클릭하여 선택</p>
+                            <p className="text-[11px] text-gray-400">기획서, PRD 문서 지원</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Category */}
+                    <div>
+                      <label className="mb-2 block text-[10px] font-semibold uppercase tracking-widest text-gray-400">
+                        카테고리
+                      </label>
+                      <div className="grid grid-cols-3 gap-2">
+                        {CATEGORY_OPTIONS.map((opt) => {
+                          const active = categoryOption === opt.value;
+                          return (
+                            <button
+                              key={opt.value}
+                              type="button"
+                              onClick={() => setCategoryOption(opt.value)}
+                              className={`flex flex-col items-center gap-1.5 rounded-xl border py-3 text-xs font-semibold transition-all ${
+                                active
+                                  ? "border-indigo-600 bg-indigo-600 text-white shadow-sm shadow-indigo-200"
+                                  : "border-[#E5E5E5] text-gray-500 hover:border-gray-300 hover:bg-gray-50 hover:text-gray-800"
+                              }`}
+                            >
+                              <opt.Icon className={`h-4 w-4 ${active ? "text-white" : "text-gray-400"}`} />
+                              <span>{opt.label}</span>
+                              <span className={`text-[10px] font-normal ${active ? "text-white/70" : "text-gray-400"}`}>
+                                {opt.description}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Tech Stack */}
+                    <div>
+                      <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-widest text-gray-400">
+                        기술 스택 <span className="normal-case text-red-400">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={techStackInput}
+                        onChange={(e) => setTechStackInput(e.target.value)}
+                        placeholder="예: React, TypeScript, Node.js, PostgreSQL"
+                        className="w-full rounded-lg border border-[#E5E5E5] bg-white px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-300 focus:border-gray-900 focus:outline-none transition-colors"
+                      />
+                    </div>
+
+                    {/* Requirements */}
+                    <div>
+                      <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-widest text-gray-400">
+                        주요 요구사항 <span className="normal-case text-red-400">*</span>
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={requirementsInput}
+                        onChange={(e) => setRequirementsInput(e.target.value)}
+                        placeholder="핵심 기능 및 요구사항을 간략히 입력해 주세요"
+                        className="w-full resize-none rounded-lg border border-[#E5E5E5] bg-white px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-300 focus:border-gray-900 focus:outline-none transition-colors"
+                      />
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => void handleSubmitGeneratePipeline()}
+                      disabled={!pdfFile || !techStackInput.trim() || !requirementsInput.trim()}
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 py-3 text-sm font-semibold text-white hover:bg-indigo-700 disabled:bg-gray-200 disabled:text-gray-400 transition-colors"
                     >
-                      {pdfFile ? (
-                        <div className="flex items-center gap-2">
-                          <FileText className="h-4 w-4 shrink-0 text-indigo-500" />
-                          <span className="max-w-[240px] truncate text-sm font-medium text-gray-900">
-                            {pdfFile.name}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); setPdfFile(null); }}
-                            className="ml-1 shrink-0 rounded p-0.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
-                          >
-                            <X className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      ) : isDragOver ? (
-                        <p className="text-sm font-semibold text-gray-900">PDF를 여기에 놓으세요</p>
-                      ) : (
-                        <>
-                          <Upload className="mb-2 h-6 w-6 text-gray-300" />
-                          <p className="text-xs text-gray-500">PDF를 끌어다 놓거나 클릭하여 선택</p>
-                          <p className="mt-1 text-[10px] text-gray-300">기획서, PRD 문서 지원</p>
-                        </>
-                      )}
-                    </div>
+                      <Zap className="h-4 w-4" />
+                      파이프라인 생성
+                    </button>
                   </div>
-
-                  {/* Category */}
-                  <div>
-                    <label className="mb-2 block text-[10px] font-semibold uppercase tracking-widest text-gray-400">
-                      카테고리
-                    </label>
-                    <div className="flex gap-2">
-                      {CATEGORY_OPTIONS.map((opt) => (
-                        <button
-                          key={opt.value}
-                          type="button"
-                          onClick={() => setCategoryOption(opt.value)}
-                          className={`flex-1 rounded-lg border py-2 text-xs font-semibold transition-colors ${
-                            categoryOption === opt.value
-                              ? "border-gray-900 bg-gray-900 text-white"
-                              : "border-gray-200 text-gray-500 hover:border-gray-400 hover:text-gray-700"
-                          }`}
-                        >
-                          {opt.label}
-                        </button>
-                      ))}
-                    </div>
-                    <p className="mt-1.5 text-[10px] text-gray-400">
-                      {CATEGORY_DESCRIPTIONS[categoryOption]}
-                    </p>
-                  </div>
-
-                  {/* Tech Stack */}
-                  <div>
-                    <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-widest text-gray-400">
-                      기술 스택 <span className="normal-case text-red-400">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={techStackInput}
-                      onChange={(e) => setTechStackInput(e.target.value)}
-                      placeholder="예: React, TypeScript, Node.js, PostgreSQL"
-                      className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-300 focus:border-gray-900 focus:outline-none"
-                    />
-                  </div>
-
-                  {/* Requirements */}
-                  <div>
-                    <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-widest text-gray-400">
-                      주요 요구사항 <span className="normal-case text-red-400">*</span>
-                    </label>
-                    <textarea
-                      rows={3}
-                      value={requirementsInput}
-                      onChange={(e) => setRequirementsInput(e.target.value)}
-                      placeholder="핵심 기능 및 요구사항을 간략히 입력해 주세요"
-                      className="w-full resize-none rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-300 focus:border-gray-900 focus:outline-none"
-                    />
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => void handleSubmitGeneratePipeline()}
-                    disabled={!pdfFile || !techStackInput.trim() || !requirementsInput.trim()}
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-gray-900 py-3 text-sm font-semibold text-white hover:bg-gray-800 disabled:bg-gray-200 disabled:text-gray-400 transition-colors"
-                  >
-                    <Zap className="h-4 w-4" />
-                    파이프라인 생성
-                  </button>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           </div>
         </div>

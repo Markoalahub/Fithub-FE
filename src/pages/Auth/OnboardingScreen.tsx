@@ -1,5 +1,4 @@
 import { ArrowRight, Code2, HelpCircle, PenSquare } from "lucide-react";
-import fithubServiceIcon from "../../assets/fithub-service-icon.svg";
 import type { UserRole } from "../../types";
 
 interface OnboardingScreenProps {
@@ -38,7 +37,7 @@ const roleCards: Array<{
 
 export default function OnboardingScreen({ onSelectRole, onOpenTutorial }: OnboardingScreenProps) {
   return (
-    <div className="min-h-screen bg-[#F5F5F5] px-6 py-10 text-gray-900">
+    <div className="min-h-screen bg-[#F5F5F5] flex flex-col items-center justify-center px-6 py-10 text-gray-900">
       {/* Tutorial replay button */}
       <button
         onClick={onOpenTutorial}
@@ -47,53 +46,37 @@ export default function OnboardingScreen({ onSelectRole, onOpenTutorial }: Onboa
         <HelpCircle className="h-3.5 w-3.5" /> 튜토리얼 다시보기
       </button>
 
-      <div className="mx-auto w-full max-w-3xl">
-        {/* Header card */}
-        <div className="rounded-2xl border border-[#E5E5E5] bg-white p-7 mb-5 auth-fade-up auth-delay-1">
-          <div className="flex items-center gap-3">
-            <img
-              src={fithubServiceIcon}
-              alt="Fithub"
-              className="h-10 w-10 rounded-xl border border-[#E5E5E5] p-0.5"
-            />
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">Fithub</p>
-              <h1 className="text-2xl font-bold text-gray-900">직군을 선택해 주세요</h1>
+      {/* Minimal branding */}
+      <div className="mb-8 flex flex-col items-center gap-1.5 auth-fade-up">
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Fithub</p>
+        <h1 className="text-2xl font-bold text-gray-900">직군을 선택해 주세요</h1>
+      </div>
+
+      {/* Role cards */}
+      <div className="w-full max-w-2xl grid grid-cols-1 gap-4 md:grid-cols-2">
+        {roleCards.map((card, i) => (
+          <button
+            key={card.role}
+            type="button"
+            onClick={() => onSelectRole(card.role as UserRole)}
+            className={`group rounded-2xl border border-[#E5E5E5] bg-white overflow-hidden text-left transition-all duration-200 hover:scale-[1.01] hover:shadow-lg auth-fade-up ${i === 0 ? "auth-delay-1" : "auth-delay-2"} ${card.borderHover}`}
+          >
+            <div className={`bg-gradient-to-br ${card.gradient} flex flex-col items-center justify-center py-14 gap-4`}>
+              {card.icon}
+              <span className="rounded-full bg-white/20 px-3 py-1 text-xs font-semibold text-white tracking-wide">
+                {card.subtitle}
+              </span>
             </div>
-          </div>
-          <p className="mt-3 text-sm leading-relaxed text-gray-500">
-            AI 파이프라인 협업을 시작할 역할을 선택하세요.
-          </p>
-        </div>
 
-        {/* Role cards */}
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          {roleCards.map((card) => (
-            <button
-              key={card.role}
-              type="button"
-              onClick={() => onSelectRole(card.role as UserRole)}
-              className={`group rounded-2xl border border-[#E5E5E5] bg-white overflow-hidden text-left transition-all duration-200 hover:scale-[1.01] hover:shadow-lg auth-fade-up auth-delay-2 ${card.borderHover}`}
-            >
-              {/* Gradient illustration section */}
-              <div className={`bg-gradient-to-br ${card.gradient} flex flex-col items-center justify-center py-12 gap-4`}>
-                {card.icon}
-                <span className="rounded-full bg-white/20 px-3 py-1 text-xs font-semibold text-white tracking-wide">
-                  {card.subtitle}
-                </span>
+            <div className="p-5">
+              <h2 className="text-lg font-bold text-gray-900">{card.title}</h2>
+              <p className="mt-2 text-sm leading-relaxed text-gray-500">{card.description}</p>
+              <div className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-gray-900 group-hover:gap-2 transition-all duration-150">
+                이 역할로 시작 <ArrowRight className="h-4 w-4" />
               </div>
-
-              {/* Text content section */}
-              <div className="p-5">
-                <h2 className="text-lg font-bold text-gray-900">{card.title}</h2>
-                <p className="mt-2 text-sm leading-relaxed text-gray-500">{card.description}</p>
-                <div className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-gray-900 group-hover:gap-2 transition-all duration-150">
-                  이 역할로 시작 <ArrowRight className="h-4 w-4" />
-                </div>
-              </div>
-            </button>
-          ))}
-        </div>
+            </div>
+          </button>
+        ))}
       </div>
     </div>
   );
