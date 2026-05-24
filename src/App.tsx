@@ -7,6 +7,7 @@ import OnboardingScreen from "./pages/Auth/OnboardingScreen";
 import LoginScreen from "./pages/Auth/LoginScreen.tsx";
 import TutorialOnboarding from "./pages/Auth/TutorialOnboarding";
 import DevTrackSelector from "./pages/Auth/DevTrackSelector";
+import PlannerNicknameOnboarding from "./pages/Auth/PlannerNicknameOnboarding";
 import AppHeader from "./components/layout/AppHeader";
 import MyInfoSection from "./components/MyInfoSection";
 import PipelineCanvas from "./components/PipelineCanvas";
@@ -16,13 +17,16 @@ import type { DemoProject, PipelineCategoryOption } from "./components/PipelineL
 import {
   createProject,
   createIssueFromPipelineStep,
+  checkNicknameDuplicate,
   fetchAvailableGithubRepositories,
   fetchProjectGithubRepositories,
   generateProjectPipeline,
   parseGithubRepoInput,
+  submitUserOnboarding,
   syncIssueToGithub,
   syncProjectGithubRepositories,
   updatePipelineStep,
+  type DeveloperOnboardingJobRole,
   type GeneratedPipelineFeature,
   type PipelineGenerationCategory,
   type RepositoryCategory,
@@ -232,12 +236,125 @@ const formatFileSize = (size: number) => {
   return `${size}B`;
 };
 
-const normalizeUserRole = (value: string | null | undefined): UserRole => {
-  if (value === "pm" || value === "dev-fe" || value === "dev-be" || value === "dev") {
-    return value;
+const normalizeDeveloperRole = (value: string | null | undefined) => {
+  const normalizedValue = (value ?? "").trim().toLowerCase();
+
+  if (
+    normalizedValue === "dev-fe" ||
+    normalizedValue === "frontend" ||
+    normalizedValue === "front-end" ||
+    normalizedValue === "fe"
+  ) {
+    return "dev-fe" as const;
   }
+
+  if (
+    normalizedValue === "dev-be" ||
+    normalizedValue === "backend" ||
+    normalizedValue === "back-end" ||
+    normalizedValue === "be"
+  ) {
+    return "dev-be" as const;
+  }
+
+  return null;
+};
+
+const normalizeUserRole = (
+  value: string | null | undefined,
+  jobRoleValue?: string | null,
+): UserRole => {
+  const normalizedValue = (value ?? "").trim().toLowerCase();
+
+  if (
+    normalizedValue === "pm" ||
+    normalizedValue === "planner" ||
+    normalizedValue === "productmanager" ||
+    normalizedValue === "product_manager"
+  ) {
+    return "pm";
+  }
+
+  const normalizedDeveloperRole =
+    normalizeDeveloperRole(normalizedValue) ??
+    normalizeDeveloperRole(jobRoleValue);
+  if (normalizedDeveloperRole) {
+    return normalizedDeveloperRole;
+  }
+
+  if (normalizedValue === "dev" || normalizedValue === "developer") {
+    return "dev";
+  }
+
   return "dev";
 };
+
+const parseBooleanQueryValue = (value: string | null | undefined) => {
+  const normalizedValue = (value ?? "").trim().toLowerCase();
+  if (!normalizedValue) {
+    return null;
+  }
+
+  if (
+    normalizedValue === "true" ||
+    normalizedValue === "1" ||
+    normalizedValue === "yes" ||
+    normalizedValue === "y"
+  ) {
+    return true;
+  }
+
+  if (
+    normalizedValue === "false" ||
+    normalizedValue === "0" ||
+    normalizedValue === "no" ||
+    normalizedValue === "n"
+  ) {
+    return false;
+  }
+
+  return null;
+};
+
+const maskSensitiveValue = (value: string | null | undefined) => {
+  const normalizedValue = (value ?? "").trim();
+  if (!normalizedValue) {
+    return "";
+  }
+
+  if (normalizedValue.length <= 14) {
+    return `${normalizedValue.slice(0, 4)}...`;
+  }
+
+  return `${normalizedValue.slice(0, 8)}...${normalizedValue.slice(-6)}`;
+};
+
+const toCallbackLogRecord = (params: URLSearchParams) => {
+  const sensitiveKeys = new Set([
+    "accessToken",
+    "refreshToken",
+    "gitAccessToken",
+    "githubAccessToken",
+    "kakaoAccessToken",
+  ]);
+
+  return Array.from(params.entries()).reduce<Record<string, string>>(
+    (accumulator, [key, value]) => {
+      accumulator[key] = sensitiveKeys.has(key)
+        ? maskSensitiveValue(value)
+        : value;
+      return accumulator;
+    },
+    {},
+  );
+};
+
+const getErrorMessage = (error: unknown) =>
+  error instanceof Error ? error.message : "요청 처리 중 오류가 발생했습니다.";
+
+const ONBOARDING_ALREADY_COMPLETED_MESSAGE = "이미 온보딩이 완료되었습니다.";
+const isAlreadyCompletedOnboardingError = (error: unknown) =>
+  getErrorMessage(error).includes(ONBOARDING_ALREADY_COMPLETED_MESSAGE);
 
 const normalizeCategory = (value?: string) => (value ?? "").trim().toUpperCase();
 
@@ -472,6 +589,12 @@ type ToastItem = {
   tone: ToastTone;
 };
 
+type OAuthOnboardingFlow = "none" | "planner" | "developer";
+type OAuthOnboardingState = {
+  isNewSocialUser: boolean;
+  flow: OAuthOnboardingFlow;
+};
+
 type DemoPipeline = { projectId: number; categories: Array<"FE" | "BE"> };
 type PipelineLandingStep = "project-list" | "create-project" | "pipeline-form" | "canvas";
 
@@ -483,6 +606,11 @@ const devTrackLabel: Record<DevTrack, string> = {
 export default function App() {
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [onboardingRole, setOnboardingRole] = useState<UserRole | null>(null);
+  const [oauthOnboardingState, setOauthOnboardingState] =
+    useState<OAuthOnboardingState>({
+      isNewSocialUser: false,
+      flow: "none",
+    });
   const [hasSeenTutorial, setHasSeenTutorial] = useState<boolean>(
     () => typeof window !== "undefined" && window.localStorage.getItem("fithub.seenTutorial") === "1",
   );
@@ -702,6 +830,56 @@ export default function App() {
     toastTimeoutIdsRef.current.push(timeoutId);
   };
 
+  const finishSocialOnboarding = (nextRole?: "pm" | "dev-fe" | "dev-be") => {
+    if (nextRole) {
+      setAuthUser((prev) => (prev ? { ...prev, role: nextRole } : prev));
+    }
+    setOauthOnboardingState({ isNewSocialUser: false, flow: "none" });
+  };
+
+  const handleCheckNicknameDuplicate = async (nickname: string) =>
+    checkNicknameDuplicate(nickname.trim());
+
+  const handlePlannerOnboardingSubmit = async (nickname: string) => {
+    const normalizedNickname = nickname.trim();
+    try {
+      await submitUserOnboarding({ nickname: normalizedNickname });
+      pushToast("온보딩이 완료되었습니다.", "success");
+      finishSocialOnboarding("pm");
+    } catch (error) {
+      if (isAlreadyCompletedOnboardingError(error)) {
+        pushToast("이미 온보딩이 완료되어 메인으로 이동합니다.", "info");
+        finishSocialOnboarding("pm");
+        return;
+      }
+      throw new Error(getErrorMessage(error));
+    }
+  };
+
+  const handleDeveloperOnboardingSubmit = async (payload: {
+    nickname: string;
+    jobRole: DeveloperOnboardingJobRole;
+  }) => {
+    const nextRole: "dev-fe" | "dev-be" =
+      payload.jobRole === "FRONTEND" ? "dev-fe" : "dev-be";
+
+    try {
+      await submitUserOnboarding({
+        nickname: payload.nickname.trim(),
+        jobRole: payload.jobRole,
+      });
+      pushToast("온보딩이 완료되었습니다.", "success");
+      finishSocialOnboarding(nextRole);
+    } catch (error) {
+      if (isAlreadyCompletedOnboardingError(error)) {
+        pushToast("이미 온보딩이 완료되어 메인으로 이동합니다.", "info");
+        finishSocialOnboarding(nextRole);
+        return;
+      }
+      throw new Error(getErrorMessage(error));
+    }
+  };
+
   useEffect(() => {
     if (typeof window === "undefined") {
       return;
@@ -726,7 +904,12 @@ export default function App() {
     const refreshToken = readParam("refreshToken");
     const githubAccessToken = readParam("gitAccessToken", "githubAccessToken");
     const kakaoAccessToken = readParam("kakaoAccessToken");
-    const role = normalizeUserRole(params.get("role"));
+    const roleFromParams = normalizeUserRole(
+      params.get("role"),
+      params.get("jobRole"),
+    );
+    const isNewSocialUser =
+      parseBooleanQueryValue(params.get("isNew")) === true;
     const providerFromParam = params.get("provider")?.trim().toLowerCase();
     const provider: AuthUser["provider"] =
       providerFromParam === "kakao" || kakaoAccessToken ? "kakao" : "github";
@@ -735,6 +918,25 @@ export default function App() {
       readParam("username", "name") ||
       (provider === "kakao" ? "Kakao User" : "GitHub User");
     const email = readParam("email");
+
+    console.groupCollapsed("[OAuth Callback] params");
+    console.log("path", window.location.pathname);
+    console.log("search", window.location.search);
+    console.log("query", toCallbackLogRecord(params));
+    console.log("parsed", {
+      providerFromParam,
+      provider,
+      roleFromParams,
+      isNewSocialUser,
+      userId,
+      username,
+      email,
+      hasAccessToken: Boolean(accessToken),
+      hasRefreshToken: Boolean(refreshToken),
+      hasGithubAccessToken: Boolean(githubAccessToken),
+      hasKakaoAccessToken: Boolean(kakaoAccessToken),
+    });
+    console.groupEnd();
 
     if (!accessToken) {
       pushToast("OAuth 로그인 토큰을 받지 못했습니다.", "warning");
@@ -763,18 +965,36 @@ export default function App() {
       window.localStorage.removeItem("fithub.kakaoAccessToken");
     }
 
+    const nextRole: UserRole =
+      isNewSocialUser && roleFromParams !== "pm" ? "dev" : roleFromParams;
+
     const nextUser: AuthUser = {
       id: String(userId),
-      role,
+      role: nextRole,
       name: username,
       email,
       provider,
     };
 
     setAuthUser(nextUser);
-    setOnboardingRole(role);
+    setOnboardingRole(nextRole);
+    if (isNewSocialUser) {
+      const nextFlow: OAuthOnboardingFlow =
+        provider === "kakao" || roleFromParams === "pm"
+          ? "planner"
+          : "developer";
+      setOauthOnboardingState({
+        isNewSocialUser: true,
+        flow: nextFlow,
+      });
+    } else {
+      setOauthOnboardingState({
+        isNewSocialUser: false,
+        flow: "none",
+      });
+    }
     setActiveTab("pipeline");
-    if (role === "pm") {
+    if (nextRole === "pm") {
       setPmSelectedTrack("frontend");
       setPmSubSection("ai");
     }
@@ -800,6 +1020,7 @@ export default function App() {
   const handleLogout = () => {
     setAuthUser(null);
     setOnboardingRole(null);
+    setOauthOnboardingState({ isNewSocialUser: false, flow: "none" });
     setActiveTab("pipeline");
     if (typeof window !== "undefined") {
       window.localStorage.removeItem("fithub.apiToken");
@@ -2116,9 +2337,35 @@ export default function App() {
     );
   }
 
+  if (
+    oauthOnboardingState.isNewSocialUser &&
+    oauthOnboardingState.flow === "planner"
+  ) {
+    return (
+      <PlannerNicknameOnboarding
+        onCheckNickname={handleCheckNicknameDuplicate}
+        onSubmitOnboarding={handlePlannerOnboardingSubmit}
+      />
+    );
+  }
+
+  if (
+    oauthOnboardingState.isNewSocialUser &&
+    oauthOnboardingState.flow === "developer"
+  ) {
+    return (
+      <DevTrackSelector
+        mode="onboarding"
+        onCheckNickname={handleCheckNicknameDuplicate}
+        onSubmitOnboarding={handleDeveloperOnboardingSubmit}
+      />
+    );
+  }
+
   if (authUser.role === "dev") {
     return (
       <DevTrackSelector
+        mode="legacy"
         onSelectTrack={(track) =>
           setAuthUser((prev) => (prev ? { ...prev, role: track } : prev))
         }

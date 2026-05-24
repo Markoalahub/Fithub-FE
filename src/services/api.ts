@@ -92,6 +92,27 @@ export type CreateProjectResponse = {
   projectName: string;
 };
 
+export type NicknameDuplicateCheckResponse = {
+  isDuplicate: boolean;
+  message: string;
+};
+
+export type DeveloperOnboardingJobRole = "FRONTEND" | "BACKEND";
+
+export type UserOnboardingPayload =
+  | {
+      nickname: string;
+    }
+  | {
+      nickname: string;
+      jobRole: DeveloperOnboardingJobRole;
+    };
+
+export type UserOnboardingResponse = {
+  message: string;
+  success: boolean;
+};
+
 export type PipelineGenerationCategory = "FE" | "BE";
 
 export type GeneratedPipelineFeature = {
@@ -669,6 +690,48 @@ export async function createProject(payload: {
   return {
     projectId,
     projectName,
+  };
+}
+
+export async function checkNicknameDuplicate(
+  nickname: string,
+): Promise<NicknameDuplicateCheckResponse> {
+  const response = await apiRequest<Record<string, unknown>>("/users/check", {
+    method: "GET",
+    query: { nickname: nickname.trim() },
+    authMode: "required",
+    baseUrl: API_V1_BASE_URL,
+  });
+
+  const isDuplicate = Boolean(readObjectValue(response, "isDuplicate"));
+  const fallbackMessage = isDuplicate
+    ? "이미 사용 중인 닉네임입니다."
+    : "사용 가능한 닉네임입니다.";
+
+  return {
+    isDuplicate,
+    message: String(readObjectValue(response, "message") ?? fallbackMessage),
+  };
+}
+
+export async function submitUserOnboarding(
+  payload: UserOnboardingPayload,
+): Promise<UserOnboardingResponse> {
+  const response = await apiRequest<Record<string, unknown>>(
+    "/users/onboarding",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+      authMode: "required",
+      baseUrl: API_V1_BASE_URL,
+    },
+  );
+
+  return {
+    message: String(
+      readObjectValue(response, "message") ?? "온보딩이 완료되었습니다.",
+    ),
+    success: Boolean(readObjectValue(response, "success") ?? true),
   };
 }
 
