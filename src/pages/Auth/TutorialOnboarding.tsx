@@ -12,98 +12,69 @@ type Slide = {
   illustration: React.ReactNode;
 };
 
-const FolderIllustration = () => (
-  <svg viewBox="0 0 120 100" className="w-28 h-24" fill="none">
-    <rect x="8" y="28" width="104" height="64" rx="10" fill="#EEF2FF" stroke="#C7D2FE" strokeWidth="2"/>
-    <path d="M8 38 Q8 28 18 28 H44 L52 36 H102 Q112 36 112 46 V38 Z" fill="#C7D2FE"/>
-    <rect x="22" y="50" width="48" height="5" rx="2.5" fill="#A5B4FC"/>
-    <rect x="22" y="62" width="36" height="5" rx="2.5" fill="#C7D2FE"/>
-    <rect x="22" y="74" width="56" height="5" rx="2.5" fill="#C7D2FE"/>
-    <circle cx="86" cy="72" r="18" fill="#4F46E5"/>
-    <path d="M79 72 L85 78 L94 66" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+const RequirementInputIllustration = () => (
+  <svg viewBox="0 0 220 120" className="h-28 w-52" fill="none" aria-hidden="true">
+    <rect x="8" y="18" width="98" height="84" rx="14" fill="#EEF2FF" stroke="#C7D2FE" strokeWidth="2" />
+    <rect x="24" y="38" width="58" height="6" rx="3" fill="#A5B4FC" />
+    <rect x="24" y="52" width="66" height="6" rx="3" fill="#C7D2FE" />
+    <rect x="24" y="66" width="50" height="6" rx="3" fill="#C7D2FE" />
+    <path d="M106 60 L142 60" stroke="#818CF8" strokeWidth="4" strokeLinecap="round" className="auth-pipeline-flow" />
+    <rect x="146" y="44" width="32" height="32" rx="8" fill="#4F46E5" />
+    <path d="M166 50 L158 61 H164 L157 72 L171 58 H164 L166 50 Z" fill="#FFFFFF" />
+    <circle cx="192" cy="60" r="11" fill="#EEF2FF" stroke="#4F46E5" strokeWidth="3" className="auth-pipeline-node-pulse" />
   </svg>
 );
 
-const PipelineIllustration = () => (
-  <svg viewBox="0 0 160 80" className="w-40 h-20" fill="none">
-    {/* Left node */}
-    <circle cx="20" cy="40" r="14" fill="#EEF2FF" stroke="#A5B4FC" strokeWidth="2"/>
-    <circle cx="20" cy="40" r="7" fill="#6366F1"/>
-    {/* Line left to center */}
-    <path d="M34 40 L62 40" stroke="#A5B4FC" strokeWidth="2.5" strokeLinecap="round" strokeDasharray="4 3"/>
-    {/* Center diamond */}
-    <rect x="72" y="28" width="24" height="24" rx="4" fill="#4F46E5" transform="rotate(45 84 40)"/>
-    {/* Bolt icon */}
-    <path d="M87 34 L82 40 L86 40 L81 46 L90 39 L86 39 Z" fill="white"/>
-    {/* Line center to right */}
-    <path d="M98 40 L126 40" stroke="#A5B4FC" strokeWidth="2.5" strokeLinecap="round" strokeDasharray="4 3"/>
-    {/* Right node */}
-    <circle cx="140" cy="40" r="14" fill="#EEF2FF" stroke="#A5B4FC" strokeWidth="2"/>
-    <circle cx="140" cy="40" r="7" fill="#6366F1"/>
-    {/* Labels */}
-    <text x="20" y="65" textAnchor="middle" fontSize="9" fill="#6366F1" fontWeight="600" fontFamily="system-ui">PM</text>
-    <text x="84" y="65" textAnchor="middle" fontSize="9" fill="#6366F1" fontWeight="600" fontFamily="system-ui">AI</text>
-    <text x="140" y="65" textAnchor="middle" fontSize="9" fill="#6366F1" fontWeight="600" fontFamily="system-ui">DEV</text>
+const AutoPipelineIllustration = () => (
+  <svg viewBox="0 0 240 120" className="h-28 w-56" fill="none" aria-hidden="true">
+    <circle cx="28" cy="60" r="16" fill="#EEF2FF" stroke="#A5B4FC" strokeWidth="2.5" />
+    <circle cx="28" cy="60" r="7" fill="#6366F1" />
+    <path d="M44 60 H94" stroke="#A5B4FC" strokeWidth="4" strokeLinecap="round" className="auth-pipeline-flow" />
+    <rect x="102" y="44" width="32" height="32" rx="7" fill="#4F46E5" />
+    <path d="M121 50 L113 61 H119 L112 72 L126 58 H119 L121 50 Z" fill="#FFFFFF" />
+    <path d="M134 60 H184" stroke="#A5B4FC" strokeWidth="4" strokeLinecap="round" className="auth-pipeline-flow auth-pipeline-flow-delay" />
+    <circle cx="200" cy="60" r="16" fill="#EEF2FF" stroke="#A5B4FC" strokeWidth="2.5" />
+    <circle cx="200" cy="60" r="7" fill="#6366F1" className="auth-pipeline-node-pulse" />
+    <rect x="34" y="18" width="28" height="10" rx="5" fill="#C7D2FE" />
+    <rect x="174" y="18" width="32" height="10" rx="5" fill="#C7D2FE" />
   </svg>
 );
 
-const ChatIllustration = () => (
-  <svg viewBox="0 0 120 90" className="w-28 h-24" fill="none">
-    {/* PM bubble (right) */}
-    <rect x="44" y="6" width="68" height="28" rx="10" fill="#4F46E5"/>
-    <path d="M112 26 L104 34 L104 26 Z" fill="#4F46E5"/>
-    <rect x="52" y="15" width="40" height="5" rx="2.5" fill="white" fillOpacity="0.8"/>
-    <rect x="52" y="24" width="28" height="5" rx="2.5" fill="white" fillOpacity="0.5"/>
-    {/* Dev bubble (left) */}
-    <rect x="8" y="46" width="68" height="28" rx="10" fill="#EEF2FF" stroke="#C7D2FE" strokeWidth="1.5"/>
-    <path d="M8 66 L16 74 L16 66 Z" fill="#EEF2FF" stroke="#C7D2FE" strokeWidth="1.5"/>
-    <rect x="16" y="55" width="44" height="5" rx="2.5" fill="#A5B4FC"/>
-    <rect x="16" y="64" width="32" height="5" rx="2.5" fill="#C7D2FE"/>
-  </svg>
-);
-
-const RocketIllustration = () => (
-  <svg viewBox="0 0 100 100" className="w-24 h-24" fill="none">
-    <circle cx="50" cy="50" r="46" fill="#EEF2FF"/>
-    <path d="M50 22 C50 22 62 32 62 50 C62 64 56 72 50 78 C44 72 38 64 38 50 C38 32 50 22 50 22Z" fill="#4F46E5"/>
-    <ellipse cx="50" cy="52" rx="7" ry="7" fill="white"/>
-    <ellipse cx="50" cy="52" rx="4" ry="4" fill="#C7D2FE"/>
-    <path d="M38 58 L30 66 Q38 70 38 62 Z" fill="#A5B4FC"/>
-    <path d="M62 58 L70 66 Q62 70 62 62 Z" fill="#A5B4FC"/>
-    <path d="M44 76 L50 84 L56 76" stroke="#4F46E5" strokeWidth="2" strokeLinecap="round" fill="none"/>
+const ReviewLaunchIllustration = () => (
+  <svg viewBox="0 0 220 120" className="h-28 w-52" fill="none" aria-hidden="true">
+    <rect x="26" y="18" width="122" height="84" rx="14" fill="#EEF2FF" stroke="#C7D2FE" strokeWidth="2" />
+    <rect x="44" y="38" width="66" height="6" rx="3" fill="#A5B4FC" />
+    <rect x="44" y="53" width="78" height="6" rx="3" fill="#C7D2FE" />
+    <rect x="44" y="68" width="52" height="6" rx="3" fill="#C7D2FE" />
+    <circle cx="160" cy="42" r="11" fill="#10B981" />
+    <path d="M155 42 L159 46 L166 39" stroke="#FFFFFF" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+    <circle cx="160" cy="74" r="11" fill="#4F46E5" className="auth-pipeline-node-pulse" />
+    <path d="M157 74 L160 77 L166 70" stroke="#FFFFFF" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M172 58 H202" stroke="#6366F1" strokeWidth="4" strokeLinecap="round" className="auth-pipeline-flow" />
+    <path d="M202 58 L194 52 M202 58 L194 64" stroke="#6366F1" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
 
 const slides: Slide[] = [
   {
-    title: "Fithub에 오신 것을 환영합니다",
-    description: "PM과 개발자를 연결하는 AI 기반 협업 파이프라인 툴입니다.\n기획부터 개발까지 한 곳에서 관리하세요.",
+    title: "요구사항을 입력하면 준비가 끝납니다",
+    description: "PRD와 요청사항을 올리면 AI가 생성 준비를 시작합니다.",
     illustration: (
-      <div className="flex flex-col items-center gap-3">
-        <img src={fithubServiceIcon} alt="Fithub" className="h-20 w-20 rounded-2xl border border-[#E5E5E5] shadow-sm"/>
-        <span className="text-2xl font-bold tracking-tight text-gray-900">Fithub</span>
+      <div className="flex flex-col items-center gap-3 auth-fade-up">
+        <img src={fithubServiceIcon} alt="Fithub" className="h-16 w-16 rounded-2xl border border-[#E5E5E5] p-1" />
+        <RequirementInputIllustration />
       </div>
     ),
   },
   {
-    title: "프로젝트를 생성하세요",
-    description: "새 프로젝트를 만들고 PRD 문서를 업로드하면\nAI가 파이프라인 생성을 준비합니다.",
-    illustration: <FolderIllustration />,
+    title: "AI가 파이프라인을 자동 생성합니다",
+    description: "요구사항을 분석해 작업 흐름을 연결된 단계로 만듭니다.",
+    illustration: <AutoPipelineIllustration />,
   },
   {
-    title: "AI가 파이프라인을 만들어줍니다",
-    description: "기획서를 분석해 개발 기능 목록을\n자동으로 파이프라인 형태로 생성합니다.",
-    illustration: <PipelineIllustration />,
-  },
-  {
-    title: "PM과 개발자가 함께 검토합니다",
-    description: "기능별 질문, 수정 제안, 컨펌을 실시간으로\n한 공간에서 주고받을 수 있습니다.",
-    illustration: <ChatIllustration />,
-  },
-  {
-    title: "지금 바로 시작해 보세요",
-    description: "직군을 선택하고 OAuth로 간편하게 로그인하면\n바로 파이프라인 협업을 시작할 수 있습니다.",
-    illustration: <RocketIllustration />,
+    title: "검토 후 바로 실행으로 이어집니다",
+    description: "확인된 단계부터 팀 워크플로우를 바로 시작할 수 있습니다.",
+    illustration: <ReviewLaunchIllustration />,
   },
 ];
 
@@ -117,16 +88,18 @@ export default function TutorialOnboarding({ onComplete }: TutorialOnboardingPro
       {/* Skip button */}
       <button
         onClick={onComplete}
-        className="fixed top-6 right-6 inline-flex items-center gap-1 rounded-lg border border-[#E5E5E5] bg-white px-3 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-50 transition-colors z-10"
+        className="fixed top-6 right-6 inline-flex items-center gap-1 rounded-lg border border-[#E5E5E5] bg-white px-3 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-50 transition-colors z-10 auth-fade-up"
       >
         <X className="h-3 w-3" /> 건너뛰기
       </button>
 
       <div className="w-full max-w-lg">
-        <div className="rounded-2xl border border-[#E5E5E5] bg-white shadow-sm overflow-hidden">
+        <div className="rounded-2xl border border-[#E5E5E5] bg-white shadow-sm overflow-hidden auth-fade-up auth-delay-1">
           {/* Illustration area */}
-          <div className="flex items-center justify-center bg-gradient-to-br from-indigo-50 to-violet-50 py-10 px-8 min-h-[200px]">
-            {slide.illustration}
+          <div className="flex items-center justify-center bg-gradient-to-br from-indigo-50 via-sky-50 to-violet-50 py-10 px-8 min-h-[220px]">
+            <div key={`illustration-${current}`} className="auth-slide-fade-up">
+              {slide.illustration}
+            </div>
           </div>
 
           {/* Content */}
@@ -146,10 +119,10 @@ export default function TutorialOnboarding({ onComplete }: TutorialOnboardingPro
               ))}
             </div>
 
-            <h2 className="text-xl font-bold text-gray-900 text-center">{slide.title}</h2>
-            <p className="mt-3 text-sm leading-relaxed text-gray-500 text-center whitespace-pre-line">
-              {slide.description}
-            </p>
+            <div key={`content-${current}`} className="auth-slide-fade-up">
+              <h2 className="text-xl font-bold text-gray-900 text-center">{slide.title}</h2>
+              <p className="mt-3 text-sm leading-relaxed text-gray-500 text-center">{slide.description}</p>
+            </div>
 
             {/* Navigation */}
             <div className="mt-7 flex items-center gap-3">

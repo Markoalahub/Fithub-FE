@@ -42,14 +42,14 @@ export default function OnboardingScreen({ onSelectRole, onOpenTutorial }: Onboa
       {/* Tutorial replay button */}
       <button
         onClick={onOpenTutorial}
-        className="fixed top-5 right-5 inline-flex items-center gap-1.5 rounded-full border border-[#E5E5E5] bg-white px-3 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors shadow-sm z-10"
+        className="fixed top-5 right-5 inline-flex items-center gap-1.5 rounded-full border border-[#E5E5E5] bg-white px-3 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors shadow-sm z-10 auth-fade-up"
       >
         <HelpCircle className="h-3.5 w-3.5" /> 튜토리얼 다시보기
       </button>
 
       <div className="mx-auto w-full max-w-3xl">
         {/* Header card */}
-        <div className="rounded-2xl border border-[#E5E5E5] bg-white p-7 mb-5">
+        <div className="rounded-2xl border border-[#E5E5E5] bg-white p-7 mb-5 auth-fade-up auth-delay-1">
           <div className="flex items-center gap-3">
             <img
               src={fithubServiceIcon}
@@ -62,15 +62,8 @@ export default function OnboardingScreen({ onSelectRole, onOpenTutorial }: Onboa
             </div>
           </div>
           <p className="mt-3 text-sm leading-relaxed text-gray-500">
-            선택한 직군 기준으로 OAuth 로그인 후 맞춤 워크플로우로 이동합니다.
+            AI 파이프라인 협업을 시작할 역할을 선택하세요.
           </p>
-          <div className="mt-3 inline-flex items-center gap-2 rounded-lg border border-[#E5E5E5] bg-[#FAFAFA] px-3 py-2 text-xs text-gray-500">
-            <span className="font-medium text-gray-700">1. 직군 선택</span>
-            <span className="text-gray-300">→</span>
-            <span>2. OAuth 로그인</span>
-            <span className="text-gray-300">→</span>
-            <span>3. 파이프라인 시작</span>
-          </div>
         </div>
 
         {/* Role cards */}
@@ -80,7 +73,7 @@ export default function OnboardingScreen({ onSelectRole, onOpenTutorial }: Onboa
               key={card.role}
               type="button"
               onClick={() => onSelectRole(card.role as UserRole)}
-              className={`group rounded-2xl border border-[#E5E5E5] bg-white overflow-hidden text-left transition-all duration-200 hover:scale-[1.02] hover:shadow-xl ${card.borderHover}`}
+              className={`group rounded-2xl border border-[#E5E5E5] bg-white overflow-hidden text-left transition-all duration-200 hover:scale-[1.01] hover:shadow-lg auth-fade-up auth-delay-2 ${card.borderHover}`}
             >
               {/* Gradient illustration section */}
               <div className={`bg-gradient-to-br ${card.gradient} flex flex-col items-center justify-center py-12 gap-4`}>
