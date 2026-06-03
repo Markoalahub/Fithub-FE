@@ -22,6 +22,7 @@ import {
   deleteProject,
   fetchAvailableGithubRepositories,
   fetchMyProjects,
+  fetchProjectPipelines,
   fetchProjectGithubRepositories,
   fetchUserByNickname,
   generateProjectPipeline,
@@ -32,6 +33,7 @@ import {
   syncProjectGithubRepositories,
   updatePipelineStep,
   type DeveloperOnboardingJobRole,
+  type GenerateProjectPipelineResponse,
   type GeneratedPipelineFeature,
   type PipelineGenerationCategory,
   type ProjectInviteUser,
@@ -363,6 +365,45 @@ const isAlreadyCompletedOnboardingError = (error: unknown) =>
   getErrorMessage(error).includes(ONBOARDING_ALREADY_COMPLETED_MESSAGE);
 
 const normalizeCategory = (value?: string) => (value ?? "").trim().toUpperCase();
+const PIPELINE_GENERATION_CATEGORIES: PipelineGenerationCategory[] = ["FE", "BE"];
+
+const toPipelineGenerationCategory = (
+  value?: string,
+): PipelineGenerationCategory | null => {
+  const category = normalizeCategory(value);
+  return category === "FE" || category === "BE" ? category : null;
+};
+
+const getTrackByPipelineCategory = (
+  category: PipelineGenerationCategory,
+): DevTrack => (category === "BE" ? "backend" : "frontend");
+
+const getLatestPipelinesByCategory = (
+  pipelines: GenerateProjectPipelineResponse[],
+) => {
+  const latestByCategory = new Map<
+    PipelineGenerationCategory,
+    GenerateProjectPipelineResponse
+  >();
+
+  pipelines.forEach((pipeline) => {
+    const category = toPipelineGenerationCategory(pipeline.category);
+    if (!category) {
+      return;
+    }
+
+    const current = latestByCategory.get(category);
+    if (
+      !current ||
+      pipeline.version > current.version ||
+      (pipeline.version === current.version && pipeline.pipeId > current.pipeId)
+    ) {
+      latestByCategory.set(category, pipeline);
+    }
+  });
+
+  return latestByCategory;
+};
 
 const mapGeneratedFeatsToFeatures = (
   feats: GeneratedPipelineFeature[],
@@ -648,6 +689,8 @@ export default function App() {
   const [isConnectingGithubRepo, setIsConnectingGithubRepo] = useState(false);
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [isFetchingProjects, setIsFetchingProjects] = useState(false);
+  const [isFetchingProjectPipelines, setIsFetchingProjectPipelines] =
+    useState(false);
   const [hasFetchedProjects, setHasFetchedProjects] = useState(false);
   const [isDeletingProject, setIsDeletingProject] = useState(false);
   const [isSearchingInviteUser, setIsSearchingInviteUser] = useState(false);
@@ -665,7 +708,7 @@ export default function App() {
   const [isProjectInviteDialogOpen, setIsProjectInviteDialogOpen] =
     useState(false);
   const [projectInviteNickname, setProjectInviteNickname] = useState("");
-  const [demoPipelines, setDemoPipelines] = useState<DemoPipeline[]>([]);
+  const [, setDemoPipelines] = useState<DemoPipeline[]>([]);
   const [pipelineLandingStep, setPipelineLandingStep] = useState<PipelineLandingStep>("project-list");
   const [showCreateProjectDialog, setShowCreateProjectDialog] = useState(false);
   const [hasShownCreateProjectDialog, setHasShownCreateProjectDialog] = useState<boolean>(
@@ -688,6 +731,7 @@ export default function App() {
     null,
   );
   const toastTimeoutIdsRef = useRef<number[]>([]);
+  const projectPipelineRequestRef = useRef(0);
 
   // Card positions per track
   const [frontendCardPositions, setFrontendCardPositions] = useState<
@@ -837,6 +881,8 @@ export default function App() {
   };
 
   const clearActiveProject = () => {
+    projectPipelineRequestRef.current += 1;
+    setIsFetchingProjectPipelines(false);
     syncActiveProjectId(null);
     setSelectedDemoProject(null);
     setFrontendProjectName("Fithub V1");
@@ -870,6 +916,40 @@ export default function App() {
     setBackendCardPositions(new Map());
   };
 
+  const applyProjectPipelinesToState = (
+    projectId: number,
+    pipelines: GenerateProjectPipelineResponse[],
+  ) => {
+    const latestByCategory = getLatestPipelinesByCategory(pipelines);
+
+    PIPELINE_GENERATION_CATEGORIES.forEach((category) => {
+      const track = getTrackByPipelineCategory(category);
+      const pipeline = latestByCategory.get(category);
+      resetTrackCollaborationState(track);
+      setTrackFeatures(
+        track,
+        pipeline ? mapGeneratedFeatsToFeatures(pipeline.feats) : [],
+      );
+    });
+
+    const categories = PIPELINE_GENERATION_CATEGORIES.filter((category) =>
+      latestByCategory.has(category),
+    );
+    setDemoPipelines((prev) => {
+      const next = prev.filter((pipeline) => pipeline.projectId !== projectId);
+      if (categories.length === 0) {
+        return next;
+      }
+      return [...next, { projectId, categories }];
+    });
+
+    if (categories.includes("FE")) {
+      setPmSelectedTrack("frontend");
+    } else if (categories.includes("BE")) {
+      setPmSelectedTrack("backend");
+    }
+  };
+
   const pushToast = (message: string, tone: ToastTone = "info") => {
     const id = createId();
     setToasts((prev) => [...prev.slice(-3), { id, message, tone }]);
@@ -882,6 +962,45 @@ export default function App() {
     }, 2600);
 
     toastTimeoutIdsRef.current.push(timeoutId);
+  };
+
+  const loadProjectPipelines = async (
+    projectId: number,
+    options: { clearOnError?: boolean } = {},
+  ) => {
+    const requestId = projectPipelineRequestRef.current + 1;
+    projectPipelineRequestRef.current = requestId;
+    setIsFetchingProjectPipelines(true);
+
+    try {
+      const response = await fetchProjectPipelines(projectId);
+      if (requestId !== projectPipelineRequestRef.current) {
+        return null;
+      }
+
+      applyProjectPipelinesToState(projectId, response.pipelines);
+      return response.pipelines;
+    } catch (error) {
+      if (requestId !== projectPipelineRequestRef.current) {
+        return null;
+      }
+
+      console.error(error);
+      if (options.clearOnError ?? true) {
+        applyProjectPipelinesToState(projectId, []);
+      }
+      pushToast(
+        error instanceof Error
+          ? error.message
+          : "프로젝트 파이프라인 조회에 실패했습니다.",
+        "warning",
+      );
+      return [];
+    } finally {
+      if (requestId === projectPipelineRequestRef.current) {
+        setIsFetchingProjectPipelines(false);
+      }
+    }
   };
 
   const finishSocialOnboarding = (nextRole?: "pm" | "dev-fe" | "dev-be") => {
@@ -1531,6 +1650,27 @@ export default function App() {
     }
   };
 
+  const handleSelectProject = async (project: DemoProject) => {
+    setSelectedDemoProject(project);
+    syncActiveProject(project);
+    applyProjectPipelinesToState(project.id, []);
+    setPipelineLandingStep("canvas");
+    setActiveTab("pipeline");
+
+    const pipelines = await loadProjectPipelines(project.id);
+    if (pipelines === null) {
+      return;
+    }
+
+    const hasPipelines = getLatestPipelinesByCategory(pipelines).size > 0;
+    if (isPm) {
+      setPipelineLandingStep(hasPipelines ? "canvas" : "pipeline-form");
+      return;
+    }
+
+    setPipelineLandingStep("canvas");
+  };
+
   const handleOpenProjectInviteDialog = () => {
     if (!isPm) {
       return;
@@ -1705,6 +1845,8 @@ export default function App() {
         },
         ...prev,
       ]);
+
+      await loadProjectPipelines(activeProjectId, { clearOnError: false });
 
       setPmSelectedTrack(params.category === "BE" ? "backend" : "frontend");
       setPipelineLandingStep("canvas");
@@ -2799,16 +2941,7 @@ export default function App() {
                 canDeleteProject={isPm}
                 canInviteProject={isPm}
                 onSelectProject={(proj) => {
-                  setSelectedDemoProject(proj);
-                  syncActiveProject(proj);
-                  if (isPm) {
-                    const existing = demoPipelines.find(
-                      (p) => p.projectId === proj.id,
-                    );
-                    setPipelineLandingStep(existing ? "canvas" : "pipeline-form");
-                    return;
-                  }
-                  setPipelineLandingStep("canvas");
+                  void handleSelectProject(proj);
                 }}
                 onGoToCreateProject={() => setPipelineLandingStep("create-project")}
                 onCreateProject={(params) => handleCreateProjectByPm(params)}
@@ -2861,8 +2994,14 @@ export default function App() {
                     cardPositions={cardPositions}
                     onUpdateCardPosition={updateCardPosition}
                     pipelineProposals={pipelineProposals}
-                    isGeneratingPipeline={isGeneratingPipeline}
-                    generatingFileName={generatingFileName}
+                    isGeneratingPipeline={
+                      isGeneratingPipeline || isFetchingProjectPipelines
+                    }
+                    generatingFileName={
+                      isFetchingProjectPipelines
+                        ? "프로젝트 파이프라인"
+                        : generatingFileName
+                    }
                     // PM actions
                     onEditFeature={(featureId, newName) =>
                       createPipelineProposal({

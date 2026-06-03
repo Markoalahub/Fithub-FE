@@ -10,7 +10,6 @@ const BE_BASE_URL = normalizeBaseRoot(
 );
 export const OAUTH_BASE_URL = `${BE_BASE_URL}/oauth2`;
 const API_V1_BASE_URL = `${BE_BASE_URL}/api/v1`;
-const API_V2_BASE_URL = `${BE_BASE_URL}/api/v2`;
 const GITHUB_API_BASE_URL = (
   import.meta.env.VITE_GITHUB_API_BASE_URL ?? "https://api.github.com"
 ).replace(/\/$/, "");
@@ -154,6 +153,11 @@ export type GenerateProjectPipelineResponse = {
   version: number;
   techStack: string;
   feats: GeneratedPipelineFeature[];
+};
+
+export type ProjectPipelinesResponse = {
+  pipelines: GenerateProjectPipelineResponse[];
+  total: number;
 };
 
 export type UpdatePipelineStepRequest = {
@@ -505,6 +509,41 @@ const normalizeGeneratedPipelineFeature = (
     featTitle: String(readObjectValue(value, "feat_title", "featTitle") ?? ""),
     featDetails,
     priority: Number(readObjectValue(value, "priority") ?? 0),
+  };
+};
+
+const normalizeGeneratedPipeline = (
+  value: Record<string, unknown>,
+  fallback?: {
+    projectId?: number;
+    category?: PipelineGenerationCategory;
+    techStack?: string;
+  },
+): GenerateProjectPipelineResponse => {
+  const featsRaw = readObjectValue(value, "feats");
+  const feats = Array.isArray(featsRaw)
+    ? featsRaw.map((feat) =>
+        normalizeGeneratedPipelineFeature(feat as Record<string, unknown>),
+      )
+    : [];
+
+  return {
+    pipeId: Number(readObjectValue(value, "pipe_id", "pipeId", "id") ?? 0),
+    projectId: Number(
+      readObjectValue(value, "project_id", "projectId") ??
+        fallback?.projectId ??
+        0,
+    ),
+    category: String(
+      readObjectValue(value, "category") ?? fallback?.category ?? "",
+    ),
+    version: Number(readObjectValue(value, "version") ?? 0),
+    techStack: String(
+      readObjectValue(value, "tech_stack", "techStack") ??
+        fallback?.techStack ??
+        "",
+    ),
+    feats,
   };
 };
 
@@ -874,27 +913,44 @@ export async function generateProjectPipeline(payload: {
       method: "POST",
       body: formData,
       authMode: "required",
-      baseUrl: API_V2_BASE_URL,
+      baseUrl: BE_BASE_URL,
     },
   );
 
-  const featsRaw = Array.isArray(readObjectValue(response, "feats"))
-    ? (readObjectValue(response, "feats") as Record<string, unknown>[])
+  return normalizeGeneratedPipeline(response, {
+    projectId: payload.projectId,
+    category: payload.category,
+    techStack: payload.techStack,
+  });
+}
+
+export async function fetchProjectPipelines(
+  projectId: number,
+): Promise<ProjectPipelinesResponse> {
+  const response = await apiRequest<Record<string, unknown>>(
+    `/projects/${projectId}/pipelines`,
+    {
+      method: "GET",
+      authMode: "required",
+      baseUrl: BE_BASE_URL,
+    },
+  );
+
+  const pipelinesRaw = readObjectValue(response, "pipelines");
+  const pipelines = Array.isArray(pipelinesRaw)
+    ? pipelinesRaw.map((pipeline) =>
+        normalizeGeneratedPipeline(pipeline as Record<string, unknown>, {
+          projectId,
+        }),
+      )
     : [];
+  const total = Number(
+    readObjectValue(response, "total", "totalCount", "count") ?? pipelines.length,
+  );
 
   return {
-    pipeId: Number(readObjectValue(response, "pipe_id", "pipeId") ?? 0),
-    projectId: Number(
-      readObjectValue(response, "project_id", "projectId") ?? payload.projectId,
-    ),
-    category: String(readObjectValue(response, "category") ?? payload.category),
-    version: Number(readObjectValue(response, "version") ?? 0),
-    techStack: String(
-      readObjectValue(response, "tech_stack", "techStack") ?? payload.techStack,
-    ),
-    feats: featsRaw.map((feat) =>
-      normalizeGeneratedPipelineFeature(feat as Record<string, unknown>),
-    ),
+    pipelines,
+    total: Number.isFinite(total) ? total : pipelines.length,
   };
 }
 
