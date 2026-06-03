@@ -26,11 +26,20 @@ export default function LoginScreen({ role, onBack }: LoginScreenProps) {
     )
       .replace(/\/+$/, "")
       .replace(/\/api\/v[12]$/i, "");
-    const callbackUrl = `${window.location.origin}/auth/oauth/callback`;
-    const authPath = isPm ? "/api/v1/auth/kakao/login" : "/api/v1/auth/login";
+    const provider = isPm ? "kakao" : "github";
+    const callbackUrl = new URL(
+      `${window.location.origin}/auth/oauth/callback`,
+    );
+    callbackUrl.searchParams.set("provider", provider);
+    if (isPm) {
+      callbackUrl.searchParams.set("role", role);
+    }
+    const authPath = isPm ? "/auth/kakao/login" : "/auth/github/login";
     const authUrl = new URL(`${baseUrl}${authPath}`);
-    authUrl.searchParams.set("frontendRedirect", callbackUrl);
-    authUrl.searchParams.set("role", role);
+    authUrl.searchParams.set("frontendRedirect", callbackUrl.toString());
+    if (isPm) {
+      authUrl.searchParams.set("role", role);
+    }
 
     window.location.assign(authUrl.toString());
   };
@@ -50,7 +59,9 @@ export default function LoginScreen({ role, onBack }: LoginScreenProps) {
         <div className="flex flex-1 items-center justify-center py-6 sm:py-10">
           <section className="w-full max-w-xl rounded-3xl border border-[#E5E5E5] bg-white p-8 shadow-sm sm:p-10 min-h-[520px] flex flex-col justify-center auth-fade-up auth-delay-1">
             <div className="mx-auto flex w-full max-w-sm flex-col items-center text-center">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">FITHUB</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">
+                FITHUB
+              </p>
               <h1 className="mt-1.5 text-2xl font-bold text-gray-900">
                 {roleLabel[role]} 로그인
               </h1>

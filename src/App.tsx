@@ -889,7 +889,12 @@ export default function App() {
       return;
     }
 
-    const params = new URLSearchParams(window.location.search);
+    const queryParams = new URLSearchParams(window.location.search);
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const params = new URLSearchParams(queryParams);
+    hashParams.forEach((value, key) => {
+      params.set(key, value);
+    });
     const readParam = (...keys: string[]) => {
       for (const key of keys) {
         const value = params.get(key)?.trim();
@@ -912,7 +917,15 @@ export default function App() {
       parseBooleanQueryValue(params.get("isNew")) === true;
     const providerFromParam = params.get("provider")?.trim().toLowerCase();
     const provider: AuthUser["provider"] =
-      providerFromParam === "kakao" || kakaoAccessToken ? "kakao" : "github";
+      providerFromParam === "kakao"
+        ? "kakao"
+        : providerFromParam === "github"
+          ? "github"
+          : kakaoAccessToken
+            ? "kakao"
+            : roleFromParams === "pm"
+              ? "kakao"
+              : "github";
     const userId = readParam("userId", "id", "user_id") || createId();
     const username =
       readParam("username", "name") ||
@@ -922,7 +935,10 @@ export default function App() {
     console.groupCollapsed("[OAuth Callback] params");
     console.log("path", window.location.pathname);
     console.log("search", window.location.search);
-    console.log("query", toCallbackLogRecord(params));
+    console.log("hash", window.location.hash);
+    console.log("query", toCallbackLogRecord(queryParams));
+    console.log("hashQuery", toCallbackLogRecord(hashParams));
+    console.log("merged", toCallbackLogRecord(params));
     console.log("parsed", {
       providerFromParam,
       provider,
