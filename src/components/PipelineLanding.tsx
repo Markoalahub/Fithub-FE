@@ -7,12 +7,22 @@ import {
   Layers,
   Plus,
   Server,
+  Trash2,
   Upload,
+  UserPlus,
   X,
   Zap,
 } from "lucide-react";
 
-export type DemoProject = { id: number; name: string; description: string };
+export type DemoProject = {
+  id: number;
+  name: string;
+  description: string;
+  creatorId?: number;
+  creatorNickname?: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
 export type PipelineCategoryOption = "FE" | "BE" | "ALL";
 
 interface PipelineLandingProps {
@@ -20,11 +30,18 @@ interface PipelineLandingProps {
   projects: DemoProject[];
   selectedProject: DemoProject | null;
   isCreatingProject: boolean;
+  isFetchingProjects: boolean;
+  deletingProjectId: number | null;
   isGeneratingPipeline: boolean;
   generatingFileName: string | null;
+  canCreateProject: boolean;
+  canDeleteProject: boolean;
+  canInviteProject: boolean;
   onSelectProject: (project: DemoProject) => void;
   onGoToCreateProject: () => void;
   onCreateProject: (params: { name: string; description: string }) => Promise<void>;
+  onRequestDeleteProject: (project: DemoProject) => void;
+  onOpenProjectInvite: () => void;
   onGeneratePipeline: (params: {
     file: File;
     category: PipelineCategoryOption;
@@ -57,11 +74,18 @@ export default function PipelineLanding({
   projects,
   selectedProject,
   isCreatingProject,
+  isFetchingProjects,
+  deletingProjectId,
   isGeneratingPipeline,
   generatingFileName,
+  canCreateProject,
+  canDeleteProject,
+  canInviteProject,
   onSelectProject,
   onGoToCreateProject,
   onCreateProject,
+  onRequestDeleteProject,
+  onOpenProjectInvite,
   onGeneratePipeline,
   onCancelCreateProject,
   onBackToPipelines,
@@ -117,6 +141,24 @@ export default function PipelineLanding({
     await onGeneratePipeline({ file: pdfFile, category: categoryOption, techStack: techStackInput.trim(), requirements: requirementsInput.trim() });
   };
 
+  const projectListDescription = canCreateProject
+    ? "파이프라인을 생성할 프로젝트를 선택하세요"
+    : "참여 중인 프로젝트를 선택하세요";
+  const emptyTitle = canCreateProject
+    ? "아직 프로젝트가 없습니다"
+    : "참여 중인 프로젝트가 없습니다";
+  const emptyDescription = canCreateProject
+    ? (
+        <>
+          첫 번째 프로젝트를 만들고<br />AI 파이프라인을 시작해 보세요
+        </>
+      )
+    : (
+        <>
+          기획자가 초대한 프로젝트가<br />여기에 표시됩니다
+        </>
+      );
+
   return (
     <div className="flex h-full flex-col overflow-y-auto bg-[#F5F5F5]">
 
@@ -128,9 +170,9 @@ export default function PipelineLanding({
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-1">Fithub</p>
                 <h2 className="text-xl font-bold text-gray-900">프로젝트</h2>
-                <p className="text-sm text-gray-400 mt-0.5">파이프라인을 생성할 프로젝트를 선택하세요</p>
+                <p className="text-sm text-gray-400 mt-0.5">{projectListDescription}</p>
               </div>
-              {projects.length > 0 && (
+              {canCreateProject && projects.length > 0 && (
                 <button
                   onClick={onGoToCreateProject}
                   className="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-3.5 py-2 text-xs font-semibold text-white hover:bg-gray-700 transition-colors"
@@ -140,45 +182,71 @@ export default function PipelineLanding({
               )}
             </div>
 
-            {projects.length === 0 ? (
+            {isFetchingProjects ? (
+              <div className="rounded-2xl border border-[#E5E5E5] bg-white p-12 text-center shadow-sm auth-fade-up auth-delay-1">
+                <div className="mx-auto mb-5 h-9 w-9 animate-spin rounded-full border-2 border-gray-900 border-t-transparent" />
+                <h3 className="text-base font-bold text-gray-900 mb-1.5">프로젝트를 불러오는 중입니다</h3>
+                <p className="text-sm text-gray-400">참여 중인 프로젝트 목록을 조회하고 있습니다.</p>
+              </div>
+            ) : projects.length === 0 ? (
               <div className="rounded-2xl border border-[#E5E5E5] bg-white p-12 flex flex-col items-center text-center shadow-sm auth-fade-up auth-delay-1">
                 <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-50 to-violet-100 mb-5 shadow-inner">
                   <FolderOpen className="h-9 w-9 text-indigo-500" strokeWidth={1.5} />
                 </div>
-                <h3 className="text-base font-bold text-gray-900 mb-1.5">아직 프로젝트가 없습니다</h3>
+                <h3 className="text-base font-bold text-gray-900 mb-1.5">{emptyTitle}</h3>
                 <p className="text-sm text-gray-400 mb-7 leading-relaxed">
-                  첫 번째 프로젝트를 만들고<br />AI 파이프라인을 시작해 보세요
+                  {emptyDescription}
                 </p>
-                <button
-                  onClick={onGoToCreateProject}
-                  className="inline-flex items-center gap-2 rounded-xl bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-gray-700 transition-colors"
-                >
-                  <Plus className="h-4 w-4" /> 새 프로젝트 만들기
-                </button>
+                {canCreateProject && (
+                  <button
+                    onClick={onGoToCreateProject}
+                    className="inline-flex items-center gap-2 rounded-xl bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-gray-700 transition-colors"
+                  >
+                    <Plus className="h-4 w-4" /> 새 프로젝트 만들기
+                  </button>
+                )}
               </div>
             ) : (
               <div className="space-y-2 auth-fade-up auth-delay-1">
-                {projects.map((project, i) => (
-                  <button
-                    key={project.id}
-                    onClick={() => onSelectProject(project)}
-                    style={{ animationDelay: `${120 + i * 60}ms` }}
-                    className="w-full rounded-xl border border-[#E5E5E5] bg-white px-4 py-3.5 text-left hover:border-indigo-200 hover:shadow-md hover:shadow-indigo-50/60 transition-all group auth-fade-up"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 group-hover:bg-indigo-50 transition-colors">
-                        <FolderOpen className="h-4.5 w-4.5 text-gray-400 group-hover:text-indigo-500 transition-colors" strokeWidth={1.5} />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-semibold text-gray-900">{project.name}</p>
-                        {project.description && (
-                          <p className="text-xs text-gray-400 mt-0.5 truncate">{project.description}</p>
-                        )}
-                      </div>
-                      <ChevronRight className="h-4 w-4 text-gray-300 group-hover:text-gray-500 transition-colors shrink-0" />
+                {projects.map((project, i) => {
+                  const isDeleting = deletingProjectId === project.id;
+
+                  return (
+                    <div
+                      key={project.id}
+                      style={{ animationDelay: `${120 + i * 60}ms` }}
+                      className="flex w-full items-center gap-3 rounded-xl border border-[#E5E5E5] bg-white px-4 py-3.5 hover:border-indigo-200 hover:shadow-md hover:shadow-indigo-50/60 transition-all group auth-fade-up"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => onSelectProject(project)}
+                        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                      >
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 group-hover:bg-indigo-50 transition-colors">
+                          <FolderOpen className="h-4.5 w-4.5 text-gray-400 group-hover:text-indigo-500 transition-colors" strokeWidth={1.5} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-semibold text-gray-900">{project.name}</p>
+                          {project.description && (
+                            <p className="text-xs text-gray-400 mt-0.5 truncate">{project.description}</p>
+                          )}
+                        </div>
+                        <ChevronRight className="h-4 w-4 text-gray-300 group-hover:text-gray-500 transition-colors shrink-0" />
+                      </button>
+                      {canDeleteProject && (
+                        <button
+                          type="button"
+                          aria-label={`${project.name} 삭제`}
+                          disabled={isDeleting}
+                          onClick={() => onRequestDeleteProject(project)}
+                          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-gray-300 transition-colors hover:bg-rose-50 hover:text-rose-500 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
                     </div>
-                  </button>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -267,13 +335,26 @@ export default function PipelineLanding({
       {step === "pipeline-form" && (
         <div className="flex flex-1 items-start justify-center p-8">
           <div className="w-full max-w-lg">
-            <button
-              onClick={onBackToPipelines}
-              className="mb-5 inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-700 transition-colors auth-fade-up"
-            >
-              <ChevronLeft className="h-3.5 w-3.5" />
-              {selectedProject?.name ?? "프로젝트"}
-            </button>
+            <div className="mb-5 flex items-center justify-between gap-3 auth-fade-up">
+              <button
+                onClick={onBackToPipelines}
+                className="inline-flex min-w-0 items-center gap-1 text-xs text-gray-400 transition-colors hover:text-gray-700"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" />
+                <span className="truncate">
+                  {selectedProject?.name ?? "프로젝트"}
+                </span>
+              </button>
+              {canInviteProject && (
+                <button
+                  type="button"
+                  onClick={onOpenProjectInvite}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[#E5E5E5] bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-50"
+                >
+                  <UserPlus className="h-3.5 w-3.5" /> 팀원 초대
+                </button>
+              )}
+            </div>
 
             <div className="rounded-2xl border border-[#E5E5E5] bg-white overflow-hidden shadow-sm auth-fade-up auth-delay-1">
               {/* Card header strip */}
