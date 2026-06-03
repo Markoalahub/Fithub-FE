@@ -104,6 +104,19 @@ export type MyProject = {
   updatedAt?: string;
 };
 
+export type ProjectInviteUser = {
+  id: number;
+  username: string;
+  nickname: string;
+  email: string;
+  jobRole?: DeveloperOnboardingJobRole;
+};
+
+export type ProjectInviteResponse = {
+  projectId: number;
+  projectName: string;
+};
+
 export type NicknameDuplicateCheckResponse = {
   isDuplicate: boolean;
   message: string;
@@ -751,6 +764,52 @@ export async function deleteProject(projectId: number): Promise<void> {
     authMode: "required",
     baseUrl: BE_BASE_URL,
   });
+}
+
+export async function fetchUserByNickname(
+  nickname: string,
+): Promise<ProjectInviteUser> {
+  const response = await apiRequest<Record<string, unknown>>("/users", {
+    method: "GET",
+    query: { nickname: nickname.trim() },
+    authMode: "required",
+    baseUrl: BE_BASE_URL,
+  });
+
+  return {
+    id: Number(readObjectValue(response, "id") ?? 0),
+    username: String(readObjectValue(response, "username") ?? ""),
+    nickname: String(readObjectValue(response, "nickname") ?? ""),
+    email: String(readObjectValue(response, "email") ?? ""),
+    jobRole:
+      (readObjectValue(response, "jobRole", "job_role") as
+        | DeveloperOnboardingJobRole
+        | undefined) ?? undefined,
+  };
+}
+
+export async function inviteUserToProject(
+  projectId: number,
+  nickname: string,
+): Promise<ProjectInviteResponse> {
+  const response = await apiRequest<Record<string, unknown>>(
+    `/projects/${projectId}/invite`,
+    {
+      method: "POST",
+      body: JSON.stringify({ nickname: nickname.trim() }),
+      authMode: "required",
+      baseUrl: BE_BASE_URL,
+    },
+  );
+
+  return {
+    projectId: Number(
+      readObjectValue(response, "projectId", "project_id") ?? projectId,
+    ),
+    projectName: String(
+      readObjectValue(response, "projectName", "project_name") ?? "",
+    ),
+  };
 }
 
 export async function checkNicknameDuplicate(

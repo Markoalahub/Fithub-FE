@@ -9,6 +9,7 @@ import {
   Server,
   Trash2,
   Upload,
+  UserPlus,
   X,
   Zap,
 } from "lucide-react";
@@ -37,6 +38,7 @@ interface PipelineLandingProps {
   onGoToCreateProject: () => void;
   onCreateProject: (params: { name: string; description: string }) => Promise<void>;
   onRequestDeleteProject: (project: DemoProject) => void;
+  onOpenProjectInvite: () => void;
   onGeneratePipeline: (params: {
     file: File;
     category: PipelineCategoryOption;
@@ -77,6 +79,7 @@ export default function PipelineLanding({
   onGoToCreateProject,
   onCreateProject,
   onRequestDeleteProject,
+  onOpenProjectInvite,
   onGeneratePipeline,
   onCancelCreateProject,
   onBackToPipelines,
@@ -304,13 +307,24 @@ export default function PipelineLanding({
       {step === "pipeline-form" && (
         <div className="flex flex-1 items-start justify-center p-8">
           <div className="w-full max-w-lg">
-            <button
-              onClick={onBackToPipelines}
-              className="mb-5 inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-700 transition-colors auth-fade-up"
-            >
-              <ChevronLeft className="h-3.5 w-3.5" />
-              {selectedProject?.name ?? "프로젝트"}
-            </button>
+            <div className="mb-5 flex items-center justify-between gap-3 auth-fade-up">
+              <button
+                onClick={onBackToPipelines}
+                className="inline-flex min-w-0 items-center gap-1 text-xs text-gray-400 transition-colors hover:text-gray-700"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" />
+                <span className="truncate">
+                  {selectedProject?.name ?? "프로젝트"}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={onOpenProjectInvite}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[#E5E5E5] bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-50"
+              >
+                <UserPlus className="h-3.5 w-3.5" /> 팀원 초대
+              </button>
+            </div>
 
             <div className="rounded-2xl border border-[#E5E5E5] bg-white overflow-hidden shadow-sm auth-fade-up auth-delay-1">
               {/* Card header strip */}

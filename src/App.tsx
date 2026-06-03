@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, UserPlus } from "lucide-react";
 import PMDashboard from "./pages/PM/PMDashboard.tsx";
 import DevDashboard from "@/src/pages/Dev/DevDashboard";
 import AdminDashboard from "./pages/Admin/AdminDashboard.tsx";
@@ -12,6 +12,7 @@ import AppHeader from "./components/layout/AppHeader";
 import MyInfoSection from "./components/MyInfoSection";
 import PipelineCanvas from "./components/PipelineCanvas";
 import PipelineLanding from "./components/PipelineLanding";
+import ProjectInviteDialog from "./components/ProjectInviteDialog";
 import CustomDialog from "./components/CustomDialog";
 import type { DemoProject, PipelineCategoryOption } from "./components/PipelineLanding";
 import {
@@ -22,7 +23,9 @@ import {
   fetchAvailableGithubRepositories,
   fetchMyProjects,
   fetchProjectGithubRepositories,
+  fetchUserByNickname,
   generateProjectPipeline,
+  inviteUserToProject,
   parseGithubRepoInput,
   submitUserOnboarding,
   syncIssueToGithub,
@@ -31,6 +34,7 @@ import {
   type DeveloperOnboardingJobRole,
   type GeneratedPipelineFeature,
   type PipelineGenerationCategory,
+  type ProjectInviteUser,
   type RepositoryCategory,
 } from "./services/api";
 import type {
@@ -646,6 +650,8 @@ export default function App() {
   const [isFetchingProjects, setIsFetchingProjects] = useState(false);
   const [hasFetchedProjects, setHasFetchedProjects] = useState(false);
   const [isDeletingProject, setIsDeletingProject] = useState(false);
+  const [isSearchingInviteUser, setIsSearchingInviteUser] = useState(false);
+  const [isInvitingProjectUser, setIsInvitingProjectUser] = useState(false);
   const [generatingFileName, setGeneratingFileName] = useState<string | null>(
     null,
   );
@@ -654,6 +660,11 @@ export default function App() {
   const [selectedDemoProject, setSelectedDemoProject] = useState<DemoProject | null>(null);
   const [projectPendingDelete, setProjectPendingDelete] =
     useState<DemoProject | null>(null);
+  const [projectInviteUser, setProjectInviteUser] =
+    useState<ProjectInviteUser | null>(null);
+  const [isProjectInviteDialogOpen, setIsProjectInviteDialogOpen] =
+    useState(false);
+  const [projectInviteNickname, setProjectInviteNickname] = useState("");
   const [demoPipelines, setDemoPipelines] = useState<DemoPipeline[]>([]);
   const [pipelineLandingStep, setPipelineLandingStep] = useState<PipelineLandingStep>("project-list");
   const [showCreateProjectDialog, setShowCreateProjectDialog] = useState(false);
@@ -689,7 +700,7 @@ export default function App() {
   // Sub-section states
   const [pmSubSection, setPmSubSection] = useState<"ai" | "review">("ai");
   const [adminSubSection, setAdminSubSection] = useState<
-    "knowledge" | "team" | "profile"
+    "knowledge" | "profile"
   >("knowledge");
   const [devSettingsSubSection, setDevSettingsSubSection] = useState<
     "project" | "profile"
@@ -1520,6 +1531,110 @@ export default function App() {
     }
   };
 
+  const handleOpenProjectInviteDialog = () => {
+    if (!isPm) {
+      return;
+    }
+
+    if (!activeProjectId || !selectedDemoProject) {
+      pushToast("초대할 프로젝트를 먼저 선택해 주세요.", "warning");
+      return;
+    }
+
+    setProjectInviteNickname("");
+    setProjectInviteUser(null);
+    setIsProjectInviteDialogOpen(true);
+  };
+
+  const handleCloseProjectInviteDialog = () => {
+    if (isSearchingInviteUser || isInvitingProjectUser) {
+      return;
+    }
+
+    setIsProjectInviteDialogOpen(false);
+    setProjectInviteNickname("");
+    setProjectInviteUser(null);
+  };
+
+  const handleProjectInviteNicknameChange = (nickname: string) => {
+    setProjectInviteNickname(nickname);
+    if (projectInviteUser && projectInviteUser.nickname !== nickname.trim()) {
+      setProjectInviteUser(null);
+    }
+  };
+
+  const handleSearchInviteUserByNickname = async () => {
+    if (!isPm) {
+      return;
+    }
+
+    const normalizedNickname = projectInviteNickname.trim();
+    if (!normalizedNickname) {
+      pushToast("조회할 닉네임을 입력해 주세요.", "warning");
+      setProjectInviteUser(null);
+      return;
+    }
+
+    setIsSearchingInviteUser(true);
+
+    try {
+      const user = await fetchUserByNickname(normalizedNickname);
+      setProjectInviteUser(user);
+      pushToast("사용자를 찾았습니다.", "success");
+    } catch (error) {
+      console.error(error);
+      setProjectInviteUser(null);
+      pushToast(
+        error instanceof Error ? error.message : "사용자 조회에 실패했습니다.",
+        "warning",
+      );
+    } finally {
+      setIsSearchingInviteUser(false);
+    }
+  };
+
+  const handleInviteUserToProjectByPm = async () => {
+    if (!isPm) {
+      return;
+    }
+
+    if (!activeProjectId) {
+      pushToast("초대할 프로젝트를 먼저 선택해 주세요.", "warning");
+      return;
+    }
+
+    const normalizedNickname =
+      projectInviteUser?.nickname ?? projectInviteNickname.trim();
+    if (!normalizedNickname) {
+      pushToast("초대할 사용자 닉네임을 입력해 주세요.", "warning");
+      return;
+    }
+
+    setIsInvitingProjectUser(true);
+
+    try {
+      const response = await inviteUserToProject(
+        activeProjectId,
+        normalizedNickname,
+      );
+      pushToast(
+        `"${response.projectName || projectName}" 프로젝트에 ${normalizedNickname}님을 초대했습니다.`,
+        "success",
+      );
+      setIsProjectInviteDialogOpen(false);
+      setProjectInviteNickname("");
+      setProjectInviteUser(null);
+    } catch (error) {
+      console.error(error);
+      pushToast(
+        error instanceof Error ? error.message : "프로젝트 초대에 실패했습니다.",
+        "warning",
+      );
+    } finally {
+      setIsInvitingProjectUser(false);
+    }
+  };
+
   const handleGeneratePmPipeline = async (params: {
     file: File;
     category: PipelineCategoryOption;
@@ -1625,6 +1740,7 @@ export default function App() {
       setHasFetchedProjects(false);
       setIsFetchingProjects(false);
       setProjectPendingDelete(null);
+      setProjectInviteUser(null);
       return;
     }
 
@@ -1698,6 +1814,12 @@ export default function App() {
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authUser?.id, isPm]);
+
+  useEffect(() => {
+    setProjectInviteUser(null);
+    setProjectInviteNickname("");
+    setIsProjectInviteDialogOpen(false);
+  }, [activeProjectId]);
 
   useEffect(() => {
     setFeatureQuestions((prev) =>
@@ -2637,6 +2759,18 @@ export default function App() {
                 }
               }}
             />
+            <ProjectInviteDialog
+              open={isProjectInviteDialogOpen}
+              project={selectedDemoProject}
+              nickname={projectInviteNickname}
+              inviteUser={projectInviteUser}
+              isSearching={isSearchingInviteUser}
+              isInviting={isInvitingProjectUser}
+              onNicknameChange={handleProjectInviteNicknameChange}
+              onSearch={handleSearchInviteUserByNickname}
+              onInvite={handleInviteUserToProjectByPm}
+              onClose={handleCloseProjectInviteDialog}
+            />
 
             {/* PM: show landing wizard until canvas step */}
             {isPm && pipelineLandingStep !== "canvas" && (
@@ -2660,6 +2794,7 @@ export default function App() {
                 onGoToCreateProject={() => setPipelineLandingStep("create-project")}
                 onCreateProject={(params) => handleCreateProjectByPm(params)}
                 onRequestDeleteProject={handleRequestDeleteProjectByPm}
+                onOpenProjectInvite={handleOpenProjectInviteDialog}
                 onGeneratePipeline={(params) => handleGeneratePmPipeline(params)}
                 onCancelCreateProject={() => setPipelineLandingStep("project-list")}
                 onBackToPipelines={() => setPipelineLandingStep("project-list")}
@@ -2682,8 +2817,15 @@ export default function App() {
                     <span className="text-xs text-gray-200">/</span>
                     <span className="text-xs font-medium text-gray-900">{selectedDemoProject.name}</span>
                     <button
+                      type="button"
+                      onClick={handleOpenProjectInviteDialog}
+                      className="ml-auto inline-flex items-center gap-1 text-xs font-semibold text-gray-500 transition-colors hover:text-gray-900"
+                    >
+                      <UserPlus className="h-3 w-3" /> 팀원 초대
+                    </button>
+                    <button
                       onClick={() => setPipelineLandingStep("pipeline-form")}
-                      className="ml-auto text-xs text-indigo-500 transition-colors hover:text-indigo-700"
+                      className="text-xs text-indigo-500 transition-colors hover:text-indigo-700"
                     >
                       + 파이프라인 추가
                     </button>
@@ -2885,16 +3027,6 @@ export default function App() {
                 AI 지식 베이스
               </button>
               <button
-                onClick={() => setAdminSubSection("team")}
-                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
-                  adminSubSection === "team"
-                    ? "bg-white text-gray-900 shadow-sm border border-[#E5E5E5]"
-                    : "text-[#9E9E9E] hover:text-gray-700"
-                }`}
-              >
-                팀원 관리
-              </button>
-              <button
                 onClick={() => setAdminSubSection("profile")}
                 className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
                   adminSubSection === "profile"
@@ -2913,7 +3045,6 @@ export default function App() {
               />
             ) : (
               <AdminDashboard
-                section={adminSubSection}
                 knowledgeDocs={knowledgeDocs}
                 isGeneratingPipeline={isGeneratingPipeline}
                 onUploadKnowledgePdf={handleUploadKnowledgePdf}
