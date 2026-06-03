@@ -1736,7 +1736,7 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (!authUser || !isPm) {
+    if (!authUser || (!isPm && !isDevUser)) {
       setHasFetchedProjects(false);
       setIsFetchingProjects(false);
       setProjectPendingDelete(null);
@@ -1813,7 +1813,7 @@ export default function App() {
       isCancelled = true;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authUser?.id, isPm]);
+  }, [authUser?.id, isDevUser, isPm]);
 
   useEffect(() => {
     setProjectInviteUser(null);
@@ -2704,6 +2704,12 @@ export default function App() {
 
   const resolvedRole =
     authUser.role === "dev" ? "dev-fe" : authUser.role;
+  const usesProjectLanding = isPm || isDevUser;
+  const shouldShowProjectLanding =
+    usesProjectLanding &&
+    (pipelineLandingStep !== "canvas" || !selectedDemoProject);
+  const shouldShowPipelineCanvas =
+    !shouldShowProjectLanding && (!isPm || pipelineLandingStep === "canvas");
 
   return (
     <div className="h-screen flex flex-col bg-[#F5F5F5] text-gray-900 overflow-hidden">
@@ -2772,10 +2778,14 @@ export default function App() {
               onClose={handleCloseProjectInviteDialog}
             />
 
-            {/* PM: show landing wizard until canvas step */}
-            {isPm && pipelineLandingStep !== "canvas" && (
+            {/* Project landing: PM and developers both choose a project first */}
+            {shouldShowProjectLanding && (
               <PipelineLanding
-                step={pipelineLandingStep}
+                step={
+                  isPm && pipelineLandingStep !== "canvas"
+                    ? pipelineLandingStep
+                    : "project-list"
+                }
                 projects={demoProjects}
                 selectedProject={selectedDemoProject}
                 isCreatingProject={isCreatingProject}
@@ -2785,11 +2795,20 @@ export default function App() {
                 }
                 isGeneratingPipeline={isGeneratingPipeline}
                 generatingFileName={generatingFileName}
+                canCreateProject={isPm}
+                canDeleteProject={isPm}
+                canInviteProject={isPm}
                 onSelectProject={(proj) => {
                   setSelectedDemoProject(proj);
                   syncActiveProject(proj);
-                  const existing = demoPipelines.find((p) => p.projectId === proj.id);
-                  setPipelineLandingStep(existing ? "canvas" : "pipeline-form");
+                  if (isPm) {
+                    const existing = demoPipelines.find(
+                      (p) => p.projectId === proj.id,
+                    );
+                    setPipelineLandingStep(existing ? "canvas" : "pipeline-form");
+                    return;
+                  }
+                  setPipelineLandingStep("canvas");
                 }}
                 onGoToCreateProject={() => setPipelineLandingStep("create-project")}
                 onCreateProject={(params) => handleCreateProjectByPm(params)}
@@ -2802,11 +2821,11 @@ export default function App() {
               />
             )}
 
-            {/* Canvas: shown for DEV always, or when PM has completed the wizard */}
-            {(!isPm || pipelineLandingStep === "canvas") && (
+            {/* Canvas: shown after project selection */}
+            {shouldShowPipelineCanvas && (
               <div className="flex flex-1 flex-col overflow-hidden">
-                {/* PM breadcrumb bar */}
-                {isPm && selectedDemoProject && (
+                {/* Project breadcrumb bar */}
+                {usesProjectLanding && selectedDemoProject && (
                   <div className="flex shrink-0 items-center gap-2 border-b border-gray-100 bg-white px-5 py-2">
                     <button
                       onClick={() => setPipelineLandingStep("project-list")}
@@ -2816,19 +2835,23 @@ export default function App() {
                     </button>
                     <span className="text-xs text-gray-200">/</span>
                     <span className="text-xs font-medium text-gray-900">{selectedDemoProject.name}</span>
-                    <button
-                      type="button"
-                      onClick={handleOpenProjectInviteDialog}
-                      className="ml-auto inline-flex items-center gap-1 text-xs font-semibold text-gray-500 transition-colors hover:text-gray-900"
-                    >
-                      <UserPlus className="h-3 w-3" /> 팀원 초대
-                    </button>
-                    <button
-                      onClick={() => setPipelineLandingStep("pipeline-form")}
-                      className="text-xs text-indigo-500 transition-colors hover:text-indigo-700"
-                    >
-                      + 파이프라인 추가
-                    </button>
+                    {isPm && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={handleOpenProjectInviteDialog}
+                          className="ml-auto inline-flex items-center gap-1 text-xs font-semibold text-gray-500 transition-colors hover:text-gray-900"
+                        >
+                          <UserPlus className="h-3 w-3" /> 팀원 초대
+                        </button>
+                        <button
+                          onClick={() => setPipelineLandingStep("pipeline-form")}
+                          className="text-xs text-indigo-500 transition-colors hover:text-indigo-700"
+                        >
+                          + 파이프라인 추가
+                        </button>
+                      </>
+                    )}
                   </div>
                 )}
                 <div className="flex-1 overflow-hidden">
