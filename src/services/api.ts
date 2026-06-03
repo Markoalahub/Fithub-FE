@@ -700,7 +700,7 @@ export async function checkNicknameDuplicate(
     method: "GET",
     query: { nickname: nickname.trim() },
     authMode: "required",
-    baseUrl: API_V1_BASE_URL,
+    baseUrl: BE_BASE_URL,
   });
 
   const isDuplicate = Boolean(readObjectValue(response, "isDuplicate"));
@@ -723,7 +723,7 @@ export async function submitUserOnboarding(
       method: "POST",
       body: JSON.stringify(payload),
       authMode: "required",
-      baseUrl: API_V1_BASE_URL,
+      baseUrl: BE_BASE_URL,
     },
   );
 
