@@ -18,7 +18,9 @@ import {
   createProject,
   createIssueFromPipelineStep,
   checkNicknameDuplicate,
+  deleteProject,
   fetchAvailableGithubRepositories,
+  fetchMyProjects,
   fetchProjectGithubRepositories,
   generateProjectPipeline,
   parseGithubRepoInput,
@@ -641,12 +643,17 @@ export default function App() {
   const [isGeneratingPipeline, setIsGeneratingPipeline] = useState(false);
   const [isConnectingGithubRepo, setIsConnectingGithubRepo] = useState(false);
   const [isCreatingProject, setIsCreatingProject] = useState(false);
+  const [isFetchingProjects, setIsFetchingProjects] = useState(false);
+  const [hasFetchedProjects, setHasFetchedProjects] = useState(false);
+  const [isDeletingProject, setIsDeletingProject] = useState(false);
   const [generatingFileName, setGeneratingFileName] = useState<string | null>(
     null,
   );
   // Pipeline landing flow state
   const [demoProjects, setDemoProjects] = useState<DemoProject[]>([]);
   const [selectedDemoProject, setSelectedDemoProject] = useState<DemoProject | null>(null);
+  const [projectPendingDelete, setProjectPendingDelete] =
+    useState<DemoProject | null>(null);
   const [demoPipelines, setDemoPipelines] = useState<DemoPipeline[]>([]);
   const [pipelineLandingStep, setPipelineLandingStep] = useState<PipelineLandingStep>("project-list");
   const [showCreateProjectDialog, setShowCreateProjectDialog] = useState(false);
@@ -688,14 +695,17 @@ export default function App() {
     "project" | "profile"
   >("project");
 
-  const isDevUser = authUser?.role === "dev-fe" || authUser?.role === "dev-be";
+  const isDevUser =
+    authUser?.role === "dev" ||
+    authUser?.role === "dev-fe" ||
+    authUser?.role === "dev-be";
   const isPm = authUser?.role === "pm";
 
   const activeTrack: DevTrack =
-    authUser?.role === "dev-fe"
-      ? "frontend"
-      : authUser?.role === "dev-be"
-        ? "backend"
+    authUser?.role === "dev-be"
+      ? "backend"
+      : authUser?.role === "dev" || authUser?.role === "dev-fe"
+        ? "frontend"
         : pmSelectedTrack;
 
   const features =
@@ -794,6 +804,39 @@ export default function App() {
       return;
     }
     window.localStorage.setItem(ACTIVE_PROJECT_ID_STORAGE_KEY, String(projectId));
+  };
+
+  const syncActiveProject = (project: DemoProject) => {
+    syncActiveProjectId(project.id);
+    setFrontendProjectName(project.name);
+    setBackendProjectName(project.name);
+
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(
+      getProjectNameStorageKey("frontend"),
+      project.name,
+    );
+    window.localStorage.setItem(
+      getProjectNameStorageKey("backend"),
+      project.name,
+    );
+  };
+
+  const clearActiveProject = () => {
+    syncActiveProjectId(null);
+    setSelectedDemoProject(null);
+    setFrontendProjectName("Fithub V1");
+    setBackendProjectName("Fithub V1");
+
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.removeItem(getProjectNameStorageKey("frontend"));
+    window.localStorage.removeItem(getProjectNameStorageKey("backend"));
   };
 
   const setTrackFeatures = (track: DevTrack, nextFeatures: Feature[]) => {
@@ -914,7 +957,9 @@ export default function App() {
       params.get("jobRole"),
     );
     const isNewSocialUser =
-      parseBooleanQueryValue(params.get("isNew")) === true;
+      parseBooleanQueryValue(
+        readParam("isNew", "isNewUser", "newUser", "is_new"),
+      ) === true;
     const providerFromParam = params.get("provider")?.trim().toLowerCase();
     const provider: AuthUser["provider"] =
       providerFromParam === "kakao"
@@ -928,7 +973,7 @@ export default function App() {
               : "github";
     const userId = readParam("userId", "id", "user_id") || createId();
     const username =
-      readParam("username", "name") ||
+      readParam("username", "name", "nickname", "nickName") ||
       (provider === "kakao" ? "Kakao User" : "GitHub User");
     const email = readParam("email");
 
@@ -982,7 +1027,13 @@ export default function App() {
     }
 
     const nextRole: UserRole =
-      isNewSocialUser && roleFromParams !== "pm" ? "dev" : roleFromParams;
+      provider === "kakao"
+        ? "pm"
+        : isNewSocialUser && roleFromParams !== "pm"
+          ? "dev"
+          : roleFromParams === "dev"
+            ? "dev-fe"
+            : roleFromParams;
 
     const nextUser: AuthUser = {
       id: String(userId),
@@ -1023,6 +1074,19 @@ export default function App() {
       "success",
     );
   }, []);
+
+  useEffect(() => {
+    if (authUser?.provider !== "kakao" || authUser.role === "pm") {
+      return;
+    }
+
+    setAuthUser((prev) =>
+      prev?.provider === "kakao" ? { ...prev, role: "pm" } : prev,
+    );
+    setOnboardingRole("pm");
+    setPmSelectedTrack("frontend");
+    setPmSubSection("ai");
+  }, [authUser?.provider, authUser?.role]);
 
   useEffect(() => {
     return () => {
@@ -1368,31 +1432,23 @@ export default function App() {
         throw new Error("프로젝트 ID를 확인할 수 없습니다.");
       }
 
-      syncActiveProjectId(response.projectId);
-
       const normalizedProjectName =
         response.projectName.trim() || projectNameInput;
-      setFrontendProjectName(normalizedProjectName);
-      setBackendProjectName(normalizedProjectName);
-
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(
-          getProjectNameStorageKey("frontend"),
-          normalizedProjectName,
-        );
-        window.localStorage.setItem(
-          getProjectNameStorageKey("backend"),
-          normalizedProjectName,
-        );
-      }
-
       const newProject: DemoProject = {
         id: response.projectId,
         name: normalizedProjectName,
         description: descriptionInput,
+        creatorId: response.creatorId,
+        creatorNickname: response.creatorNickname,
       };
-      setDemoProjects((prev) => [...prev, newProject]);
+      setDemoProjects((prev) => {
+        const filteredProjects = prev.filter(
+          (project) => project.id !== newProject.id,
+        );
+        return [...filteredProjects, newProject];
+      });
       setSelectedDemoProject(newProject);
+      syncActiveProject(newProject);
       setPipelineLandingStep("pipeline-form");
 
       pushToast(
@@ -1409,6 +1465,58 @@ export default function App() {
       );
     } finally {
       setIsCreatingProject(false);
+    }
+  };
+
+  const handleRequestDeleteProjectByPm = (project: DemoProject) => {
+    if (!isPm || isDeletingProject) {
+      return;
+    }
+
+    setProjectPendingDelete(project);
+  };
+
+  const handleConfirmDeleteProjectByPm = async () => {
+    if (!isPm || !projectPendingDelete) {
+      return;
+    }
+
+    const deletedProject = projectPendingDelete;
+    setIsDeletingProject(true);
+
+    try {
+      await deleteProject(deletedProject.id);
+
+      setDemoProjects((prev) =>
+        prev.filter((project) => project.id !== deletedProject.id),
+      );
+      setDemoPipelines((prev) =>
+        prev.filter((pipeline) => pipeline.projectId !== deletedProject.id),
+      );
+
+      if (
+        activeProjectId === deletedProject.id ||
+        selectedDemoProject?.id === deletedProject.id
+      ) {
+        clearActiveProject();
+        setPipelineLandingStep("project-list");
+      }
+
+      setProjectPendingDelete(null);
+      pushToast(
+        `프로젝트 "${deletedProject.name}"을(를) 삭제했습니다.`,
+        "success",
+      );
+    } catch (error) {
+      console.error(error);
+      pushToast(
+        error instanceof Error
+          ? error.message
+          : "프로젝트 삭제에 실패했습니다.",
+        "warning",
+      );
+    } finally {
+      setIsDeletingProject(false);
     }
   };
 
@@ -1513,6 +1621,85 @@ export default function App() {
   };
 
   useEffect(() => {
+    if (!authUser || !isPm) {
+      setHasFetchedProjects(false);
+      setIsFetchingProjects(false);
+      setProjectPendingDelete(null);
+      return;
+    }
+
+    let isCancelled = false;
+
+    const loadProjects = async () => {
+      setIsFetchingProjects(true);
+
+      try {
+        const projects = await fetchMyProjects();
+        if (isCancelled) {
+          return;
+        }
+
+        const normalizedProjects: DemoProject[] = projects
+          .filter((project) => project.id > 0)
+          .map((project) => ({
+            id: project.id,
+            name: project.name,
+            description: project.description,
+            creatorId: project.creatorId,
+            creatorNickname: project.creatorNickname,
+            createdAt: project.createdAt,
+            updatedAt: project.updatedAt,
+          }));
+
+        setDemoProjects(normalizedProjects);
+
+        const storedActiveProjectId = readStoredActiveProjectId();
+        const selectedProject =
+          storedActiveProjectId === null
+            ? null
+            : normalizedProjects.find(
+                (project) => project.id === storedActiveProjectId,
+              ) ?? null;
+
+        if (selectedProject) {
+          setSelectedDemoProject(selectedProject);
+          syncActiveProject(selectedProject);
+        } else if (storedActiveProjectId !== null) {
+          clearActiveProject();
+        } else {
+          setSelectedDemoProject(null);
+        }
+
+        setHasFetchedProjects(true);
+      } catch (error) {
+        if (isCancelled) {
+          return;
+        }
+
+        console.error(error);
+        pushToast(
+          error instanceof Error
+            ? error.message
+            : "프로젝트 목록 조회에 실패했습니다.",
+          "warning",
+        );
+        setHasFetchedProjects(true);
+      } finally {
+        if (!isCancelled) {
+          setIsFetchingProjects(false);
+        }
+      }
+    };
+
+    void loadProjects();
+
+    return () => {
+      isCancelled = true;
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authUser?.id, isPm]);
+
+  useEffect(() => {
     setFeatureQuestions((prev) =>
       prev.reduce<FeatureQuestion[]>((acc, question) => {
         const matchedFeature = features.find(
@@ -1536,14 +1723,30 @@ export default function App() {
   }, [features]);
 
   useEffect(() => {
-    if (!isPm || activeTab !== "pipeline" || hasShownCreateProjectDialog || demoProjects.length > 0) return;
+    if (
+      !isPm ||
+      activeTab !== "pipeline" ||
+      !hasFetchedProjects ||
+      isFetchingProjects ||
+      hasShownCreateProjectDialog ||
+      demoProjects.length > 0
+    ) {
+      return;
+    }
     setShowCreateProjectDialog(true);
     setHasShownCreateProjectDialog(true);
     if (typeof window !== "undefined") {
       window.localStorage.setItem("fithub.shownCreateProjectDialog", "1");
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, isPm]);
+  }, [
+    activeTab,
+    demoProjects.length,
+    hasFetchedProjects,
+    hasShownCreateProjectDialog,
+    isFetchingProjects,
+    isPm,
+  ]);
 
   useEffect(() => {
     setPipelineProposals((prev) =>
@@ -2371,26 +2574,14 @@ export default function App() {
   ) {
     return (
       <DevTrackSelector
-        mode="onboarding"
         onCheckNickname={handleCheckNicknameDuplicate}
         onSubmitOnboarding={handleDeveloperOnboardingSubmit}
       />
     );
   }
 
-  if (authUser.role === "dev") {
-    return (
-      <DevTrackSelector
-        mode="legacy"
-        onSelectTrack={(track) =>
-          setAuthUser((prev) => (prev ? { ...prev, role: track } : prev))
-        }
-      />
-    );
-  }
-
-  // By this point role is guaranteed to not be "dev"
-  const resolvedRole = authUser.role as "pm" | "dev-fe" | "dev-be";
+  const resolvedRole =
+    authUser.role === "dev" ? "dev-fe" : authUser.role;
 
   return (
     <div className="h-screen flex flex-col bg-[#F5F5F5] text-gray-900 overflow-hidden">
@@ -2427,6 +2618,25 @@ export default function App() {
                 setPipelineLandingStep("project-list");
               }}
             />
+            <CustomDialog
+              open={Boolean(projectPendingDelete)}
+              variant="confirm"
+              title="프로젝트를 삭제하시겠습니까?"
+              description={
+                projectPendingDelete
+                  ? `"${projectPendingDelete.name}" 프로젝트를 삭제합니다.`
+                  : undefined
+              }
+              confirmLabel={isDeletingProject ? "삭제 중..." : "삭제"}
+              cancelLabel="취소"
+              confirmDisabled={isDeletingProject}
+              onConfirm={() => void handleConfirmDeleteProjectByPm()}
+              onCancel={() => {
+                if (!isDeletingProject) {
+                  setProjectPendingDelete(null);
+                }
+              }}
+            />
 
             {/* PM: show landing wizard until canvas step */}
             {isPm && pipelineLandingStep !== "canvas" && (
@@ -2435,16 +2645,21 @@ export default function App() {
                 projects={demoProjects}
                 selectedProject={selectedDemoProject}
                 isCreatingProject={isCreatingProject}
+                isFetchingProjects={isFetchingProjects}
+                deletingProjectId={
+                  isDeletingProject ? projectPendingDelete?.id ?? null : null
+                }
                 isGeneratingPipeline={isGeneratingPipeline}
                 generatingFileName={generatingFileName}
                 onSelectProject={(proj) => {
                   setSelectedDemoProject(proj);
-                  syncActiveProjectId(proj.id);
+                  syncActiveProject(proj);
                   const existing = demoPipelines.find((p) => p.projectId === proj.id);
                   setPipelineLandingStep(existing ? "canvas" : "pipeline-form");
                 }}
                 onGoToCreateProject={() => setPipelineLandingStep("create-project")}
                 onCreateProject={(params) => handleCreateProjectByPm(params)}
+                onRequestDeleteProject={handleRequestDeleteProjectByPm}
                 onGeneratePipeline={(params) => handleGeneratePmPipeline(params)}
                 onCancelCreateProject={() => setPipelineLandingStep("project-list")}
                 onBackToPipelines={() => setPipelineLandingStep("project-list")}
@@ -2476,7 +2691,7 @@ export default function App() {
                 )}
                 <div className="flex-1 overflow-hidden">
                   <PipelineCanvas
-                    role={authUser.role}
+                    role={resolvedRole}
                     features={features}
                     cardPositions={cardPositions}
                     onUpdateCardPosition={updateCardPosition}

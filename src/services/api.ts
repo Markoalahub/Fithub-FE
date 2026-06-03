@@ -90,6 +90,18 @@ export type GenerateAllPipelinesResponse = {
 export type CreateProjectResponse = {
   projectId: number;
   projectName: string;
+  creatorId: number;
+  creatorNickname: string;
+};
+
+export type MyProject = {
+  id: number;
+  name: string;
+  description: string;
+  creatorId: number;
+  creatorNickname: string;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 export type NicknameDuplicateCheckResponse = {
@@ -677,7 +689,7 @@ export async function createProject(payload: {
     method: "POST",
     body: JSON.stringify(payload),
     authMode: "required",
-    baseUrl: API_V1_BASE_URL,
+    baseUrl: BE_BASE_URL,
   });
 
   const projectId = Number(
@@ -686,11 +698,59 @@ export async function createProject(payload: {
   const projectName = String(
     readObjectValue(response, "project_name", "projectName") ?? payload.name,
   );
+  const creatorId = Number(
+    readObjectValue(response, "creator_id", "creatorId") ?? 0,
+  );
+  const creatorNickname = String(
+    readObjectValue(response, "creator_nickname", "creatorNickname") ?? "",
+  );
 
   return {
     projectId,
     projectName,
+    creatorId,
+    creatorNickname,
   };
+}
+
+const normalizeMyProject = (value: Record<string, unknown>): MyProject => ({
+  id: Number(readObjectValue(value, "id", "project_id", "projectId") ?? 0),
+  name: String(readObjectValue(value, "name", "project_name", "projectName") ?? ""),
+  description: String(readObjectValue(value, "description") ?? ""),
+  creatorId: Number(readObjectValue(value, "creatorId", "creator_id") ?? 0),
+  creatorNickname: String(
+    readObjectValue(value, "creatorNickname", "creator_nickname") ?? "",
+  ),
+  createdAt:
+    (readObjectValue(value, "createdAt", "created_at") as string | undefined) ??
+    undefined,
+  updatedAt:
+    (readObjectValue(value, "updatedAt", "updated_at") as string | undefined) ??
+    undefined,
+});
+
+export async function fetchMyProjects(): Promise<MyProject[]> {
+  const response = await apiRequest<unknown>("/projects/me", {
+    method: "GET",
+    authMode: "required",
+    baseUrl: BE_BASE_URL,
+  });
+
+  if (!Array.isArray(response)) {
+    return [];
+  }
+
+  return response.map((item) =>
+    normalizeMyProject(item as Record<string, unknown>),
+  );
+}
+
+export async function deleteProject(projectId: number): Promise<void> {
+  await apiRequest<void>(`/projects/${projectId}`, {
+    method: "DELETE",
+    authMode: "required",
+    baseUrl: BE_BASE_URL,
+  });
 }
 
 export async function checkNicknameDuplicate(

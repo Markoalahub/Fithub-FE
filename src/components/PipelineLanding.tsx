@@ -7,12 +7,21 @@ import {
   Layers,
   Plus,
   Server,
+  Trash2,
   Upload,
   X,
   Zap,
 } from "lucide-react";
 
-export type DemoProject = { id: number; name: string; description: string };
+export type DemoProject = {
+  id: number;
+  name: string;
+  description: string;
+  creatorId?: number;
+  creatorNickname?: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
 export type PipelineCategoryOption = "FE" | "BE" | "ALL";
 
 interface PipelineLandingProps {
@@ -20,11 +29,14 @@ interface PipelineLandingProps {
   projects: DemoProject[];
   selectedProject: DemoProject | null;
   isCreatingProject: boolean;
+  isFetchingProjects: boolean;
+  deletingProjectId: number | null;
   isGeneratingPipeline: boolean;
   generatingFileName: string | null;
   onSelectProject: (project: DemoProject) => void;
   onGoToCreateProject: () => void;
   onCreateProject: (params: { name: string; description: string }) => Promise<void>;
+  onRequestDeleteProject: (project: DemoProject) => void;
   onGeneratePipeline: (params: {
     file: File;
     category: PipelineCategoryOption;
@@ -57,11 +69,14 @@ export default function PipelineLanding({
   projects,
   selectedProject,
   isCreatingProject,
+  isFetchingProjects,
+  deletingProjectId,
   isGeneratingPipeline,
   generatingFileName,
   onSelectProject,
   onGoToCreateProject,
   onCreateProject,
+  onRequestDeleteProject,
   onGeneratePipeline,
   onCancelCreateProject,
   onBackToPipelines,
@@ -140,7 +155,13 @@ export default function PipelineLanding({
               )}
             </div>
 
-            {projects.length === 0 ? (
+            {isFetchingProjects ? (
+              <div className="rounded-2xl border border-[#E5E5E5] bg-white p-12 text-center shadow-sm auth-fade-up auth-delay-1">
+                <div className="mx-auto mb-5 h-9 w-9 animate-spin rounded-full border-2 border-gray-900 border-t-transparent" />
+                <h3 className="text-base font-bold text-gray-900 mb-1.5">프로젝트를 불러오는 중입니다</h3>
+                <p className="text-sm text-gray-400">참여 중인 프로젝트 목록을 조회하고 있습니다.</p>
+              </div>
+            ) : projects.length === 0 ? (
               <div className="rounded-2xl border border-[#E5E5E5] bg-white p-12 flex flex-col items-center text-center shadow-sm auth-fade-up auth-delay-1">
                 <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-50 to-violet-100 mb-5 shadow-inner">
                   <FolderOpen className="h-9 w-9 text-indigo-500" strokeWidth={1.5} />
@@ -158,27 +179,43 @@ export default function PipelineLanding({
               </div>
             ) : (
               <div className="space-y-2 auth-fade-up auth-delay-1">
-                {projects.map((project, i) => (
-                  <button
-                    key={project.id}
-                    onClick={() => onSelectProject(project)}
-                    style={{ animationDelay: `${120 + i * 60}ms` }}
-                    className="w-full rounded-xl border border-[#E5E5E5] bg-white px-4 py-3.5 text-left hover:border-indigo-200 hover:shadow-md hover:shadow-indigo-50/60 transition-all group auth-fade-up"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 group-hover:bg-indigo-50 transition-colors">
-                        <FolderOpen className="h-4.5 w-4.5 text-gray-400 group-hover:text-indigo-500 transition-colors" strokeWidth={1.5} />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-semibold text-gray-900">{project.name}</p>
-                        {project.description && (
-                          <p className="text-xs text-gray-400 mt-0.5 truncate">{project.description}</p>
-                        )}
-                      </div>
-                      <ChevronRight className="h-4 w-4 text-gray-300 group-hover:text-gray-500 transition-colors shrink-0" />
+                {projects.map((project, i) => {
+                  const isDeleting = deletingProjectId === project.id;
+
+                  return (
+                    <div
+                      key={project.id}
+                      style={{ animationDelay: `${120 + i * 60}ms` }}
+                      className="flex w-full items-center gap-3 rounded-xl border border-[#E5E5E5] bg-white px-4 py-3.5 hover:border-indigo-200 hover:shadow-md hover:shadow-indigo-50/60 transition-all group auth-fade-up"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => onSelectProject(project)}
+                        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                      >
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 group-hover:bg-indigo-50 transition-colors">
+                          <FolderOpen className="h-4.5 w-4.5 text-gray-400 group-hover:text-indigo-500 transition-colors" strokeWidth={1.5} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-semibold text-gray-900">{project.name}</p>
+                          {project.description && (
+                            <p className="text-xs text-gray-400 mt-0.5 truncate">{project.description}</p>
+                          )}
+                        </div>
+                        <ChevronRight className="h-4 w-4 text-gray-300 group-hover:text-gray-500 transition-colors shrink-0" />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`${project.name} 삭제`}
+                        disabled={isDeleting}
+                        onClick={() => onRequestDeleteProject(project)}
+                        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-gray-300 transition-colors hover:bg-rose-50 hover:text-rose-500 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
                     </div>
-                  </button>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
