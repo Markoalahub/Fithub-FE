@@ -1788,13 +1788,15 @@ export default function App() {
       return;
     }
 
-    const apiCategories: PipelineGenerationCategory[] =
-      params.category === "ALL" ? ["FE", "BE"] : [params.category];
+    const requestedCategories: PipelineGenerationCategory[] =
+      params.category === "ALL"
+        ? [...PIPELINE_GENERATION_CATEGORIES]
+        : [params.category];
 
     setIsGeneratingPipeline(true);
     setGeneratingFileName(params.file.name);
 
-    for (const cat of apiCategories) {
+    for (const cat of requestedCategories) {
       const track: DevTrack = cat === "BE" ? "backend" : "frontend";
       resetTrackCollaborationState(track);
       setTrackFeatures(track, []);
@@ -1808,32 +1810,59 @@ export default function App() {
     );
 
     try {
-      let totalFeatures = 0;
-      for (const cat of apiCategories) {
-        const track: DevTrack = cat === "BE" ? "backend" : "frontend";
-        const response = await generateProjectPipeline({
-          file: params.file,
-          projectId: activeProjectId,
-          category: cat,
-          techStack: params.techStack,
-          requirements: params.requirements,
-        });
+      const response = await generateProjectPipeline({
+        file: params.file,
+        projectId: activeProjectId,
+        category: params.category,
+        techStack: params.techStack,
+        requirements: params.requirements,
+      });
 
-        const nextFeatures = mapGeneratedFeatsToFeatures(response.feats);
+      const generatedCategories = Array.from(
+        new Set(
+          response.pipelines
+            .map((pipeline) => toPipelineGenerationCategory(pipeline.category))
+            .filter(
+              (category): category is PipelineGenerationCategory =>
+                category !== null,
+            ),
+        ),
+      );
+      const appliedCategories =
+        generatedCategories.length > 0
+          ? generatedCategories
+          : requestedCategories;
+
+      let totalFeatures = 0;
+      response.pipelines.forEach((pipeline) => {
+        const cat = toPipelineGenerationCategory(pipeline.category);
+        if (!cat) {
+          return;
+        }
+        const track: DevTrack = cat === "BE" ? "backend" : "frontend";
+        const nextFeatures = mapGeneratedFeatsToFeatures(pipeline.feats);
         setTrackFeatures(track, nextFeatures);
         totalFeatures += nextFeatures.length;
-      }
+      });
 
       setDemoPipelines((prev) => {
         const existing = prev.find((p) => p.projectId === activeProjectId);
         if (existing) {
           return prev.map((p) =>
             p.projectId === activeProjectId
-              ? { ...p, categories: [...new Set([...p.categories, ...apiCategories])] }
+              ? {
+                  ...p,
+                  categories: [
+                    ...new Set([...p.categories, ...appliedCategories]),
+                  ],
+                }
               : p,
           );
         }
-        return [...prev, { projectId: activeProjectId, categories: apiCategories }];
+        return [
+          ...prev,
+          { projectId: activeProjectId, categories: appliedCategories },
+        ];
       });
 
       setKnowledgeDocs((prev) => [
@@ -1848,7 +1877,9 @@ export default function App() {
 
       await loadProjectPipelines(activeProjectId, { clearOnError: false });
 
-      setPmSelectedTrack(params.category === "BE" ? "backend" : "frontend");
+      setPmSelectedTrack(
+        appliedCategories.includes("FE") ? "frontend" : "backend",
+      );
       setPipelineLandingStep("canvas");
       setActiveTab("pipeline");
 

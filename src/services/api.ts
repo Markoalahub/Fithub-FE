@@ -138,6 +138,7 @@ export type UserOnboardingResponse = {
 };
 
 export type PipelineGenerationCategory = "FE" | "BE";
+export type PipelineGenerateCategory = PipelineGenerationCategory | "ALL";
 
 export type GeneratedPipelineFeature = {
   featId: number;
@@ -151,7 +152,8 @@ export type GenerateProjectPipelineResponse = {
   projectId: number;
   category: string;
   version: number;
-  techStack: string;
+  techStack: string | null;
+  githubRepoUrl: string | null;
   feats: GeneratedPipelineFeature[];
 };
 
@@ -516,7 +518,7 @@ const normalizeGeneratedPipeline = (
   value: Record<string, unknown>,
   fallback?: {
     projectId?: number;
-    category?: PipelineGenerationCategory;
+    category?: PipelineGenerateCategory;
     techStack?: string;
   },
 ): GenerateProjectPipelineResponse => {
@@ -526,6 +528,13 @@ const normalizeGeneratedPipeline = (
         normalizeGeneratedPipelineFeature(feat as Record<string, unknown>),
       )
     : [];
+
+  const rawTechStack = readObjectValue(value, "tech_stack", "techStack");
+  const rawGithubRepoUrl = readObjectValue(
+    value,
+    "github_repo_url",
+    "githubRepoUrl",
+  );
 
   return {
     pipeId: Number(readObjectValue(value, "pipe_id", "pipeId", "id") ?? 0),
@@ -538,12 +547,42 @@ const normalizeGeneratedPipeline = (
       readObjectValue(value, "category") ?? fallback?.category ?? "",
     ),
     version: Number(readObjectValue(value, "version") ?? 0),
-    techStack: String(
-      readObjectValue(value, "tech_stack", "techStack") ??
-        fallback?.techStack ??
-        "",
-    ),
+    techStack:
+      rawTechStack === null || rawTechStack === undefined
+        ? fallback?.techStack ?? null
+        : String(rawTechStack),
+    githubRepoUrl:
+      rawGithubRepoUrl === null || rawGithubRepoUrl === undefined
+        ? null
+        : String(rawGithubRepoUrl),
     feats,
+  };
+};
+
+const normalizeGeneratedPipelineList = (
+  value: Record<string, unknown>,
+  fallback?: {
+    projectId?: number;
+    category?: PipelineGenerateCategory;
+    techStack?: string;
+  },
+): ProjectPipelinesResponse => {
+  const pipelinesRaw = readObjectValue(value, "pipelines");
+  const pipelines = Array.isArray(pipelinesRaw)
+    ? pipelinesRaw.map((pipeline) =>
+        normalizeGeneratedPipeline(pipeline as Record<string, unknown>, {
+          projectId: fallback?.projectId,
+          techStack: fallback?.techStack,
+        }),
+      )
+    : [normalizeGeneratedPipeline(value, fallback)];
+  const total = Number(
+    readObjectValue(value, "total", "totalCount", "count") ?? pipelines.length,
+  );
+
+  return {
+    pipelines,
+    total: Number.isFinite(total) ? total : pipelines.length,
   };
 };
 
@@ -896,10 +935,10 @@ export async function submitUserOnboarding(
 export async function generateProjectPipeline(payload: {
   file: File;
   projectId: number;
-  category: PipelineGenerationCategory;
+  category: PipelineGenerateCategory;
   techStack: string;
   requirements: string;
-}): Promise<GenerateProjectPipelineResponse> {
+}): Promise<ProjectPipelinesResponse> {
   const formData = new FormData();
   formData.append("file", payload.file);
   formData.append("project_id", String(payload.projectId));
@@ -917,7 +956,7 @@ export async function generateProjectPipeline(payload: {
     },
   );
 
-  return normalizeGeneratedPipeline(response, {
+  return normalizeGeneratedPipelineList(response, {
     projectId: payload.projectId,
     category: payload.category,
     techStack: payload.techStack,
