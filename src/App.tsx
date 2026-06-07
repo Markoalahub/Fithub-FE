@@ -384,6 +384,14 @@ const getTrackByPipelineCategory = (
   category: PipelineGenerationCategory,
 ): DevTrack => (category === "BE" ? "backend" : "frontend");
 
+const getPipelineCategoryByUserRole = (
+  role: UserRole | null | undefined,
+): PipelineGenerationCategory | null => {
+  if (role === "dev-be") return "BE";
+  if (role === "dev" || role === "dev-fe") return "FE";
+  return null;
+};
+
 const getUserRoleByJobRole = (
   jobRole: string | null | undefined,
   fallback: UserRole = "dev-fe",
@@ -1861,7 +1869,13 @@ export default function App() {
   const handleViewProjectPipelineByCategory = async (
     category: PipelineGenerationCategory,
   ) => {
-    if (!isPm || !activeProjectId) {
+    if (!activeProjectId) {
+      return;
+    }
+
+    const developerCategory = getPipelineCategoryByUserRole(authUser?.role);
+    if (!isPm && category !== developerCategory) {
+      pushToast("내 직군에 맞는 파이프라인만 조회할 수 있습니다.", "warning");
       return;
     }
 
@@ -1896,7 +1910,9 @@ export default function App() {
         }
         return [...prev, { projectId: activeProjectId, categories: [category] }];
       });
-      setPmSelectedTrack(track);
+      if (isPm) {
+        setPmSelectedTrack(track);
+      }
       setPipelineLandingStep("canvas");
       setActiveTab("pipeline");
     } catch (error) {
@@ -3295,6 +3311,11 @@ export default function App() {
                 canDeleteProject={isPm}
                 canInviteProject={isPm}
                 canUpdateProject={isPm}
+                developerPipelineCategory={
+                  isDevUser
+                    ? getPipelineCategoryByUserRole(authUser.role)
+                    : null
+                }
                 onSelectProject={(proj) => {
                   void handleSelectProject(proj);
                 }}

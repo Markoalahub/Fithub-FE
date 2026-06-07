@@ -54,6 +54,7 @@ interface PipelineLandingProps {
   canDeleteProject: boolean;
   canInviteProject: boolean;
   canUpdateProject: boolean;
+  developerPipelineCategory: PipelineGenerationCategory | null;
   onSelectProject: (project: DemoProject) => void;
   onGoToCreateProject: () => void;
   onGoToPipelineForm: () => void;
@@ -109,6 +110,7 @@ export default function PipelineLanding({
   canDeleteProject,
   canInviteProject,
   canUpdateProject,
+  developerPipelineCategory,
   onSelectProject,
   onGoToCreateProject,
   onGoToPipelineForm,
@@ -138,6 +140,8 @@ export default function PipelineLanding({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const remainingCount = aiPipelineGenerationRemainingCount;
   const hasNoAiCalls = remainingCount !== undefined && remainingCount <= 0;
+  const developerPipelineLabel =
+    developerPipelineCategory === "BE" ? "백엔드" : "프론트엔드";
 
   useEffect(() => {
     setEditNameInput(projectDetail?.projectName ?? selectedProject?.name ?? "");
@@ -528,6 +532,32 @@ export default function PipelineLanding({
                           파이프라인 생성하기
                         </button>
                       </div>
+                    </div>
+                  ) : developerPipelineCategory ? (
+                    <div className="space-y-4">
+                      {pipelineEmptyMessage ? (
+                        <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
+                          {pipelineEmptyMessage}
+                        </p>
+                      ) : (
+                        <p className="rounded-lg bg-gray-50 px-3 py-4 text-sm text-gray-400">
+                          {developerPipelineLabel} 파이프라인을 조회할 수 있습니다.
+                        </p>
+                      )}
+
+                      <button
+                        type="button"
+                        disabled={isFetchingProjectPipelines}
+                        onClick={() => void onViewPipeline(developerPipelineCategory)}
+                        className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-[#E5E5E5] px-3 py-2 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        {developerPipelineCategory === "BE" ? (
+                          <Server className="h-4 w-4" />
+                        ) : (
+                          <Layers className="h-4 w-4" />
+                        )}
+                        {developerPipelineLabel} 파이프라인 보기
+                      </button>
                     </div>
                   ) : (
                     <div className="rounded-lg bg-gray-50 px-3 py-4 text-sm text-gray-500">
