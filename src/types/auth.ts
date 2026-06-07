@@ -7,4 +7,6 @@ export interface AuthUser {
   name: string;
   email: string;
   provider: LoginProvider;
+  jobRole?: string;
+  aiPipelineGenerationRemainingCount?: number;
 }

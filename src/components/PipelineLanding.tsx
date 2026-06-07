@@ -1,18 +1,27 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ChevronLeft,
   ChevronRight,
   FileText,
   FolderOpen,
+  GitBranch,
   Layers,
+  Pencil,
   Plus,
+  Save,
   Server,
   Trash2,
   Upload,
   UserPlus,
+  Users,
   X,
   Zap,
 } from "lucide-react";
+import type {
+  PipelineGenerationCategory,
+  ProjectDetail,
+  ProjectPipelineSummary,
+} from "../services/api";
 
 export type DemoProject = {
   id: number;
@@ -26,22 +35,33 @@ export type DemoProject = {
 export type PipelineCategoryOption = "FE" | "BE" | "ALL";
 
 interface PipelineLandingProps {
-  step: "project-list" | "create-project" | "pipeline-form";
+  step: "project-list" | "project-detail" | "create-project" | "pipeline-form";
   projects: DemoProject[];
   selectedProject: DemoProject | null;
+  projectDetail: ProjectDetail | null;
+  pipelineSummaries: ProjectPipelineSummary[];
   isCreatingProject: boolean;
   isFetchingProjects: boolean;
+  isFetchingProjectDetail: boolean;
+  isFetchingProjectPipelines: boolean;
+  isUpdatingProject: boolean;
   deletingProjectId: number | null;
   isGeneratingPipeline: boolean;
   generatingFileName: string | null;
+  aiPipelineGenerationRemainingCount?: number;
+  pipelineEmptyMessage: string | null;
   canCreateProject: boolean;
   canDeleteProject: boolean;
   canInviteProject: boolean;
+  canUpdateProject: boolean;
   onSelectProject: (project: DemoProject) => void;
   onGoToCreateProject: () => void;
+  onGoToPipelineForm: () => void;
   onCreateProject: (params: { name: string; description: string }) => Promise<void>;
+  onUpdateProject: (params: { name: string; description: string }) => Promise<void>;
   onRequestDeleteProject: (project: DemoProject) => void;
   onOpenProjectInvite: () => void;
+  onViewPipeline: (category: PipelineGenerationCategory) => Promise<void>;
   onGeneratePipeline: (params: {
     file: File;
     category: PipelineCategoryOption;
@@ -73,19 +93,30 @@ export default function PipelineLanding({
   step,
   projects,
   selectedProject,
+  projectDetail,
+  pipelineSummaries,
   isCreatingProject,
   isFetchingProjects,
+  isFetchingProjectDetail,
+  isFetchingProjectPipelines,
+  isUpdatingProject,
   deletingProjectId,
   isGeneratingPipeline,
   generatingFileName,
+  aiPipelineGenerationRemainingCount,
+  pipelineEmptyMessage,
   canCreateProject,
   canDeleteProject,
   canInviteProject,
+  canUpdateProject,
   onSelectProject,
   onGoToCreateProject,
+  onGoToPipelineForm,
   onCreateProject,
+  onUpdateProject,
   onRequestDeleteProject,
   onOpenProjectInvite,
+  onViewPipeline,
   onGeneratePipeline,
   onCancelCreateProject,
   onBackToPipelines,
@@ -99,9 +130,29 @@ export default function PipelineLanding({
   const [requirementsInput, setRequirementsInput] = useState("");
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [isEditingProject, setIsEditingProject] = useState(false);
+  const [editNameInput, setEditNameInput] = useState("");
+  const [editDescriptionInput, setEditDescriptionInput] = useState("");
 
   const dropZoneRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const remainingCount = aiPipelineGenerationRemainingCount;
+  const hasNoAiCalls = remainingCount !== undefined && remainingCount <= 0;
+
+  useEffect(() => {
+    setEditNameInput(projectDetail?.projectName ?? selectedProject?.name ?? "");
+    setEditDescriptionInput(
+      projectDetail?.projectDescription ?? selectedProject?.description ?? "",
+    );
+    setIsEditingProject(false);
+  }, [
+    projectDetail?.projectDescription,
+    projectDetail?.projectId,
+    projectDetail?.projectName,
+    selectedProject?.description,
+    selectedProject?.id,
+    selectedProject?.name,
+  ]);
 
   const validateAndSetPdf = (file: File) => {
     if (!(file.type === "application/pdf" || /\.pdf$/i.test(file.name))) {
@@ -134,7 +185,15 @@ export default function PipelineLanding({
     await onCreateProject({ name, description: descriptionInput.trim() });
   };
 
+  const handleSubmitUpdateProject = async () => {
+    const name = editNameInput.trim();
+    if (!name) { onPushToast("프로젝트 이름을 입력해 주세요.", "warning"); return; }
+    await onUpdateProject({ name, description: editDescriptionInput.trim() });
+    setIsEditingProject(false);
+  };
+
   const handleSubmitGeneratePipeline = async () => {
+    if (hasNoAiCalls) { onPushToast("AI 파이프라인 생성 가능 횟수가 없습니다.", "warning"); return; }
     if (!pdfFile) { onPushToast("PDF 파일을 선택해 주세요.", "warning"); return; }
     if (!techStackInput.trim()) { onPushToast("기술 스택을 입력해 주세요.", "warning"); return; }
     if (!requirementsInput.trim()) { onPushToast("요구사항을 입력해 주세요.", "warning"); return; }
@@ -253,6 +312,235 @@ export default function PipelineLanding({
         </div>
       )}
 
+      {/* ── PROJECT DETAIL ──────────────────────────────────────── */}
+      {step === "project-detail" && (
+        <div className="flex flex-1 items-start justify-center p-8">
+          <div className="w-full max-w-3xl">
+            <div className="mb-5 flex items-center justify-between gap-3 auth-fade-up">
+              <button
+                onClick={onBackToPipelines}
+                className="inline-flex items-center gap-1 text-xs text-gray-400 transition-colors hover:text-gray-700"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" /> 프로젝트 목록으로
+              </button>
+              {canInviteProject && (
+                <button
+                  type="button"
+                  onClick={onOpenProjectInvite}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[#E5E5E5] bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-50"
+                >
+                  <UserPlus className="h-3.5 w-3.5" /> 팀원 초대
+                </button>
+              )}
+            </div>
+
+            {isFetchingProjectDetail ? (
+              <div className="rounded-2xl border border-[#E5E5E5] bg-white p-12 text-center shadow-sm auth-fade-up auth-delay-1">
+                <div className="mx-auto mb-5 h-9 w-9 animate-spin rounded-full border-2 border-gray-900 border-t-transparent" />
+                <h3 className="text-base font-bold text-gray-900 mb-1.5">프로젝트 상세 정보를 불러오는 중입니다</h3>
+                <p className="text-sm text-gray-400">참여 인원과 파이프라인 정보를 확인하고 있습니다.</p>
+              </div>
+            ) : (
+              <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+                <section className="rounded-2xl border border-[#E5E5E5] bg-white p-6 shadow-sm auth-fade-up auth-delay-1">
+                  <div className="mb-5 flex items-start justify-between gap-3 border-b border-[#F0F0F0] pb-5">
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-1">
+                        Project Detail
+                      </p>
+                      {isEditingProject ? (
+                        <input
+                          value={editNameInput}
+                          onChange={(e) => setEditNameInput(e.target.value)}
+                          className="w-full rounded-lg border border-[#E5E5E5] px-3 py-2 text-base font-bold text-gray-900 focus:border-gray-900 focus:outline-none"
+                          maxLength={60}
+                        />
+                      ) : (
+                        <h2 className="truncate text-xl font-bold text-gray-900">
+                          {projectDetail?.projectName ?? selectedProject?.name ?? "프로젝트"}
+                        </h2>
+                      )}
+                    </div>
+                    {canUpdateProject && (
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingProject((prev) => !prev)}
+                        className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[#E5E5E5] px-3 py-1.5 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-50"
+                      >
+                        {isEditingProject ? (
+                          <>
+                            <X className="h-3.5 w-3.5" /> 취소
+                          </>
+                        ) : (
+                          <>
+                            <Pencil className="h-3.5 w-3.5" /> 프로젝트 수정
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="space-y-5">
+                    <div>
+                      <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-gray-400">
+                        설명
+                      </p>
+                      {isEditingProject ? (
+                        <textarea
+                          rows={4}
+                          value={editDescriptionInput}
+                          onChange={(e) => setEditDescriptionInput(e.target.value)}
+                          className="w-full resize-none rounded-lg border border-[#E5E5E5] px-3 py-2.5 text-sm text-gray-900 focus:border-gray-900 focus:outline-none"
+                          maxLength={200}
+                        />
+                      ) : (
+                        <p className="min-h-[44px] rounded-lg bg-gray-50 px-3 py-2.5 text-sm leading-relaxed text-gray-600">
+                          {projectDetail?.projectDescription?.trim() ||
+                            selectedProject?.description?.trim() ||
+                            "프로젝트 설명이 없습니다."}
+                        </p>
+                      )}
+                    </div>
+
+                    {isEditingProject && (
+                      <button
+                        type="button"
+                        onClick={() => void handleSubmitUpdateProject()}
+                        disabled={isUpdatingProject || !editNameInput.trim()}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-gray-700 disabled:bg-gray-200 disabled:text-gray-400"
+                      >
+                        <Save className="h-4 w-4" />
+                        {isUpdatingProject ? "저장 중..." : "저장"}
+                      </button>
+                    )}
+
+                    <div>
+                      <div className="mb-3 flex items-center justify-between">
+                        <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400">
+                          Members
+                        </p>
+                        <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-700">
+                          <Users className="h-3.5 w-3.5" />
+                          {projectDetail?.memberCount ?? 0}명
+                        </span>
+                      </div>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {(projectDetail?.members ?? []).length > 0 ? (
+                          projectDetail?.members.map((member) => (
+                            <div
+                              key={member.userId}
+                              className="rounded-lg border border-[#E5E5E5] bg-white px-3 py-2"
+                            >
+                              <p className="text-sm font-semibold text-gray-900">
+                                {member.nickname || `사용자 ${member.userId}`}
+                              </p>
+                              <p className="text-[11px] text-gray-400">
+                                user_id {member.userId}
+                              </p>
+                            </div>
+                          ))
+                        ) : (
+                          <p className="rounded-lg bg-gray-50 px-3 py-3 text-sm text-gray-400">
+                            참여 중인 멤버 정보가 없습니다.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <aside className="rounded-2xl border border-[#E5E5E5] bg-white p-6 shadow-sm auth-fade-up auth-delay-2">
+                  <div className="mb-5 flex items-start justify-between gap-3 border-b border-[#F0F0F0] pb-5">
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-1">
+                        Pipeline
+                      </p>
+                      <h3 className="text-base font-bold text-gray-900">파이프라인 상세</h3>
+                    </div>
+                    {remainingCount !== undefined && (
+                      <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700">
+                        AI {remainingCount}회
+                      </span>
+                    )}
+                  </div>
+
+                  {canCreateProject ? (
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        {pipelineSummaries.length > 0 ? (
+                          pipelineSummaries.map((pipeline) => (
+                            <div
+                              key={`${pipeline.category}-${pipeline.pipeId}`}
+                              className="rounded-lg border border-[#E5E5E5] px-3 py-2.5"
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="truncate text-sm font-semibold text-gray-900">
+                                  {pipeline.pipelineName || `${pipeline.category} 파이프라인`}
+                                </p>
+                                <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold text-gray-600">
+                                  {pipeline.category}
+                                </span>
+                              </div>
+                              <p className="mt-1 truncate text-[11px] text-gray-400">
+                                {pipeline.githubRepoUrl ?? "GitHub 저장소 미연결"}
+                              </p>
+                            </div>
+                          ))
+                        ) : (
+                          <p className="rounded-lg bg-gray-50 px-3 py-4 text-sm text-gray-400">
+                            생성된 파이프라인이 없습니다.
+                          </p>
+                        )}
+                      </div>
+
+                      {pipelineEmptyMessage && (
+                        <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
+                          {pipelineEmptyMessage}
+                        </p>
+                      )}
+
+                      <div className="grid gap-2">
+                        <button
+                          type="button"
+                          disabled={isFetchingProjectPipelines}
+                          onClick={() => void onViewPipeline("FE")}
+                          className="inline-flex items-center justify-center gap-2 rounded-lg border border-[#E5E5E5] px-3 py-2 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
+                        >
+                          <Layers className="h-4 w-4" />
+                          프론트엔드 파이프라인 보기
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isFetchingProjectPipelines}
+                          onClick={() => void onViewPipeline("BE")}
+                          className="inline-flex items-center justify-center gap-2 rounded-lg border border-[#E5E5E5] px-3 py-2 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
+                        >
+                          <Server className="h-4 w-4" />
+                          백엔드 파이프라인 보기
+                        </button>
+                        <button
+                          type="button"
+                          disabled={hasNoAiCalls}
+                          onClick={onGoToPipelineForm}
+                          className="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-700 disabled:bg-gray-200 disabled:text-gray-400"
+                        >
+                          <GitBranch className="h-4 w-4" />
+                          파이프라인 생성하기
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-lg bg-gray-50 px-3 py-4 text-sm text-gray-500">
+                      프로젝트 상세 정보와 참여 멤버를 확인할 수 있습니다.
+                    </div>
+                  )}
+                </aside>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* ── CREATE PROJECT ──────────────────────────────────────── */}
       {step === "create-project" && (
         <div className="flex flex-1 items-center justify-center p-8">
@@ -365,6 +653,11 @@ export default function PipelineLanding({
                 <div>
                   <p className="text-[10px] font-semibold uppercase tracking-widest text-white/50">AI Pipeline</p>
                   <h2 className="text-base font-bold text-white">파이프라인 생성</h2>
+                  {remainingCount !== undefined && (
+                    <p className="mt-0.5 text-xs font-medium text-white/70">
+                      AI call 남은 횟수 {remainingCount}회
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -496,7 +789,7 @@ export default function PipelineLanding({
                     <button
                       type="button"
                       onClick={() => void handleSubmitGeneratePipeline()}
-                      disabled={!pdfFile || !techStackInput.trim() || !requirementsInput.trim()}
+                      disabled={hasNoAiCalls || !pdfFile || !techStackInput.trim() || !requirementsInput.trim()}
                       className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 py-3 text-sm font-semibold text-white hover:bg-indigo-700 disabled:bg-gray-200 disabled:text-gray-400 transition-colors"
                     >
                       <Zap className="h-4 w-4" />

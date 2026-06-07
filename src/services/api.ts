@@ -103,6 +103,33 @@ export type MyProject = {
   updatedAt?: string;
 };
 
+export type CurrentUser = {
+  userId: number;
+  nickname: string;
+  jobRole: string;
+  aiPipelineGenerationRemainingCount: number;
+};
+
+export type ProjectDetailMember = {
+  userId: number;
+  nickname: string;
+};
+
+export type ProjectDetail = {
+  projectId: number;
+  projectName: string;
+  projectDescription: string;
+  members: ProjectDetailMember[];
+  memberCount: number;
+};
+
+export type ProjectUpdateResponse = {
+  projectId: number;
+  projectName: string;
+  projectDescription: string;
+  creatorId: number;
+};
+
 export type ProjectInviteUser = {
   id: number;
   username: string;
@@ -159,6 +186,19 @@ export type GenerateProjectPipelineResponse = {
 
 export type ProjectPipelinesResponse = {
   pipelines: GenerateProjectPipelineResponse[];
+  total: number;
+};
+
+export type ProjectPipelineSummary = {
+  pipeId: number;
+  pipelineName: string;
+  category: string;
+  githubRepoUrl: string | null;
+};
+
+export type ProjectPipelineSummaryListResponse = {
+  projectId: number;
+  pipelines: ProjectPipelineSummary[];
   total: number;
 };
 
@@ -586,6 +626,124 @@ const normalizeGeneratedPipelineList = (
   };
 };
 
+const normalizeCurrentUser = (value: Record<string, unknown>): CurrentUser => ({
+  userId: Number(readObjectValue(value, "user_id", "userId", "id") ?? 0),
+  nickname: String(readObjectValue(value, "nickname", "name") ?? ""),
+  jobRole: String(readObjectValue(value, "job_role", "jobRole") ?? ""),
+  aiPipelineGenerationRemainingCount: Number(
+    readObjectValue(
+      value,
+      "ai_pipeline_generation_remaining_count",
+      "aiPipelineGenerationRemainingCount",
+    ) ?? 0,
+  ),
+});
+
+const normalizeProjectDetailMember = (
+  value: Record<string, unknown>,
+): ProjectDetailMember => ({
+  userId: Number(readObjectValue(value, "user_id", "userId", "id") ?? 0),
+  nickname: String(readObjectValue(value, "nickname", "name") ?? ""),
+});
+
+const normalizeProjectDetail = (
+  value: Record<string, unknown>,
+): ProjectDetail => {
+  const membersRaw = readObjectValue(value, "members");
+  const members = Array.isArray(membersRaw)
+    ? membersRaw.map((member) =>
+        normalizeProjectDetailMember(member as Record<string, unknown>),
+      )
+    : [];
+
+  return {
+    projectId: Number(readObjectValue(value, "project_id", "projectId", "id") ?? 0),
+    projectName: String(
+      readObjectValue(value, "project_name", "projectName", "name") ?? "",
+    ),
+    projectDescription: String(
+      readObjectValue(
+        value,
+        "project_description",
+        "projectDescription",
+        "description",
+      ) ?? "",
+    ),
+    members,
+    memberCount: Number(
+      readObjectValue(value, "member_count", "memberCount") ?? members.length,
+    ),
+  };
+};
+
+const normalizeProjectUpdateResponse = (
+  value: Record<string, unknown>,
+): ProjectUpdateResponse => ({
+  projectId: Number(readObjectValue(value, "project_id", "projectId", "id") ?? 0),
+  projectName: String(
+    readObjectValue(value, "project_name", "projectName", "name") ?? "",
+  ),
+  projectDescription: String(
+    readObjectValue(
+      value,
+      "project_description",
+      "projectDescription",
+      "description",
+    ) ?? "",
+  ),
+  creatorId: Number(readObjectValue(value, "creator_id", "creatorId") ?? 0),
+});
+
+const normalizeProjectPipelineSummary = (
+  value: Record<string, unknown>,
+): ProjectPipelineSummary => {
+  const rawGithubRepoUrl = readObjectValue(
+    value,
+    "github_repo_url",
+    "githubRepoUrl",
+  );
+
+  return {
+    pipeId: Number(readObjectValue(value, "pipe_id", "pipeId", "id") ?? 0),
+    pipelineName: String(
+      readObjectValue(value, "pipeline_name", "pipelineName", "name") ?? "",
+    ),
+    category: String(readObjectValue(value, "category") ?? ""),
+    githubRepoUrl:
+      rawGithubRepoUrl === null || rawGithubRepoUrl === undefined
+        ? null
+        : String(rawGithubRepoUrl),
+  };
+};
+
+const normalizeProjectPipelineSummaryList = (
+  value: Record<string, unknown>,
+  fallbackProjectId: number,
+): ProjectPipelineSummaryListResponse => {
+  const pipelinesRaw = readObjectValue(value, "pipelines");
+  const pipelines = Array.isArray(pipelinesRaw)
+    ? pipelinesRaw.map((pipeline) =>
+        normalizeProjectPipelineSummary(pipeline as Record<string, unknown>),
+      )
+    : [];
+  const total = Number(
+    readObjectValue(value, "total", "totalCount", "count") ?? pipelines.length,
+  );
+
+  return {
+    projectId: Number(
+      readObjectValue(value, "project_id", "projectId") ?? fallbackProjectId,
+    ),
+    pipelines,
+    total: Number.isFinite(total) ? total : pipelines.length,
+  };
+};
+
+const hasNoPipelineMessage = (value: Record<string, unknown>) => {
+  const message = readObjectValue(value, "message");
+  return typeof message === "string" && message.includes("파이프라인이 없습니다");
+};
+
 export const parseGithubRepoInput = (input: string) => {
   const trimmed = input.trim();
   if (!trimmed) return null;
@@ -804,6 +962,16 @@ export async function createProject(payload: {
   };
 }
 
+export async function fetchCurrentUser(): Promise<CurrentUser> {
+  const response = await apiRequest<Record<string, unknown>>("/users/me", {
+    method: "GET",
+    authMode: "required",
+    baseUrl: BE_BASE_URL,
+  });
+
+  return normalizeCurrentUser(response);
+}
+
 const normalizeMyProject = (value: Record<string, unknown>): MyProject => ({
   id: Number(readObjectValue(value, "id", "project_id", "projectId") ?? 0),
   name: String(readObjectValue(value, "name", "project_name", "projectName") ?? ""),
@@ -834,6 +1002,41 @@ export async function fetchMyProjects(): Promise<MyProject[]> {
   return response.map((item) =>
     normalizeMyProject(item as Record<string, unknown>),
   );
+}
+
+export async function fetchProjectDetail(
+  projectId: number,
+): Promise<ProjectDetail> {
+  const response = await apiRequest<Record<string, unknown>>(
+    `/projects/${projectId}`,
+    {
+      method: "GET",
+      authMode: "required",
+      baseUrl: BE_BASE_URL,
+    },
+  );
+
+  return normalizeProjectDetail(response);
+}
+
+export async function updateProject(
+  projectId: number,
+  payload: {
+    name: string;
+    description: string;
+  },
+): Promise<ProjectUpdateResponse> {
+  const response = await apiRequest<Record<string, unknown>>(
+    `/projects/${projectId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+      authMode: "required",
+      baseUrl: BE_BASE_URL,
+    },
+  );
+
+  return normalizeProjectUpdateResponse(response);
 }
 
 export async function deleteProject(projectId: number): Promise<void> {
@@ -965,32 +1168,38 @@ export async function generateProjectPipeline(payload: {
 
 export async function fetchProjectPipelines(
   projectId: number,
-): Promise<ProjectPipelinesResponse> {
+): Promise<ProjectPipelineSummaryListResponse>;
+export async function fetchProjectPipelines(
+  projectId: number,
+  category: PipelineGenerationCategory,
+): Promise<GenerateProjectPipelineResponse | null>;
+export async function fetchProjectPipelines(
+  projectId: number,
+  category?: PipelineGenerationCategory,
+): Promise<
+  ProjectPipelineSummaryListResponse | GenerateProjectPipelineResponse | null
+> {
   const response = await apiRequest<Record<string, unknown>>(
     `/projects/${projectId}/pipelines`,
     {
       method: "GET",
+      query: category ? { category } : undefined,
       authMode: "required",
       baseUrl: BE_BASE_URL,
     },
   );
 
-  const pipelinesRaw = readObjectValue(response, "pipelines");
-  const pipelines = Array.isArray(pipelinesRaw)
-    ? pipelinesRaw.map((pipeline) =>
-        normalizeGeneratedPipeline(pipeline as Record<string, unknown>, {
-          projectId,
-        }),
-      )
-    : [];
-  const total = Number(
-    readObjectValue(response, "total", "totalCount", "count") ?? pipelines.length,
-  );
+  if (category) {
+    if (hasNoPipelineMessage(response)) {
+      return null;
+    }
+    return normalizeGeneratedPipeline(response, {
+      projectId,
+      category,
+    });
+  }
 
-  return {
-    pipelines,
-    total: Number.isFinite(total) ? total : pipelines.length,
-  };
+  return normalizeProjectPipelineSummaryList(response, projectId);
 }
 
 export async function updatePipelineStep(

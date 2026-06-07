@@ -57,6 +57,15 @@ export default function MyInfoSection({
           value={providerLabel[authUser.provider] ?? authUser.provider}
         />
         <InfoItem label="사용자 ID" value={authUser.id} />
+        <InfoItem label="백엔드 직군" value={authUser.jobRole || "-"} />
+        <InfoItem
+          label="AI 파이프라인 생성 가능 횟수"
+          value={
+            authUser.aiPipelineGenerationRemainingCount === undefined
+              ? "-"
+              : `${authUser.aiPipelineGenerationRemainingCount}회`
+          }
+        />
         <InfoItem label="현재 작업 트랙" value={activeTrackLabel} />
         <InfoItem
           label="연결 저장소"

@@ -21,7 +21,9 @@ import {
   checkNicknameDuplicate,
   deleteProject,
   fetchAvailableGithubRepositories,
+  fetchCurrentUser,
   fetchMyProjects,
+  fetchProjectDetail,
   fetchProjectPipelines,
   fetchProjectGithubRepositories,
   fetchUserByNickname,
@@ -31,12 +33,16 @@ import {
   submitUserOnboarding,
   syncIssueToGithub,
   syncProjectGithubRepositories,
+  updateProject,
   updatePipelineStep,
+  type CurrentUser,
   type DeveloperOnboardingJobRole,
   type GenerateProjectPipelineResponse,
   type GeneratedPipelineFeature,
   type PipelineGenerationCategory,
+  type ProjectDetail,
   type ProjectInviteUser,
+  type ProjectPipelineSummary,
   type RepositoryCategory,
 } from "./services/api";
 import type {
@@ -378,6 +384,34 @@ const getTrackByPipelineCategory = (
   category: PipelineGenerationCategory,
 ): DevTrack => (category === "BE" ? "backend" : "frontend");
 
+const getUserRoleByJobRole = (
+  jobRole: string | null | undefined,
+  fallback: UserRole = "dev-fe",
+): UserRole => {
+  const normalizedJobRole = (jobRole ?? "").trim().toUpperCase();
+  if (normalizedJobRole === "PLANNER") return "pm";
+  if (normalizedJobRole === "FRONTEND") return "dev-fe";
+  if (normalizedJobRole === "BACKEND") return "dev-be";
+  return fallback;
+};
+
+const getProviderByRole = (role: UserRole, fallback?: AuthUser["provider"]) =>
+  fallback ?? (role === "pm" ? "kakao" : "github");
+
+const hasStoredApiToken = () => {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  return Boolean(
+    (
+      window.localStorage.getItem("fithub.apiToken") ??
+      window.localStorage.getItem("fithub.authToken") ??
+      ""
+    ).trim(),
+  );
+};
+
 const getLatestPipelinesByCategory = (
   pipelines: GenerateProjectPipelineResponse[],
 ) => {
@@ -643,7 +677,12 @@ type OAuthOnboardingState = {
 };
 
 type DemoPipeline = { projectId: number; categories: Array<"FE" | "BE"> };
-type PipelineLandingStep = "project-list" | "create-project" | "pipeline-form" | "canvas";
+type PipelineLandingStep =
+  | "project-list"
+  | "project-detail"
+  | "create-project"
+  | "pipeline-form"
+  | "canvas";
 
 const devTrackLabel: Record<DevTrack, string> = {
   frontend: "프론트엔드",
@@ -689,8 +728,10 @@ export default function App() {
   const [isConnectingGithubRepo, setIsConnectingGithubRepo] = useState(false);
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [isFetchingProjects, setIsFetchingProjects] = useState(false);
+  const [isFetchingProjectDetail, setIsFetchingProjectDetail] = useState(false);
   const [isFetchingProjectPipelines, setIsFetchingProjectPipelines] =
     useState(false);
+  const [isUpdatingProject, setIsUpdatingProject] = useState(false);
   const [hasFetchedProjects, setHasFetchedProjects] = useState(false);
   const [isDeletingProject, setIsDeletingProject] = useState(false);
   const [isSearchingInviteUser, setIsSearchingInviteUser] = useState(false);
@@ -701,6 +742,13 @@ export default function App() {
   // Pipeline landing flow state
   const [demoProjects, setDemoProjects] = useState<DemoProject[]>([]);
   const [selectedDemoProject, setSelectedDemoProject] = useState<DemoProject | null>(null);
+  const [selectedProjectDetail, setSelectedProjectDetail] =
+    useState<ProjectDetail | null>(null);
+  const [projectPipelineSummaries, setProjectPipelineSummaries] = useState<
+    ProjectPipelineSummary[]
+  >([]);
+  const [projectPipelineEmptyMessage, setProjectPipelineEmptyMessage] =
+    useState<string | null>(null);
   const [projectPendingDelete, setProjectPendingDelete] =
     useState<DemoProject | null>(null);
   const [projectInviteUser, setProjectInviteUser] =
@@ -885,6 +933,9 @@ export default function App() {
     setIsFetchingProjectPipelines(false);
     syncActiveProjectId(null);
     setSelectedDemoProject(null);
+    setSelectedProjectDetail(null);
+    setProjectPipelineSummaries([]);
+    setProjectPipelineEmptyMessage(null);
     setFrontendProjectName("Fithub V1");
     setBackendProjectName("Fithub V1");
 
@@ -964,9 +1015,62 @@ export default function App() {
     toastTimeoutIdsRef.current.push(timeoutId);
   };
 
-  const loadProjectPipelines = async (
+  const refreshCurrentUser = async (
+    fallbackRole?: UserRole,
+    options: { silent?: boolean; clearOnUnauthorized?: boolean } = {},
+  ): Promise<CurrentUser | null> => {
+    try {
+      const currentUser = await fetchCurrentUser();
+      const role = getUserRoleByJobRole(
+        currentUser.jobRole,
+        fallbackRole ?? authUser?.role ?? "dev-fe",
+      );
+      const provider = getProviderByRole(role, authUser?.provider);
+
+      setAuthUser((prev) => ({
+        id: String(currentUser.userId || prev?.id || createId()),
+        role,
+        name: currentUser.nickname || prev?.name || "-",
+        email: prev?.email ?? "",
+        provider,
+        jobRole: currentUser.jobRole || prev?.jobRole,
+        aiPipelineGenerationRemainingCount:
+          currentUser.aiPipelineGenerationRemainingCount,
+      }));
+      setOnboardingRole(role);
+      if (role === "pm") {
+        setPmSelectedTrack("frontend");
+      }
+
+      return currentUser;
+    } catch (error) {
+      console.error(error);
+      if (options.clearOnUnauthorized) {
+        setAuthUser(null);
+        setOnboardingRole(null);
+        if (typeof window !== "undefined") {
+          window.localStorage.removeItem("fithub.apiToken");
+          window.localStorage.removeItem("fithub.authToken");
+          window.localStorage.removeItem("fithub.githubAccessToken");
+          window.localStorage.removeItem("fithub.kakaoAccessToken");
+          window.localStorage.removeItem("fithub.refreshToken");
+        }
+      }
+      if (!options.silent) {
+        pushToast(
+          error instanceof Error
+            ? error.message
+            : "사용자 정보를 불러오지 못했습니다.",
+          "warning",
+        );
+      }
+      return null;
+    }
+  };
+
+  const loadProjectPipelineSummaries = async (
     projectId: number,
-    options: { clearOnError?: boolean } = {},
+    options: { clearOnError?: boolean; silent?: boolean } = {},
   ) => {
     const requestId = projectPipelineRequestRef.current + 1;
     projectPipelineRequestRef.current = requestId;
@@ -978,7 +1082,20 @@ export default function App() {
         return null;
       }
 
-      applyProjectPipelinesToState(projectId, response.pipelines);
+      setProjectPipelineSummaries(response.pipelines);
+      const categories = response.pipelines
+        .map((pipeline) => toPipelineGenerationCategory(pipeline.category))
+        .filter(
+          (category): category is PipelineGenerationCategory =>
+            category !== null,
+        );
+      setDemoPipelines((prev) => {
+        const next = prev.filter((pipeline) => pipeline.projectId !== projectId);
+        if (categories.length === 0) {
+          return next;
+        }
+        return [...next, { projectId, categories }];
+      });
       return response.pipelines;
     } catch (error) {
       if (requestId !== projectPipelineRequestRef.current) {
@@ -987,14 +1104,19 @@ export default function App() {
 
       console.error(error);
       if (options.clearOnError ?? true) {
-        applyProjectPipelinesToState(projectId, []);
+        setProjectPipelineSummaries([]);
+        setDemoPipelines((prev) =>
+          prev.filter((pipeline) => pipeline.projectId !== projectId),
+        );
       }
-      pushToast(
-        error instanceof Error
-          ? error.message
-          : "프로젝트 파이프라인 조회에 실패했습니다.",
-        "warning",
-      );
+      if (!options.silent) {
+        pushToast(
+          error instanceof Error
+            ? error.message
+            : "프로젝트 파이프라인 조회에 실패했습니다.",
+          "warning",
+        );
+      }
       return [];
     } finally {
       if (requestId === projectPipelineRequestRef.current) {
@@ -1017,6 +1139,7 @@ export default function App() {
     const normalizedNickname = nickname.trim();
     try {
       await submitUserOnboarding({ nickname: normalizedNickname });
+      await refreshCurrentUser("pm", { silent: true });
       pushToast("온보딩이 완료되었습니다.", "success");
       finishSocialOnboarding("pm");
     } catch (error) {
@@ -1041,6 +1164,7 @@ export default function App() {
         nickname: payload.nickname.trim(),
         jobRole: payload.jobRole,
       });
+      await refreshCurrentUser(nextRole, { silent: true });
       pushToast("온보딩이 완료되었습니다.", "success");
       finishSocialOnboarding(nextRole);
     } catch (error) {
@@ -1206,6 +1330,18 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!hasStoredApiToken()) {
+      return;
+    }
+
+    void refreshCurrentUser(undefined, {
+      silent: true,
+      clearOnUnauthorized: true,
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
     if (authUser?.provider !== "kakao" || authUser.role === "pm") {
       return;
     }
@@ -1232,6 +1368,9 @@ export default function App() {
     setOnboardingRole(null);
     setOauthOnboardingState({ isNewSocialUser: false, flow: "none" });
     setActiveTab("pipeline");
+    setSelectedProjectDetail(null);
+    setProjectPipelineSummaries([]);
+    setProjectPipelineEmptyMessage(null);
     if (typeof window !== "undefined") {
       window.localStorage.removeItem("fithub.apiToken");
       window.localStorage.removeItem("fithub.authToken");
@@ -1578,6 +1717,22 @@ export default function App() {
         return [...filteredProjects, newProject];
       });
       setSelectedDemoProject(newProject);
+      setSelectedProjectDetail({
+        projectId: newProject.id,
+        projectName: newProject.name,
+        projectDescription: newProject.description,
+        members: authUser
+          ? [
+              {
+                userId: Number(authUser.id) || response.creatorId,
+                nickname: authUser.name,
+              },
+            ]
+          : [],
+        memberCount: authUser ? 1 : 0,
+      });
+      setProjectPipelineSummaries([]);
+      setProjectPipelineEmptyMessage(null);
       syncActiveProject(newProject);
       setPipelineLandingStep("pipeline-form");
 
@@ -1623,6 +1778,9 @@ export default function App() {
       setDemoPipelines((prev) =>
         prev.filter((pipeline) => pipeline.projectId !== deletedProject.id),
       );
+      setProjectPipelineSummaries((prev) =>
+        selectedDemoProject?.id === deletedProject.id ? [] : prev,
+      );
 
       if (
         activeProjectId === deletedProject.id ||
@@ -1652,23 +1810,160 @@ export default function App() {
 
   const handleSelectProject = async (project: DemoProject) => {
     setSelectedDemoProject(project);
+    setSelectedProjectDetail(null);
+    setProjectPipelineSummaries([]);
+    setProjectPipelineEmptyMessage(null);
     syncActiveProject(project);
     applyProjectPipelinesToState(project.id, []);
-    setPipelineLandingStep("canvas");
+    setPipelineLandingStep("project-detail");
     setActiveTab("pipeline");
+    setIsFetchingProjectDetail(true);
 
-    const pipelines = await loadProjectPipelines(project.id);
-    if (pipelines === null) {
+    try {
+      const detail = await fetchProjectDetail(project.id);
+      setSelectedProjectDetail(detail);
+      const normalizedProject: DemoProject = {
+        id: detail.projectId,
+        name: detail.projectName,
+        description: detail.projectDescription,
+        creatorId: project.creatorId,
+        creatorNickname: project.creatorNickname,
+        createdAt: project.createdAt,
+        updatedAt: project.updatedAt,
+      };
+
+      setSelectedDemoProject(normalizedProject);
+      setDemoProjects((prev) =>
+        prev.map((item) =>
+          item.id === normalizedProject.id ? normalizedProject : item,
+        ),
+      );
+      syncActiveProject(normalizedProject);
+
+      if (isPm) {
+        await loadProjectPipelineSummaries(detail.projectId, {
+          clearOnError: true,
+        });
+      }
+    } catch (error) {
+      console.error(error);
+      pushToast(
+        error instanceof Error
+          ? error.message
+          : "프로젝트 상세 조회에 실패했습니다.",
+        "warning",
+      );
+    } finally {
+      setIsFetchingProjectDetail(false);
+    }
+  };
+
+  const handleViewProjectPipelineByCategory = async (
+    category: PipelineGenerationCategory,
+  ) => {
+    if (!isPm || !activeProjectId) {
       return;
     }
 
-    const hasPipelines = getLatestPipelinesByCategory(pipelines).size > 0;
-    if (isPm) {
-      setPipelineLandingStep(hasPipelines ? "canvas" : "pipeline-form");
+    setIsFetchingProjectPipelines(true);
+    setProjectPipelineEmptyMessage(null);
+
+    try {
+      const pipeline = await fetchProjectPipelines(activeProjectId, category);
+      if (!pipeline) {
+        const track = getTrackByPipelineCategory(category);
+        resetTrackCollaborationState(track);
+        setTrackFeatures(track, []);
+        setProjectPipelineEmptyMessage("생성된 파이프라인이 없습니다.");
+        pushToast("생성된 파이프라인이 없습니다.", "warning");
+        return;
+      }
+
+      const track = getTrackByPipelineCategory(category);
+      resetTrackCollaborationState(track);
+      setTrackFeatures(track, mapGeneratedFeatsToFeatures(pipeline.feats));
+      setDemoPipelines((prev) => {
+        const existing = prev.find((item) => item.projectId === activeProjectId);
+        if (existing) {
+          return prev.map((item) =>
+            item.projectId === activeProjectId
+              ? {
+                  ...item,
+                  categories: [...new Set([...item.categories, category])],
+                }
+              : item,
+          );
+        }
+        return [...prev, { projectId: activeProjectId, categories: [category] }];
+      });
+      setPmSelectedTrack(track);
+      setPipelineLandingStep("canvas");
+      setActiveTab("pipeline");
+    } catch (error) {
+      console.error(error);
+      pushToast(
+        error instanceof Error
+          ? error.message
+          : "프로젝트 파이프라인 조회에 실패했습니다.",
+        "warning",
+      );
+    } finally {
+      setIsFetchingProjectPipelines(false);
+    }
+  };
+
+  const handleUpdateProjectByPm = async (params: {
+    name: string;
+    description: string;
+  }) => {
+    if (!isPm || !activeProjectId) {
       return;
     }
 
-    setPipelineLandingStep("canvas");
+    setIsUpdatingProject(true);
+    try {
+      const response = await updateProject(activeProjectId, {
+        name: params.name.trim(),
+        description: params.description.trim(),
+      });
+      const updatedProject: DemoProject = {
+        id: response.projectId,
+        name: response.projectName,
+        description: response.projectDescription,
+        creatorId: response.creatorId,
+        creatorNickname: selectedDemoProject?.creatorNickname,
+        createdAt: selectedDemoProject?.createdAt,
+        updatedAt: selectedDemoProject?.updatedAt,
+      };
+
+      setDemoProjects((prev) =>
+        prev.map((project) =>
+          project.id === updatedProject.id ? updatedProject : project,
+        ),
+      );
+      setSelectedDemoProject(updatedProject);
+      setSelectedProjectDetail((prev) =>
+        prev && prev.projectId === updatedProject.id
+          ? {
+              ...prev,
+              projectName: updatedProject.name,
+              projectDescription: updatedProject.description,
+            }
+          : prev,
+      );
+      syncActiveProject(updatedProject);
+      pushToast("프로젝트 정보를 수정했습니다.", "success");
+    } catch (error) {
+      console.error(error);
+      pushToast(
+        error instanceof Error
+          ? error.message
+          : "프로젝트 수정에 실패했습니다.",
+        "warning",
+      );
+    } finally {
+      setIsUpdatingProject(false);
+    }
   };
 
   const handleOpenProjectInviteDialog = () => {
@@ -1761,6 +2056,12 @@ export default function App() {
         `"${response.projectName || projectName}" 프로젝트에 ${normalizedNickname}님을 초대했습니다.`,
         "success",
       );
+      try {
+        const detail = await fetchProjectDetail(activeProjectId);
+        setSelectedProjectDetail(detail);
+      } catch (detailError) {
+        console.error(detailError);
+      }
       setIsProjectInviteDialogOpen(false);
       setProjectInviteNickname("");
       setProjectInviteUser(null);
@@ -1785,6 +2086,10 @@ export default function App() {
 
     if (!activeProjectId) {
       pushToast("먼저 프로젝트를 생성해 주세요.", "warning");
+      return;
+    }
+    if ((authUser?.aiPipelineGenerationRemainingCount ?? 1) <= 0) {
+      pushToast("AI 파이프라인 생성 가능 횟수가 없습니다.", "warning");
       return;
     }
 
@@ -1875,7 +2180,11 @@ export default function App() {
         ...prev,
       ]);
 
-      await loadProjectPipelines(activeProjectId, { clearOnError: false });
+      await loadProjectPipelineSummaries(activeProjectId, {
+        clearOnError: false,
+        silent: true,
+      });
+      await refreshCurrentUser(authUser.role, { silent: true });
 
       setPmSelectedTrack(
         appliedCategories.includes("FE") ? "frontend" : "backend",
@@ -1914,6 +2223,9 @@ export default function App() {
       setIsFetchingProjects(false);
       setProjectPendingDelete(null);
       setProjectInviteUser(null);
+      setSelectedProjectDetail(null);
+      setProjectPipelineSummaries([]);
+      setProjectPipelineEmptyMessage(null);
       return;
     }
 
@@ -1957,6 +2269,8 @@ export default function App() {
           clearActiveProject();
         } else {
           setSelectedDemoProject(null);
+          setSelectedProjectDetail(null);
+          setProjectPipelineSummaries([]);
         }
 
         setHasFetchedProjects(true);
@@ -2955,32 +3269,53 @@ export default function App() {
             {shouldShowProjectLanding && (
               <PipelineLanding
                 step={
-                  isPm && pipelineLandingStep !== "canvas"
+                  pipelineLandingStep !== "canvas"
                     ? pipelineLandingStep
                     : "project-list"
                 }
                 projects={demoProjects}
                 selectedProject={selectedDemoProject}
+                projectDetail={selectedProjectDetail}
+                pipelineSummaries={projectPipelineSummaries}
                 isCreatingProject={isCreatingProject}
                 isFetchingProjects={isFetchingProjects}
+                isFetchingProjectDetail={isFetchingProjectDetail}
+                isFetchingProjectPipelines={isFetchingProjectPipelines}
+                isUpdatingProject={isUpdatingProject}
                 deletingProjectId={
                   isDeletingProject ? projectPendingDelete?.id ?? null : null
                 }
                 isGeneratingPipeline={isGeneratingPipeline}
                 generatingFileName={generatingFileName}
+                aiPipelineGenerationRemainingCount={
+                  authUser.aiPipelineGenerationRemainingCount
+                }
+                pipelineEmptyMessage={projectPipelineEmptyMessage}
                 canCreateProject={isPm}
                 canDeleteProject={isPm}
                 canInviteProject={isPm}
+                canUpdateProject={isPm}
                 onSelectProject={(proj) => {
                   void handleSelectProject(proj);
                 }}
                 onGoToCreateProject={() => setPipelineLandingStep("create-project")}
+                onGoToPipelineForm={() => setPipelineLandingStep("pipeline-form")}
                 onCreateProject={(params) => handleCreateProjectByPm(params)}
+                onUpdateProject={(params) => handleUpdateProjectByPm(params)}
                 onRequestDeleteProject={handleRequestDeleteProjectByPm}
                 onOpenProjectInvite={handleOpenProjectInviteDialog}
+                onViewPipeline={(category) =>
+                  handleViewProjectPipelineByCategory(category)
+                }
                 onGeneratePipeline={(params) => handleGeneratePmPipeline(params)}
                 onCancelCreateProject={() => setPipelineLandingStep("project-list")}
-                onBackToPipelines={() => setPipelineLandingStep("project-list")}
+                onBackToPipelines={() =>
+                  setPipelineLandingStep(
+                    pipelineLandingStep === "pipeline-form" && selectedDemoProject
+                      ? "project-detail"
+                      : "project-list",
+                  )
+                }
                 onPushToast={pushToast}
               />
             )}
