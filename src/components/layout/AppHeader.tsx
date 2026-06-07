@@ -106,6 +106,11 @@ export default function AppHeader({
         >
           {ROLE_LABELS[authUser.role] ?? authUser.role}
         </span>
+        {authUser.aiPipelineGenerationRemainingCount !== undefined && (
+          <span className="rounded-full bg-[#2C2C2C] px-2 py-0.5 text-[10px] font-medium text-[#CFCFCF]">
+            AI {authUser.aiPipelineGenerationRemainingCount}회
+          </span>
+        )}
         <span className="text-[#9E9E9E] text-xs">{authUser.name}</span>
         <button
           onClick={onLogout}

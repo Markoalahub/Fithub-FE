@@ -17,27 +17,29 @@ import CustomDialog from "./components/CustomDialog";
 import type { DemoProject, PipelineCategoryOption } from "./components/PipelineLanding";
 import {
   createProject,
-  createIssueFromPipelineStep,
+  createPipelineGithubIssue,
   checkNicknameDuplicate,
   deleteProject,
-  fetchAvailableGithubRepositories,
+  fetchCurrentUser,
   fetchMyProjects,
+  fetchProjectDetail,
   fetchProjectPipelines,
-  fetchProjectGithubRepositories,
   fetchUserByNickname,
   generateProjectPipeline,
   inviteUserToProject,
-  parseGithubRepoInput,
   submitUserOnboarding,
-  syncIssueToGithub,
-  syncProjectGithubRepositories,
+  updateProject,
   updatePipelineStep,
+  type CurrentUser,
+  type DeveloperRepositoryDetail,
   type DeveloperOnboardingJobRole,
   type GenerateProjectPipelineResponse,
   type GeneratedPipelineFeature,
+  type PipelineGithubConnectionResponse,
   type PipelineGenerationCategory,
+  type ProjectDetail,
   type ProjectInviteUser,
-  type RepositoryCategory,
+  type ProjectPipelineSummary,
 } from "./services/api";
 import type {
   AppTab,
@@ -114,10 +116,6 @@ const buildPipelineProposalIntroMessage = ({
 const makeTaskId = (featureId: number) =>
   `${featureId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 
-const TRACK_CATEGORY: Record<DevTrack, RepositoryCategory> = {
-  frontend: "FE",
-  backend: "BE",
-};
 const OAUTH_CALLBACK_PATH = "/auth/oauth/callback";
 const LEGACY_GITHUB_CALLBACK_PATH = "/auth/github/callback";
 const ACTIVE_PROJECT_ID_STORAGE_KEY = "fithub.activeProjectId";
@@ -378,6 +376,42 @@ const getTrackByPipelineCategory = (
   category: PipelineGenerationCategory,
 ): DevTrack => (category === "BE" ? "backend" : "frontend");
 
+const getPipelineCategoryByUserRole = (
+  role: UserRole | null | undefined,
+): PipelineGenerationCategory | null => {
+  if (role === "dev-be") return "BE";
+  if (role === "dev" || role === "dev-fe") return "FE";
+  return null;
+};
+
+const getUserRoleByJobRole = (
+  jobRole: string | null | undefined,
+  fallback: UserRole = "dev-fe",
+): UserRole => {
+  const normalizedJobRole = (jobRole ?? "").trim().toUpperCase();
+  if (normalizedJobRole === "PLANNER") return "pm";
+  if (normalizedJobRole === "FRONTEND") return "dev-fe";
+  if (normalizedJobRole === "BACKEND") return "dev-be";
+  return fallback;
+};
+
+const getProviderByRole = (role: UserRole, fallback?: AuthUser["provider"]) =>
+  fallback ?? (role === "pm" ? "kakao" : "github");
+
+const hasStoredApiToken = () => {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  return Boolean(
+    (
+      window.localStorage.getItem("fithub.apiToken") ??
+      window.localStorage.getItem("fithub.authToken") ??
+      ""
+    ).trim(),
+  );
+};
+
 const getLatestPipelinesByCategory = (
   pipelines: GenerateProjectPipelineResponse[],
 ) => {
@@ -407,6 +441,7 @@ const getLatestPipelinesByCategory = (
 
 const mapGeneratedFeatsToFeatures = (
   feats: GeneratedPipelineFeature[],
+  pipelineId?: number | null,
 ): Feature[] =>
   [...feats]
     .sort((a, b) => a.priority - b.priority || a.featId - b.featId)
@@ -426,6 +461,7 @@ const mapGeneratedFeatsToFeatures = (
           devChecked: false,
           pmConfirmed: false,
           isAiSuggested: true,
+          pipelineId: pipelineId ?? undefined,
         })),
       };
     });
@@ -643,12 +679,30 @@ type OAuthOnboardingState = {
 };
 
 type DemoPipeline = { projectId: number; categories: Array<"FE" | "BE"> };
-type PipelineLandingStep = "project-list" | "create-project" | "pipeline-form" | "canvas";
+type PipelineTrackMeta = {
+  pipeId: number | null;
+  githubRepoUrl: string | null;
+  category: PipelineGenerationCategory;
+};
+type PipelineLandingStep =
+  | "project-list"
+  | "project-detail"
+  | "create-project"
+  | "pipeline-form"
+  | "canvas";
 
 const devTrackLabel: Record<DevTrack, string> = {
   frontend: "프론트엔드",
   backend: "백엔드",
 };
+
+const initialPipelineTrackMeta = (
+  category: PipelineGenerationCategory,
+): PipelineTrackMeta => ({
+  pipeId: null,
+  githubRepoUrl: null,
+  category,
+});
 
 export default function App() {
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
@@ -686,11 +740,12 @@ export default function App() {
     );
   const [knowledgeDocs, setKnowledgeDocs] = useState<KnowledgeDocument[]>([]);
   const [isGeneratingPipeline, setIsGeneratingPipeline] = useState(false);
-  const [isConnectingGithubRepo, setIsConnectingGithubRepo] = useState(false);
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [isFetchingProjects, setIsFetchingProjects] = useState(false);
+  const [isFetchingProjectDetail, setIsFetchingProjectDetail] = useState(false);
   const [isFetchingProjectPipelines, setIsFetchingProjectPipelines] =
     useState(false);
+  const [isUpdatingProject, setIsUpdatingProject] = useState(false);
   const [hasFetchedProjects, setHasFetchedProjects] = useState(false);
   const [isDeletingProject, setIsDeletingProject] = useState(false);
   const [isSearchingInviteUser, setIsSearchingInviteUser] = useState(false);
@@ -701,6 +756,17 @@ export default function App() {
   // Pipeline landing flow state
   const [demoProjects, setDemoProjects] = useState<DemoProject[]>([]);
   const [selectedDemoProject, setSelectedDemoProject] = useState<DemoProject | null>(null);
+  const [selectedProjectDetail, setSelectedProjectDetail] =
+    useState<ProjectDetail | null>(null);
+  const [projectPipelineSummaries, setProjectPipelineSummaries] = useState<
+    ProjectPipelineSummary[]
+  >([]);
+  const [projectPipelineEmptyMessage, setProjectPipelineEmptyMessage] =
+    useState<string | null>(null);
+  const [frontendPipelineMeta, setFrontendPipelineMeta] =
+    useState<PipelineTrackMeta>(() => initialPipelineTrackMeta("FE"));
+  const [backendPipelineMeta, setBackendPipelineMeta] =
+    useState<PipelineTrackMeta>(() => initialPipelineTrackMeta("BE"));
   const [projectPendingDelete, setProjectPendingDelete] =
     useState<DemoProject | null>(null);
   const [projectInviteUser, setProjectInviteUser] =
@@ -779,6 +845,8 @@ export default function App() {
     activeTrack === "frontend"
       ? frontendConnectedGithubRepo
       : backendConnectedGithubRepo;
+  const activePipelineMeta =
+    activeTrack === "frontend" ? frontendPipelineMeta : backendPipelineMeta;
 
   const cardPositions =
     activeTrack === "frontend" ? frontendCardPositions : backendCardPositions;
@@ -839,14 +907,15 @@ export default function App() {
     setBackendProjectName(nextProjectName);
   };
 
-  const setConnectedGithubRepo = (
-    nextRepo: ConnectedGithubRepository | null,
+  const setPipelineMetaForTrack = (
+    track: DevTrack,
+    updater: React.SetStateAction<PipelineTrackMeta>,
   ) => {
-    if (activeTrack === "frontend") {
-      setFrontendConnectedGithubRepo(nextRepo);
+    if (track === "frontend") {
+      setFrontendPipelineMeta(updater);
       return;
     }
-    setBackendConnectedGithubRepo(nextRepo);
+    setBackendPipelineMeta(updater);
   };
 
   const syncActiveProjectId = (projectId: number | null) => {
@@ -885,6 +954,11 @@ export default function App() {
     setIsFetchingProjectPipelines(false);
     syncActiveProjectId(null);
     setSelectedDemoProject(null);
+    setSelectedProjectDetail(null);
+    setProjectPipelineSummaries([]);
+    setProjectPipelineEmptyMessage(null);
+    setFrontendPipelineMeta(initialPipelineTrackMeta("FE"));
+    setBackendPipelineMeta(initialPipelineTrackMeta("BE"));
     setFrontendProjectName("Fithub V1");
     setBackendProjectName("Fithub V1");
 
@@ -926,9 +1000,16 @@ export default function App() {
       const track = getTrackByPipelineCategory(category);
       const pipeline = latestByCategory.get(category);
       resetTrackCollaborationState(track);
+      setPipelineMetaForTrack(track, {
+        category,
+        pipeId: pipeline?.pipeId ?? null,
+        githubRepoUrl: pipeline?.githubRepoUrl ?? null,
+      });
       setTrackFeatures(
         track,
-        pipeline ? mapGeneratedFeatsToFeatures(pipeline.feats) : [],
+        pipeline
+          ? mapGeneratedFeatsToFeatures(pipeline.feats, pipeline.pipeId)
+          : [],
       );
     });
 
@@ -964,9 +1045,62 @@ export default function App() {
     toastTimeoutIdsRef.current.push(timeoutId);
   };
 
-  const loadProjectPipelines = async (
+  const refreshCurrentUser = async (
+    fallbackRole?: UserRole,
+    options: { silent?: boolean; clearOnUnauthorized?: boolean } = {},
+  ): Promise<CurrentUser | null> => {
+    try {
+      const currentUser = await fetchCurrentUser();
+      const role = getUserRoleByJobRole(
+        currentUser.jobRole,
+        fallbackRole ?? authUser?.role ?? "dev-fe",
+      );
+      const provider = getProviderByRole(role, authUser?.provider);
+
+      setAuthUser((prev) => ({
+        id: String(currentUser.userId || prev?.id || createId()),
+        role,
+        name: currentUser.nickname || prev?.name || "-",
+        email: prev?.email ?? "",
+        provider,
+        jobRole: currentUser.jobRole || prev?.jobRole,
+        aiPipelineGenerationRemainingCount:
+          currentUser.aiPipelineGenerationRemainingCount,
+      }));
+      setOnboardingRole(role);
+      if (role === "pm") {
+        setPmSelectedTrack("frontend");
+      }
+
+      return currentUser;
+    } catch (error) {
+      console.error(error);
+      if (options.clearOnUnauthorized) {
+        setAuthUser(null);
+        setOnboardingRole(null);
+        if (typeof window !== "undefined") {
+          window.localStorage.removeItem("fithub.apiToken");
+          window.localStorage.removeItem("fithub.authToken");
+          window.localStorage.removeItem("fithub.githubAccessToken");
+          window.localStorage.removeItem("fithub.kakaoAccessToken");
+          window.localStorage.removeItem("fithub.refreshToken");
+        }
+      }
+      if (!options.silent) {
+        pushToast(
+          error instanceof Error
+            ? error.message
+            : "사용자 정보를 불러오지 못했습니다.",
+          "warning",
+        );
+      }
+      return null;
+    }
+  };
+
+  const loadProjectPipelineSummaries = async (
     projectId: number,
-    options: { clearOnError?: boolean } = {},
+    options: { clearOnError?: boolean; silent?: boolean } = {},
   ) => {
     const requestId = projectPipelineRequestRef.current + 1;
     projectPipelineRequestRef.current = requestId;
@@ -978,7 +1112,20 @@ export default function App() {
         return null;
       }
 
-      applyProjectPipelinesToState(projectId, response.pipelines);
+      setProjectPipelineSummaries(response.pipelines);
+      const categories = response.pipelines
+        .map((pipeline) => toPipelineGenerationCategory(pipeline.category))
+        .filter(
+          (category): category is PipelineGenerationCategory =>
+            category !== null,
+        );
+      setDemoPipelines((prev) => {
+        const next = prev.filter((pipeline) => pipeline.projectId !== projectId);
+        if (categories.length === 0) {
+          return next;
+        }
+        return [...next, { projectId, categories }];
+      });
       return response.pipelines;
     } catch (error) {
       if (requestId !== projectPipelineRequestRef.current) {
@@ -987,14 +1134,19 @@ export default function App() {
 
       console.error(error);
       if (options.clearOnError ?? true) {
-        applyProjectPipelinesToState(projectId, []);
+        setProjectPipelineSummaries([]);
+        setDemoPipelines((prev) =>
+          prev.filter((pipeline) => pipeline.projectId !== projectId),
+        );
       }
-      pushToast(
-        error instanceof Error
-          ? error.message
-          : "프로젝트 파이프라인 조회에 실패했습니다.",
-        "warning",
-      );
+      if (!options.silent) {
+        pushToast(
+          error instanceof Error
+            ? error.message
+            : "프로젝트 파이프라인 조회에 실패했습니다.",
+          "warning",
+        );
+      }
       return [];
     } finally {
       if (requestId === projectPipelineRequestRef.current) {
@@ -1017,6 +1169,7 @@ export default function App() {
     const normalizedNickname = nickname.trim();
     try {
       await submitUserOnboarding({ nickname: normalizedNickname });
+      await refreshCurrentUser("pm", { silent: true });
       pushToast("온보딩이 완료되었습니다.", "success");
       finishSocialOnboarding("pm");
     } catch (error) {
@@ -1041,6 +1194,7 @@ export default function App() {
         nickname: payload.nickname.trim(),
         jobRole: payload.jobRole,
       });
+      await refreshCurrentUser(nextRole, { silent: true });
       pushToast("온보딩이 완료되었습니다.", "success");
       finishSocialOnboarding(nextRole);
     } catch (error) {
@@ -1206,6 +1360,18 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!hasStoredApiToken()) {
+      return;
+    }
+
+    void refreshCurrentUser(undefined, {
+      silent: true,
+      clearOnUnauthorized: true,
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
     if (authUser?.provider !== "kakao" || authUser.role === "pm") {
       return;
     }
@@ -1232,6 +1398,9 @@ export default function App() {
     setOnboardingRole(null);
     setOauthOnboardingState({ isNewSocialUser: false, flow: "none" });
     setActiveTab("pipeline");
+    setSelectedProjectDetail(null);
+    setProjectPipelineSummaries([]);
+    setProjectPipelineEmptyMessage(null);
     if (typeof window !== "undefined") {
       window.localStorage.removeItem("fithub.apiToken");
       window.localStorage.removeItem("fithub.authToken");
@@ -1259,185 +1428,69 @@ export default function App() {
     pushToast("프로젝트 이름을 저장했습니다.", "success");
   };
 
-  const normalizeRepoIdentity = (value: string) =>
-    value
+  const getRepositoryFullNameFromUrl = (repoUrl: string) =>
+    repoUrl
       .trim()
       .replace(/^https?:\/\/(www\.)?github\.com\//i, "")
       .replace(/\.git$/i, "")
-      .replace(/\/+$/, "")
-      .toLowerCase();
+      .replace(/\/+$/, "");
 
-  const resolveRepositoryCandidate = (
-    repositories: Awaited<
-      ReturnType<typeof fetchAvailableGithubRepositories>
-    >["repositories"],
-    input: string,
+  const handlePipelineGithubConnected = (
+    response: PipelineGithubConnectionResponse,
+    repository?: DeveloperRepositoryDetail,
   ) => {
-    const normalizedInput = normalizeRepoIdentity(input);
-    const parsed = parseGithubRepoInput(input);
-    const normalizedSlug = parsed
-      ? `${parsed.owner.toLowerCase()}/${parsed.repo.toLowerCase()}`
-      : null;
+    const category =
+      toPipelineGenerationCategory(response.category) ?? activePipelineMeta.category;
+    const track = getTrackByPipelineCategory(category);
+    const repoUrl = response.githubRepoUrl ?? repository?.repoUrl ?? "";
+    const fullName =
+      repository?.repoUrlName || getRepositoryFullNameFromUrl(repoUrl) || repoUrl;
+    const [owner = "", repoNameFromFullName = ""] = fullName.split("/");
+    const connectedRepository: ConnectedGithubRepository = {
+      repositoryId: repository?.repoId ?? response.pipeId,
+      repoUrl,
+      owner,
+      name: repository?.repoName || repoNameFromFullName || fullName,
+      fullName,
+      htmlUrl: repoUrl,
+      description: repository?.description ?? undefined,
+      language: repository?.language ?? undefined,
+      defaultBranch: repository?.defaultBranch ?? "main",
+      stars: repository?.starCount ?? 0,
+      forks: 0,
+      openIssuesCount: repository?.openIssuesCount,
+      projectId: response.projectId,
+      category,
+      githubRepoId: repository?.repoId,
+      connectedAt: new Date().toLocaleString("ko-KR"),
+    };
 
-    return (
-      repositories.find((repo) => {
-        const repoSlug = normalizeRepoIdentity(repo.fullName);
-        const repoUrl = normalizeRepoIdentity(repo.htmlUrl);
-        if (normalizedSlug && repoSlug === normalizedSlug) return true;
-        return repoSlug === normalizedInput || repoUrl === normalizedInput;
-      }) ??
-      (parsed
-        ? undefined
-        : repositories.find((repo) => normalizeRepoIdentity(repo.name) === normalizedInput))
-    );
-  };
+    setPipelineMetaForTrack(track, {
+      category,
+      pipeId: response.pipeId,
+      githubRepoUrl: response.githubRepoUrl,
+    });
 
-  const connectGithubRepository = async (repositoryInput: string) => {
-    const normalizedInput = repositoryInput.trim();
-    if (!normalizedInput) {
-      pushToast("연결할 GitHub 저장소를 입력해 주세요.", "warning");
-      return;
-    }
-    if (!activeProjectId) {
-      pushToast(
-        "기획자가 프로젝트를 생성한 뒤에 저장소를 연결할 수 있습니다.",
-        "warning",
-      );
-      return;
-    }
-
-    const category = TRACK_CATEGORY[activeTrack];
-    setIsConnectingGithubRepo(true);
-    try {
-      const availableResponse =
-        await fetchAvailableGithubRepositories(activeProjectId);
-      const repository = resolveRepositoryCandidate(
-        availableResponse.repositories,
-        normalizedInput,
-      );
-      if (!repository) {
-        throw new Error(
-          "입력한 저장소를 서버에서 조회한 GitHub 레포 목록에서 찾지 못했습니다.",
-        );
-      }
-
-      const projectRepositories = await fetchProjectGithubRepositories(
-        activeProjectId,
-      );
-      const existingRepository = projectRepositories.find(
-        (repo) =>
-          normalizeRepoIdentity(repo.repoUrl) ===
-            normalizeRepoIdentity(repository.htmlUrl) &&
-          normalizeCategory(repo.category) === category,
-      );
-
-      const syncedRepositories =
-        existingRepository
-          ? [existingRepository]
-          : await syncProjectGithubRepositories(activeProjectId, {
-              githubRepoIds: [repository.id],
-              categoryMappings: [
-                {
-                  githubRepoId: repository.id,
-                  repoName: repository.name,
-                  category,
-                },
-              ],
-            });
-
-      const syncedRepository =
-        syncedRepositories.find(
-          (repo) =>
-            normalizeRepoIdentity(repo.repoUrl) ===
-              normalizeRepoIdentity(repository.htmlUrl) &&
-            normalizeCategory(repo.category) === category,
-        ) ?? syncedRepositories[0];
-
-      if (!syncedRepository) {
-        throw new Error("프로젝트 저장소 동기화에 실패했습니다.");
-      }
-
-      const [owner = "", repoName = repository.name] =
-        repository.fullName.split("/");
-      const connectedRepository: ConnectedGithubRepository = {
-        repositoryId: syncedRepository.id,
-        repoUrl: syncedRepository.repoUrl,
-        owner,
-        name: repoName,
-        fullName: repository.fullName,
-        htmlUrl: repository.htmlUrl,
-        description: repository.description,
-        language: repository.language,
-        defaultBranch: "main",
-        stars: repository.stargazersCount,
-        forks: 0,
-        openIssuesCount: repository.openIssuesCount,
-        projectId: syncedRepository.projectId,
-        category: syncedRepository.category,
-        githubRepoId: repository.id,
-        connectedAt: new Date().toLocaleString("ko-KR"),
-      };
-
-      setConnectedGithubRepo(connectedRepository);
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(
-          getConnectedGithubRepoStorageKey(activeTrack),
-          JSON.stringify(connectedRepository),
-        );
-      }
-
-      pushToast(
-        `${connectedRepository.fullName} 저장소를 프로젝트(${activeProjectId})에 연결했습니다.`,
-        "success",
-      );
-    } catch (error) {
-      console.error(error);
-      pushToast(
-        error instanceof Error
-          ? error.message
-          : "GitHub 저장소 연결에 실패했습니다.",
-        "warning",
-      );
-    } finally {
-      setIsConnectingGithubRepo(false);
-    }
-  };
-
-  const disconnectGithubRepository = () => {
-    if (!connectedGithubRepo) {
-      pushToast("현재 연결된 GitHub 저장소가 없습니다.", "info");
-      return;
+    if (track === "frontend") {
+      setFrontendConnectedGithubRepo(connectedRepository);
+    } else {
+      setBackendConnectedGithubRepo(connectedRepository);
     }
 
-    setConnectedGithubRepo(null);
     if (typeof window !== "undefined") {
-      window.localStorage.removeItem(
-        getConnectedGithubRepoStorageKey(activeTrack),
+      window.localStorage.setItem(
+        getConnectedGithubRepoStorageKey(track),
+        JSON.stringify(connectedRepository),
       );
     }
-    pushToast(
-      "로컬 저장소 연결 상태를 해제했습니다. 서버 연결 해제는 별도 API가 필요합니다.",
-      "info",
-    );
   };
 
   const publishTaskToGithubIssue = async (
     featureId: number,
     taskId: string,
   ) => {
-    if (!connectedGithubRepo) {
-      if (isDevUser) {
-        setActiveTab("settings");
-      }
-      pushToast(
-        "먼저 프로젝트 설정에서 Public GitHub 저장소를 연결해 주세요.",
-        "warning",
-      );
-      return;
-    }
-
-    if (!connectedGithubRepo.repositoryId) {
-      pushToast("저장소 ID가 없어 이슈를 생성할 수 없습니다.", "warning");
+    if (!activePipelineMeta.pipeId) {
+      pushToast("먼저 파이프라인을 조회해 주세요.", "warning");
       return;
     }
 
@@ -1451,38 +1504,22 @@ export default function App() {
       return;
     }
 
-    if (matchedTask.issueId) {
+    if (matchedTask.githubIssueUrl || matchedTask.issueId) {
       pushToast("이미 생성된 이슈가 있어 중복 생성하지 않습니다.", "info");
       return;
     }
 
-    if (!matchedTask.pipelineStepId) {
-      pushToast(
-        "이 세부작업은 서버 파이프라인 스텝 ID가 없어 이슈 생성이 불가능합니다.",
-        "warning",
-      );
-      return;
-    }
-
-    const issueTitle = `[${projectName}] ${matchedFeature.name} - ${matchedTask.title}`;
+    const issueTitle = matchedTask.title;
     const issueDescription = (
       matchedTask.description?.trim() ||
       `${matchedFeature.name} 기능의 세부작업: ${matchedTask.title}`
     ).slice(0, 2000);
 
     try {
-      const createdIssue = await createIssueFromPipelineStep({
-        pipelineStepId: matchedTask.pipelineStepId,
-        repositoryId: connectedGithubRepo.repositoryId,
-        title: issueTitle,
-        description: issueDescription,
-        repoUrl: connectedGithubRepo.repoUrl,
+      const createdIssue = await createPipelineGithubIssue(activePipelineMeta.pipeId, {
+        featDetail: issueTitle,
+        body: issueDescription,
       });
-
-      const syncedIssue = await syncIssueToGithub(
-        createdIssue.id,
-        connectedGithubRepo.repoUrl,
-      );
 
       setFeatures((prev) =>
         prev.map((feature) =>
@@ -1494,7 +1531,10 @@ export default function App() {
                   task.id === taskId
                     ? {
                         ...task,
-                        issueId: createdIssue.id,
+                        issueId: createdIssue.githubIssueNumber,
+                        githubIssueNumber: createdIssue.githubIssueNumber,
+                        githubIssueUrl: createdIssue.githubIssueUrl,
+                        githubIssueState: createdIssue.state,
                       }
                     : task,
                 ),
@@ -1502,17 +1542,17 @@ export default function App() {
         ),
       );
 
-      if (syncedIssue.githubUrl) {
-        window.open(syncedIssue.githubUrl, "_blank", "noopener,noreferrer");
+      if (createdIssue.githubIssueUrl) {
+        window.open(createdIssue.githubIssueUrl, "_blank", "noopener,noreferrer");
       }
 
-      pushToast("Issue 생성 및 GitHub 동기화를 완료했습니다.", "success");
+      pushToast("GitHub Issue를 생성했습니다.", "success");
     } catch (error) {
       console.error(error);
       pushToast(
         error instanceof Error
           ? error.message
-          : "Issue 생성 또는 GitHub 동기화에 실패했습니다.",
+          : "GitHub Issue 생성에 실패했습니다.",
         "warning",
       );
     }
@@ -1578,6 +1618,22 @@ export default function App() {
         return [...filteredProjects, newProject];
       });
       setSelectedDemoProject(newProject);
+      setSelectedProjectDetail({
+        projectId: newProject.id,
+        projectName: newProject.name,
+        projectDescription: newProject.description,
+        members: authUser
+          ? [
+              {
+                userId: Number(authUser.id) || response.creatorId,
+                nickname: authUser.name,
+              },
+            ]
+          : [],
+        memberCount: authUser ? 1 : 0,
+      });
+      setProjectPipelineSummaries([]);
+      setProjectPipelineEmptyMessage(null);
       syncActiveProject(newProject);
       setPipelineLandingStep("pipeline-form");
 
@@ -1623,6 +1679,9 @@ export default function App() {
       setDemoPipelines((prev) =>
         prev.filter((pipeline) => pipeline.projectId !== deletedProject.id),
       );
+      setProjectPipelineSummaries((prev) =>
+        selectedDemoProject?.id === deletedProject.id ? [] : prev,
+      );
 
       if (
         activeProjectId === deletedProject.id ||
@@ -1652,23 +1711,177 @@ export default function App() {
 
   const handleSelectProject = async (project: DemoProject) => {
     setSelectedDemoProject(project);
+    setSelectedProjectDetail(null);
+    setProjectPipelineSummaries([]);
+    setProjectPipelineEmptyMessage(null);
     syncActiveProject(project);
     applyProjectPipelinesToState(project.id, []);
-    setPipelineLandingStep("canvas");
+    setPipelineLandingStep("project-detail");
     setActiveTab("pipeline");
+    setIsFetchingProjectDetail(true);
 
-    const pipelines = await loadProjectPipelines(project.id);
-    if (pipelines === null) {
+    try {
+      const detail = await fetchProjectDetail(project.id);
+      setSelectedProjectDetail(detail);
+      const normalizedProject: DemoProject = {
+        id: detail.projectId,
+        name: detail.projectName,
+        description: detail.projectDescription,
+        creatorId: project.creatorId,
+        creatorNickname: project.creatorNickname,
+        createdAt: project.createdAt,
+        updatedAt: project.updatedAt,
+      };
+
+      setSelectedDemoProject(normalizedProject);
+      setDemoProjects((prev) =>
+        prev.map((item) =>
+          item.id === normalizedProject.id ? normalizedProject : item,
+        ),
+      );
+      syncActiveProject(normalizedProject);
+
+      if (isPm) {
+        await loadProjectPipelineSummaries(detail.projectId, {
+          clearOnError: true,
+        });
+      }
+    } catch (error) {
+      console.error(error);
+      pushToast(
+        error instanceof Error
+          ? error.message
+          : "프로젝트 상세 조회에 실패했습니다.",
+        "warning",
+      );
+    } finally {
+      setIsFetchingProjectDetail(false);
+    }
+  };
+
+  const handleViewProjectPipelineByCategory = async (
+    category: PipelineGenerationCategory,
+  ) => {
+    if (!activeProjectId) {
       return;
     }
 
-    const hasPipelines = getLatestPipelinesByCategory(pipelines).size > 0;
-    if (isPm) {
-      setPipelineLandingStep(hasPipelines ? "canvas" : "pipeline-form");
+    const developerCategory = getPipelineCategoryByUserRole(authUser?.role);
+    if (!isPm && category !== developerCategory) {
+      pushToast("내 직군에 맞는 파이프라인만 조회할 수 있습니다.", "warning");
       return;
     }
 
-    setPipelineLandingStep("canvas");
+    setIsFetchingProjectPipelines(true);
+    setProjectPipelineEmptyMessage(null);
+
+    try {
+      const pipeline = await fetchProjectPipelines(activeProjectId, category);
+      if (!pipeline) {
+        const track = getTrackByPipelineCategory(category);
+        resetTrackCollaborationState(track);
+        setTrackFeatures(track, []);
+        setPipelineMetaForTrack(track, initialPipelineTrackMeta(category));
+        setProjectPipelineEmptyMessage("생성된 파이프라인이 없습니다.");
+        pushToast("생성된 파이프라인이 없습니다.", "warning");
+        return;
+      }
+
+      const track = getTrackByPipelineCategory(category);
+      resetTrackCollaborationState(track);
+      setTrackFeatures(
+        track,
+        mapGeneratedFeatsToFeatures(pipeline.feats, pipeline.pipeId),
+      );
+      setPipelineMetaForTrack(track, {
+        category,
+        pipeId: pipeline.pipeId,
+        githubRepoUrl: pipeline.githubRepoUrl,
+      });
+      setDemoPipelines((prev) => {
+        const existing = prev.find((item) => item.projectId === activeProjectId);
+        if (existing) {
+          return prev.map((item) =>
+            item.projectId === activeProjectId
+              ? {
+                  ...item,
+                  categories: [...new Set([...item.categories, category])],
+                }
+              : item,
+          );
+        }
+        return [...prev, { projectId: activeProjectId, categories: [category] }];
+      });
+      if (isPm) {
+        setPmSelectedTrack(track);
+      }
+      setPipelineLandingStep("canvas");
+      setActiveTab("pipeline");
+    } catch (error) {
+      console.error(error);
+      pushToast(
+        error instanceof Error
+          ? error.message
+          : "프로젝트 파이프라인 조회에 실패했습니다.",
+        "warning",
+      );
+    } finally {
+      setIsFetchingProjectPipelines(false);
+    }
+  };
+
+  const handleUpdateProjectByPm = async (params: {
+    name: string;
+    description: string;
+  }) => {
+    if (!isPm || !activeProjectId) {
+      return;
+    }
+
+    setIsUpdatingProject(true);
+    try {
+      const response = await updateProject(activeProjectId, {
+        name: params.name.trim(),
+        description: params.description.trim(),
+      });
+      const updatedProject: DemoProject = {
+        id: response.projectId,
+        name: response.projectName,
+        description: response.projectDescription,
+        creatorId: response.creatorId,
+        creatorNickname: selectedDemoProject?.creatorNickname,
+        createdAt: selectedDemoProject?.createdAt,
+        updatedAt: selectedDemoProject?.updatedAt,
+      };
+
+      setDemoProjects((prev) =>
+        prev.map((project) =>
+          project.id === updatedProject.id ? updatedProject : project,
+        ),
+      );
+      setSelectedDemoProject(updatedProject);
+      setSelectedProjectDetail((prev) =>
+        prev && prev.projectId === updatedProject.id
+          ? {
+              ...prev,
+              projectName: updatedProject.name,
+              projectDescription: updatedProject.description,
+            }
+          : prev,
+      );
+      syncActiveProject(updatedProject);
+      pushToast("프로젝트 정보를 수정했습니다.", "success");
+    } catch (error) {
+      console.error(error);
+      pushToast(
+        error instanceof Error
+          ? error.message
+          : "프로젝트 수정에 실패했습니다.",
+        "warning",
+      );
+    } finally {
+      setIsUpdatingProject(false);
+    }
   };
 
   const handleOpenProjectInviteDialog = () => {
@@ -1761,6 +1974,12 @@ export default function App() {
         `"${response.projectName || projectName}" 프로젝트에 ${normalizedNickname}님을 초대했습니다.`,
         "success",
       );
+      try {
+        const detail = await fetchProjectDetail(activeProjectId);
+        setSelectedProjectDetail(detail);
+      } catch (detailError) {
+        console.error(detailError);
+      }
       setIsProjectInviteDialogOpen(false);
       setProjectInviteNickname("");
       setProjectInviteUser(null);
@@ -1787,17 +2006,24 @@ export default function App() {
       pushToast("먼저 프로젝트를 생성해 주세요.", "warning");
       return;
     }
+    if ((authUser?.aiPipelineGenerationRemainingCount ?? 1) <= 0) {
+      pushToast("AI 파이프라인 생성 가능 횟수가 없습니다.", "warning");
+      return;
+    }
 
-    const apiCategories: PipelineGenerationCategory[] =
-      params.category === "ALL" ? ["FE", "BE"] : [params.category];
+    const requestedCategories: PipelineGenerationCategory[] =
+      params.category === "ALL"
+        ? [...PIPELINE_GENERATION_CATEGORIES]
+        : [params.category];
 
     setIsGeneratingPipeline(true);
     setGeneratingFileName(params.file.name);
 
-    for (const cat of apiCategories) {
+    for (const cat of requestedCategories) {
       const track: DevTrack = cat === "BE" ? "backend" : "frontend";
       resetTrackCollaborationState(track);
       setTrackFeatures(track, []);
+      setPipelineMetaForTrack(track, initialPipelineTrackMeta(cat));
     }
 
     pushToast(
@@ -1808,32 +2034,67 @@ export default function App() {
     );
 
     try {
-      let totalFeatures = 0;
-      for (const cat of apiCategories) {
-        const track: DevTrack = cat === "BE" ? "backend" : "frontend";
-        const response = await generateProjectPipeline({
-          file: params.file,
-          projectId: activeProjectId,
-          category: cat,
-          techStack: params.techStack,
-          requirements: params.requirements,
-        });
+      const response = await generateProjectPipeline({
+        file: params.file,
+        projectId: activeProjectId,
+        category: params.category,
+        techStack: params.techStack,
+        requirements: params.requirements,
+      });
 
-        const nextFeatures = mapGeneratedFeatsToFeatures(response.feats);
+      const generatedCategories = Array.from(
+        new Set(
+          response.pipelines
+            .map((pipeline) => toPipelineGenerationCategory(pipeline.category))
+            .filter(
+              (category): category is PipelineGenerationCategory =>
+                category !== null,
+            ),
+        ),
+      );
+      const appliedCategories =
+        generatedCategories.length > 0
+          ? generatedCategories
+          : requestedCategories;
+
+      let totalFeatures = 0;
+      response.pipelines.forEach((pipeline) => {
+        const cat = toPipelineGenerationCategory(pipeline.category);
+        if (!cat) {
+          return;
+        }
+        const track: DevTrack = cat === "BE" ? "backend" : "frontend";
+        const nextFeatures = mapGeneratedFeatsToFeatures(
+          pipeline.feats,
+          pipeline.pipeId,
+        );
         setTrackFeatures(track, nextFeatures);
+        setPipelineMetaForTrack(track, {
+          category: cat,
+          pipeId: pipeline.pipeId,
+          githubRepoUrl: pipeline.githubRepoUrl,
+        });
         totalFeatures += nextFeatures.length;
-      }
+      });
 
       setDemoPipelines((prev) => {
         const existing = prev.find((p) => p.projectId === activeProjectId);
         if (existing) {
           return prev.map((p) =>
             p.projectId === activeProjectId
-              ? { ...p, categories: [...new Set([...p.categories, ...apiCategories])] }
+              ? {
+                  ...p,
+                  categories: [
+                    ...new Set([...p.categories, ...appliedCategories]),
+                  ],
+                }
               : p,
           );
         }
-        return [...prev, { projectId: activeProjectId, categories: apiCategories }];
+        return [
+          ...prev,
+          { projectId: activeProjectId, categories: appliedCategories },
+        ];
       });
 
       setKnowledgeDocs((prev) => [
@@ -1846,9 +2107,15 @@ export default function App() {
         ...prev,
       ]);
 
-      await loadProjectPipelines(activeProjectId, { clearOnError: false });
+      await loadProjectPipelineSummaries(activeProjectId, {
+        clearOnError: false,
+        silent: true,
+      });
+      await refreshCurrentUser(authUser.role, { silent: true });
 
-      setPmSelectedTrack(params.category === "BE" ? "backend" : "frontend");
+      setPmSelectedTrack(
+        appliedCategories.includes("FE") ? "frontend" : "backend",
+      );
       setPipelineLandingStep("canvas");
       setActiveTab("pipeline");
 
@@ -1883,6 +2150,9 @@ export default function App() {
       setIsFetchingProjects(false);
       setProjectPendingDelete(null);
       setProjectInviteUser(null);
+      setSelectedProjectDetail(null);
+      setProjectPipelineSummaries([]);
+      setProjectPipelineEmptyMessage(null);
       return;
     }
 
@@ -1926,6 +2196,8 @@ export default function App() {
           clearActiveProject();
         } else {
           setSelectedDemoProject(null);
+          setSelectedProjectDetail(null);
+          setProjectPipelineSummaries([]);
         }
 
         setHasFetchedProjects(true);
@@ -2924,32 +3196,58 @@ export default function App() {
             {shouldShowProjectLanding && (
               <PipelineLanding
                 step={
-                  isPm && pipelineLandingStep !== "canvas"
+                  pipelineLandingStep !== "canvas"
                     ? pipelineLandingStep
                     : "project-list"
                 }
                 projects={demoProjects}
                 selectedProject={selectedDemoProject}
+                projectDetail={selectedProjectDetail}
+                pipelineSummaries={projectPipelineSummaries}
                 isCreatingProject={isCreatingProject}
                 isFetchingProjects={isFetchingProjects}
+                isFetchingProjectDetail={isFetchingProjectDetail}
+                isFetchingProjectPipelines={isFetchingProjectPipelines}
+                isUpdatingProject={isUpdatingProject}
                 deletingProjectId={
                   isDeletingProject ? projectPendingDelete?.id ?? null : null
                 }
                 isGeneratingPipeline={isGeneratingPipeline}
                 generatingFileName={generatingFileName}
+                aiPipelineGenerationRemainingCount={
+                  authUser.aiPipelineGenerationRemainingCount
+                }
+                pipelineEmptyMessage={projectPipelineEmptyMessage}
                 canCreateProject={isPm}
                 canDeleteProject={isPm}
                 canInviteProject={isPm}
+                canUpdateProject={isPm}
+                developerPipelineCategory={
+                  isDevUser
+                    ? getPipelineCategoryByUserRole(authUser.role)
+                    : null
+                }
                 onSelectProject={(proj) => {
                   void handleSelectProject(proj);
                 }}
                 onGoToCreateProject={() => setPipelineLandingStep("create-project")}
+                onGoToPipelineForm={() => setPipelineLandingStep("pipeline-form")}
                 onCreateProject={(params) => handleCreateProjectByPm(params)}
+                onUpdateProject={(params) => handleUpdateProjectByPm(params)}
                 onRequestDeleteProject={handleRequestDeleteProjectByPm}
                 onOpenProjectInvite={handleOpenProjectInviteDialog}
+                onViewPipeline={(category) =>
+                  handleViewProjectPipelineByCategory(category)
+                }
                 onGeneratePipeline={(params) => handleGeneratePmPipeline(params)}
                 onCancelCreateProject={() => setPipelineLandingStep("project-list")}
-                onBackToPipelines={() => setPipelineLandingStep("project-list")}
+                onBackToPipelines={() =>
+                  setPipelineLandingStep(
+                    pipelineLandingStep === "pipeline-form" && selectedDemoProject
+                      ? "project-detail"
+                      : "project-list",
+                  )
+                }
                 onPushToast={pushToast}
               />
             )}
@@ -3057,6 +3355,12 @@ export default function App() {
                         role: resolvedRole,
                       })
                     }
+                    pipelineId={isDevUser ? activePipelineMeta.pipeId : null}
+                    githubRepoUrl={
+                      isDevUser ? activePipelineMeta.githubRepoUrl : null
+                    }
+                    onPipelineGithubConnected={handlePipelineGithubConnected}
+                    onPushToast={pushToast}
                     // Proposal panel
                     onAddPipelineProposalMessage={(proposalId, content) =>
                       addPipelineProposalMessage(
@@ -3149,7 +3453,6 @@ export default function App() {
               projectId={activeProjectId}
               projectName={projectName}
               connectedGithubRepo={connectedGithubRepo}
-              isConnectingGithubRepo={isConnectingGithubRepo}
               featureQuestions={featureQuestions}
               onAddQuestionMessage={(questionId, content) =>
                 addQuestionMessage(questionId, resolvedRole, content)
@@ -3167,8 +3470,6 @@ export default function App() {
               }
               onConfirmQuestionByDev={confirmQuestionByDev}
               onSaveProjectName={saveProjectName}
-              onConnectGithubRepo={connectGithubRepository}
-              onDisconnectGithubRepo={disconnectGithubRepository}
             />
           </div>
         )}
@@ -3246,7 +3547,6 @@ export default function App() {
                 projectId={activeProjectId}
                 projectName={projectName}
                 connectedGithubRepo={connectedGithubRepo}
-                isConnectingGithubRepo={isConnectingGithubRepo}
                 featureQuestions={featureQuestions}
                 onAddQuestionMessage={(questionId, content) =>
                   addQuestionMessage(questionId, resolvedRole, content)
@@ -3264,8 +3564,6 @@ export default function App() {
                 }
                 onConfirmQuestionByDev={confirmQuestionByDev}
                 onSaveProjectName={saveProjectName}
-                onConnectGithubRepo={connectGithubRepository}
-                onDisconnectGithubRepo={disconnectGithubRepository}
               />
             ) : (
               <MyInfoSection
