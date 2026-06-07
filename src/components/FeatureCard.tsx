@@ -2,6 +2,7 @@ import { useState } from "react";
 import {
   ChevronDown,
   ChevronUp,
+  ExternalLink,
   GripVertical,
   Pencil,
   Plus,
@@ -338,14 +339,28 @@ export default function FeatureCard({
                     </div>
                   ) : (
                     <div className="flex shrink-0 items-center gap-1.5">
-                      {onPublishTaskToGithubIssue && (
+                      {task.githubIssueUrl ? (
+                        <a
+                          href={task.githubIssueUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          onClick={(event) => event.stopPropagation()}
+                          className="inline-flex items-center gap-1 rounded border border-[#E5E5E5] px-1.5 py-0.5 text-[10px] text-gray-700 hover:border-gray-900 hover:text-gray-900 transition-colors"
+                        >
+                          Issue
+                          {task.githubIssueNumber
+                            ? ` #${task.githubIssueNumber}`
+                            : ""}
+                          <ExternalLink className="h-2.5 w-2.5" />
+                        </a>
+                      ) : onPublishTaskToGithubIssue ? (
                         <button
                           onClick={() => onPublishTaskToGithubIssue(feature.id, task.id)}
                           className="rounded border border-[#E5E5E5] px-1.5 py-0.5 text-[10px] text-gray-600 hover:border-gray-900 hover:text-gray-900 transition-colors"
                         >
                           GitHub
                         </button>
-                      )}
+                      ) : null}
                       <input
                         type="checkbox"
                         checked={task.devChecked}

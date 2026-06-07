@@ -10,8 +10,13 @@ import {
   ZoomOut,
 } from "lucide-react";
 import type { CardPosition, Feature, PipelineProposal } from "../types/index";
+import type {
+  DeveloperRepositoryDetail,
+  PipelineGithubConnectionResponse,
+} from "../services/api";
 import CustomDialog from "./CustomDialog";
 import FeatureCard from "./FeatureCard";
+import PipelineGithubConnector from "./PipelineGithubConnector";
 import PipelineArrows from "./PipelineArrows";
 import ProposalPanel from "./ProposalPanel";
 
@@ -86,6 +91,13 @@ interface PipelineCanvasProps {
   onToggleDevTaskCheck?: (featureId: number, taskId: string) => void;
   onPublishTaskToGithubIssue?: (featureId: number, taskId: string) => void;
   onCreateTaskProposal?: (featureId: number, proposedValue: string) => void;
+  pipelineId?: number | null;
+  githubRepoUrl?: string | null;
+  onPipelineGithubConnected?: (
+    response: PipelineGithubConnectionResponse,
+    repository?: DeveloperRepositoryDetail,
+  ) => void;
+  onPushToast?: (message: string, tone: "success" | "info" | "warning") => void;
   // Proposal panel props
   onAddPipelineProposalMessage: (proposalId: string, content: string) => void;
   onUpdatePipelineProposalMessage: (
@@ -117,6 +129,10 @@ export default function PipelineCanvas({
   onToggleDevTaskCheck,
   onPublishTaskToGithubIssue,
   onCreateTaskProposal,
+  pipelineId,
+  githubRepoUrl,
+  onPipelineGithubConnected,
+  onPushToast,
   onAddPipelineProposalMessage,
   onUpdatePipelineProposalMessage,
   onDeletePipelineProposalMessage,
@@ -725,6 +741,14 @@ export default function PipelineCanvas({
 
   return (
     <>
+      {!isPm && onPipelineGithubConnected && onPushToast && (
+        <PipelineGithubConnector
+          pipelineId={pipelineId ?? null}
+          githubRepoUrl={githubRepoUrl ?? null}
+          onConnected={onPipelineGithubConnected}
+          onPushToast={onPushToast}
+        />
+      )}
       <div ref={layoutRef} className="flex-1 flex overflow-hidden">
         <div className="flex-1 min-w-0 relative overflow-hidden">
           <div

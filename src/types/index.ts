@@ -14,6 +14,9 @@ export type Task = {
   pipelineId?: number;
   pipelineStepId?: number;
   issueId?: number;
+  githubIssueNumber?: number;
+  githubIssueUrl?: string;
+  githubIssueState?: string;
 };
 
 export type Feature = {

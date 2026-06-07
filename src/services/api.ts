@@ -41,6 +41,29 @@ export type GithubAvailableRepositoriesResponse = {
   total: number;
 };
 
+export type DeveloperRepository = {
+  repoId: number;
+  repoName: string;
+  repoUrlName: string;
+  description: string | null;
+  repoUrl: string;
+  isPrivate: boolean;
+  language: string | null;
+  starCount: number;
+  openIssuesCount: number;
+};
+
+export type DeveloperRepositoryDetail = DeveloperRepository & {
+  defaultBranch: string | null;
+  updatedAt: string | null;
+  pushedAt: string | null;
+  cloneUrl: string | null;
+};
+
+export type DeveloperRepositoriesResponse = {
+  repositories: DeveloperRepository[];
+};
+
 export type RepositoryCategory = "FE" | "BE" | "AI" | "DEVOPS" | "QA";
 
 export type ProjectGithubRepository = {
@@ -239,6 +262,30 @@ export type IssueSyncRecord = {
   updatedAt?: string;
 };
 
+export type PipelineGithubConnectionResponse = {
+  pipeId: number;
+  projectId: number;
+  category: string;
+  version: number;
+  techStack: string | null;
+  githubRepoUrl: string | null;
+};
+
+export type CreatePipelineGithubIssueRequest = {
+  featDetail: string;
+  body: string;
+};
+
+export type PipelineGithubIssueResponse = {
+  repoId: number;
+  pipelineId: number;
+  githubIssueNumber: number;
+  githubIssueUrl: string;
+  title: string;
+  body: string;
+  state: string;
+};
+
 const hasFormDataBody = (body: RequestInit["body"]) =>
   typeof FormData !== "undefined" && body instanceof FormData;
 
@@ -431,6 +478,74 @@ const normalizeAvailableRepository = (
       | undefined) ?? undefined,
 });
 
+const normalizeDeveloperRepository = (
+  value: Record<string, unknown>,
+): DeveloperRepository => {
+  const rawDescription = readObjectValue(value, "description");
+  const rawLanguage = readObjectValue(value, "language");
+
+  return {
+    repoId: Number(readObjectValue(value, "repo_id", "repoId", "id") ?? 0),
+    repoName: String(readObjectValue(value, "repo_name", "repoName", "name") ?? ""),
+    repoUrlName: String(
+      readObjectValue(value, "repo_url_name", "repoUrlName", "fullName", "full_name") ??
+        "",
+    ),
+    description:
+      rawDescription === null || rawDescription === undefined
+        ? null
+        : String(rawDescription),
+    repoUrl: String(
+      readObjectValue(value, "repo_url", "repoUrl", "htmlUrl", "html_url") ?? "",
+    ),
+    isPrivate: Boolean(readObjectValue(value, "isPrivate", "private") ?? false),
+    language:
+      rawLanguage === null || rawLanguage === undefined
+        ? null
+        : String(rawLanguage),
+    starCount: Number(
+      readObjectValue(value, "starCount", "star_count", "stargazers_count") ?? 0,
+    ),
+    openIssuesCount: Number(
+      readObjectValue(value, "openIssuesCount", "open_issues_count") ?? 0,
+    ),
+  };
+};
+
+const normalizeDeveloperRepositoryDetail = (
+  value: Record<string, unknown>,
+): DeveloperRepositoryDetail => {
+  const repository = normalizeDeveloperRepository(value);
+  const rawDefaultBranch = readObjectValue(
+    value,
+    "defaultBranch",
+    "default_branch",
+  );
+  const rawUpdatedAt = readObjectValue(value, "updatedAt", "updated_at");
+  const rawPushedAt = readObjectValue(value, "pushedAt", "pushed_at");
+  const rawCloneUrl = readObjectValue(value, "cloneUrl", "clone_url");
+
+  return {
+    ...repository,
+    defaultBranch:
+      rawDefaultBranch === null || rawDefaultBranch === undefined
+        ? null
+        : String(rawDefaultBranch),
+    updatedAt:
+      rawUpdatedAt === null || rawUpdatedAt === undefined
+        ? null
+        : String(rawUpdatedAt),
+    pushedAt:
+      rawPushedAt === null || rawPushedAt === undefined
+        ? null
+        : String(rawPushedAt),
+    cloneUrl:
+      rawCloneUrl === null || rawCloneUrl === undefined
+        ? null
+        : String(rawCloneUrl),
+  };
+};
+
 const normalizeProjectRepository = (
   value: Record<string, unknown>,
 ): ProjectGithubRepository => ({
@@ -534,6 +649,50 @@ const normalizeIssueSync = (value: Record<string, unknown>): IssueSyncRecord => 
     (readObjectValue(value, "updatedAt", "updated_at") as
       | string
       | undefined) ?? undefined,
+});
+
+const normalizePipelineGithubConnection = (
+  value: Record<string, unknown>,
+): PipelineGithubConnectionResponse => {
+  const rawTechStack = readObjectValue(value, "tech_stack", "techStack");
+  const rawGithubRepoUrl = readObjectValue(
+    value,
+    "github_repo_url",
+    "githubRepoUrl",
+  );
+
+  return {
+    pipeId: Number(readObjectValue(value, "pipe_id", "pipeId", "id") ?? 0),
+    projectId: Number(readObjectValue(value, "project_id", "projectId") ?? 0),
+    category: String(readObjectValue(value, "category") ?? ""),
+    version: Number(readObjectValue(value, "version") ?? 0),
+    techStack:
+      rawTechStack === null || rawTechStack === undefined
+        ? null
+        : String(rawTechStack),
+    githubRepoUrl:
+      rawGithubRepoUrl === null || rawGithubRepoUrl === undefined
+        ? null
+        : String(rawGithubRepoUrl),
+  };
+};
+
+const normalizePipelineGithubIssue = (
+  value: Record<string, unknown>,
+): PipelineGithubIssueResponse => ({
+  repoId: Number(readObjectValue(value, "repo_id", "repoId") ?? 0),
+  pipelineId: Number(
+    readObjectValue(value, "pipeline_id", "pipelineId") ?? 0,
+  ),
+  githubIssueNumber: Number(
+    readObjectValue(value, "github_issue_number", "githubIssueNumber") ?? 0,
+  ),
+  githubIssueUrl: String(
+    readObjectValue(value, "github_issue_url", "githubIssueUrl") ?? "",
+  ),
+  title: String(readObjectValue(value, "title") ?? ""),
+  body: String(readObjectValue(value, "body") ?? ""),
+  state: String(readObjectValue(value, "state") ?? ""),
 });
 
 const normalizeGeneratedPipelineFeature = (
@@ -891,6 +1050,37 @@ export async function fetchGithubPublicRepositories(
     .filter((repository) => !repository.isPrivate);
 }
 
+export async function fetchDeveloperRepositories(): Promise<DeveloperRepositoriesResponse> {
+  const response = await apiRequest<Record<string, unknown>>("/repositories", {
+    method: "GET",
+    authMode: "required",
+    baseUrl: BE_BASE_URL,
+  });
+  const repositoriesRaw = readObjectValue(response, "repositories");
+  const repositories = Array.isArray(repositoriesRaw)
+    ? repositoriesRaw.map((repository) =>
+        normalizeDeveloperRepository(repository as Record<string, unknown>),
+      )
+    : [];
+
+  return { repositories };
+}
+
+export async function fetchDeveloperRepositoryDetail(
+  repoId: number,
+): Promise<DeveloperRepositoryDetail> {
+  const response = await apiRequest<Record<string, unknown>>(
+    `/repositories/${repoId}`,
+    {
+      method: "GET",
+      authMode: "required",
+      baseUrl: BE_BASE_URL,
+    },
+  );
+
+  return normalizeDeveloperRepositoryDetail(response);
+}
+
 export async function generateAllPipelines({
   projectId,
   prdFile,
@@ -1215,6 +1405,47 @@ export async function updatePipelineStep(
     },
   );
   return normalizePipelineStep(response);
+}
+
+export async function connectPipelineGithubRepository(
+  pipelineId: number,
+  payload: {
+    githubRepoUrl: string;
+  },
+): Promise<PipelineGithubConnectionResponse> {
+  const response = await apiRequest<Record<string, unknown>>(
+    `/pipelines/${pipelineId}/github`,
+    {
+      method: "PATCH",
+      authMode: "required",
+      baseUrl: BE_BASE_URL,
+      body: JSON.stringify({
+        github_repo_url: payload.githubRepoUrl,
+      }),
+    },
+  );
+
+  return normalizePipelineGithubConnection(response);
+}
+
+export async function createPipelineGithubIssue(
+  pipelineId: number,
+  payload: CreatePipelineGithubIssueRequest,
+): Promise<PipelineGithubIssueResponse> {
+  const response = await apiRequest<Record<string, unknown>>(
+    `/pipelines/${pipelineId}/issues`,
+    {
+      method: "POST",
+      authMode: "required",
+      baseUrl: BE_BASE_URL,
+      body: JSON.stringify({
+        feat_detail: payload.featDetail,
+        body: payload.body,
+      }),
+    },
+  );
+
+  return normalizePipelineGithubIssue(response);
 }
 
 export async function createIssueFromPipelineStep({
