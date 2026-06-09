@@ -1,15 +1,12 @@
-const normalizeBaseRoot = (value: string) =>
-  value.replace(/\/+$/, "").replace(/\/api\/v[12]$/i, "");
+import {
+  API_V1_BASE_URL,
+  BE_BASE_URL,
+  OAUTH_BASE_URL,
+  buildBackendUrl,
+} from "../config/backend";
 
-const BE_BASE_URL = normalizeBaseRoot(
-  (
-    import.meta.env.VITE_BE_BASE_URL ??
-    import.meta.env.VITE_BE_API_BASE_URL ??
-    "http://127.0.0.1:8080"
-  ).trim(),
-);
-export const OAUTH_BASE_URL = `${BE_BASE_URL}/oauth2`;
-const API_V1_BASE_URL = `${BE_BASE_URL}/api/v1`;
+export { OAUTH_BASE_URL };
+
 const GITHUB_API_BASE_URL = (
   import.meta.env.VITE_GITHUB_API_BASE_URL ?? "https://api.github.com"
 ).replace(/\/$/, "");
@@ -360,7 +357,7 @@ function buildUrl(
   baseUrl = API_V1_BASE_URL,
 ) {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  const url = new URL(`${baseUrl}${normalizedPath}`);
+  const url = new URL(buildBackendUrl(baseUrl, normalizedPath));
 
   if (query) {
     Object.entries(query).forEach(([key, value]) => {

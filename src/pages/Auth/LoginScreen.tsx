@@ -1,4 +1,5 @@
 import { ArrowLeft, Github, MessageCircle } from "lucide-react";
+import { BE_BASE_URL, buildBackendUrl } from "../../config/backend";
 import type { UserRole } from "../../types";
 
 interface LoginScreenProps {
@@ -19,13 +20,6 @@ export default function LoginScreen({ role, onBack }: LoginScreenProps) {
   const startOAuthLogin = () => {
     if (typeof window === "undefined") return;
 
-    const baseUrl = (
-      import.meta.env.VITE_BE_BASE_URL ??
-      import.meta.env.VITE_BE_API_BASE_URL ??
-      "http://127.0.0.1:8080"
-    )
-      .replace(/\/+$/, "")
-      .replace(/\/api\/v[12]$/i, "");
     const provider = isPm ? "kakao" : "github";
     const callbackUrl = new URL(
       `${window.location.origin}/auth/oauth/callback`,
@@ -35,7 +29,7 @@ export default function LoginScreen({ role, onBack }: LoginScreenProps) {
       callbackUrl.searchParams.set("role", role);
     }
     const authPath = isPm ? "/auth/kakao/login" : "/auth/github/login";
-    const authUrl = new URL(`${baseUrl}${authPath}`);
+    const authUrl = new URL(buildBackendUrl(BE_BASE_URL, authPath));
     authUrl.searchParams.set("frontendRedirect", callbackUrl.toString());
     if (isPm) {
       authUrl.searchParams.set("role", role);
