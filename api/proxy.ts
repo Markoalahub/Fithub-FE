@@ -1,5 +1,5 @@
-const PROXY_PREFIX = "/api/proxy";
 const BACKEND_ORIGIN_ENV = "BACKEND_ORIGIN";
+const PATH_QUERY_PARAM = "path";
 
 const REQUEST_HEADER_BLOCKLIST = new Set([
   "accept-encoding",
@@ -49,14 +49,12 @@ const getBackendOrigin = () => {
 
 const buildTargetUrl = (request: Request) => {
   const incomingUrl = new URL(request.url);
-  const proxiedPath = incomingUrl.pathname.startsWith(PROXY_PREFIX)
-    ? incomingUrl.pathname.slice(PROXY_PREFIX.length)
-    : incomingUrl.pathname;
-  const normalizedPath = proxiedPath.startsWith("/")
-    ? proxiedPath
-    : `/${proxiedPath}`;
+  const rawPath = incomingUrl.searchParams.get(PATH_QUERY_PARAM) ?? "";
+  const normalizedPath = rawPath.startsWith("/") ? rawPath : `/${rawPath}`;
   const targetUrl = new URL(`${getBackendOrigin()}${normalizedPath}`);
-  targetUrl.search = incomingUrl.search;
+
+  incomingUrl.searchParams.delete(PATH_QUERY_PARAM);
+  targetUrl.search = incomingUrl.searchParams.toString();
 
   return targetUrl;
 };
