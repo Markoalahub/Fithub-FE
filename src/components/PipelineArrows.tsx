@@ -13,9 +13,8 @@ interface PipelineArrowsProps {
   canvasHeight: number;
 }
 
-const CARD_WIDTH = 260;
-const CARD_BORDER_LEFT = 3;
-const CARD_CONNECTION_Y_OFFSET = 56;
+const CARD_WIDTH = 300;
+const CARD_CONNECTION_Y_OFFSET = 64;
 
 export default function PipelineArrows({
   orderedFeatureIds,
@@ -25,70 +24,69 @@ export default function PipelineArrows({
   canvasHeight,
 }: PipelineArrowsProps) {
   const arrows: ArrowData[] = [];
+
   for (let index = 0; index < orderedFeatureIds.length - 1; index++) {
-    arrows.push({ fromId: orderedFeatureIds[index], toId: orderedFeatureIds[index + 1] });
+    arrows.push({
+      fromId: orderedFeatureIds[index],
+      toId: orderedFeatureIds[index + 1],
+    });
   }
 
   return (
     <svg
-      className="absolute inset-0 pointer-events-none"
+      className="pointer-events-none absolute inset-0"
       width={canvasWidth}
       height={canvasHeight}
       style={{ overflow: "visible" }}
     >
-      <defs>
-        <marker
-          id="pipeline-arrowhead"
-          markerWidth="8"
-          markerHeight="8"
-          refX="6.2"
-          refY="4"
-          orient="auto"
-        >
-          <path d="M0,0 L6.2,4 L0,8 Z" fill="#60A5FA" />
-        </marker>
-      </defs>
-
       {arrows.map(({ fromId, toId }, index) => {
         const fromPos = cardPositions.get(fromId);
         const toPos = cardPositions.get(toId);
         if (!fromPos || !toPos) return null;
 
-        const fromX = fromPos.x + CARD_WIDTH + CARD_BORDER_LEFT;
-        const fromY = fromPos.y + CARD_CONNECTION_Y_OFFSET;
-        const toX = toPos.x + CARD_BORDER_LEFT;
-        const toY = toPos.y + CARD_CONNECTION_Y_OFFSET;
+        const fromHeight = cardHeights.get(fromId) ?? 120;
+        const toHeight = cardHeights.get(toId) ?? 120;
 
-        const controlPointOffset = Math.max(60, Math.abs(toX - fromX) * 0.38);
+        const fromX = fromPos.x + CARD_WIDTH;
+        const fromY =
+          fromPos.y + Math.min(CARD_CONNECTION_Y_OFFSET, fromHeight / 2);
+        const toX = toPos.x;
+        const toY = toPos.y + Math.min(CARD_CONNECTION_Y_OFFSET, toHeight / 2);
+
+        const controlPointOffset = Math.max(72, Math.abs(toX - fromX) * 0.36);
         const pathData = `M ${fromX} ${fromY} C ${fromX + controlPointOffset} ${fromY}, ${toX - controlPointOffset} ${toY}, ${toX} ${toY}`;
         const pathId = `pipeline-link-${fromId}-${toId}`;
 
         return (
           <g key={`${fromId}-${toId}`}>
             <path
-              id={pathId}
               d={pathData}
-              stroke="rgba(148, 163, 184, 0.32)"
-              strokeWidth="5"
+              stroke="rgba(23, 23, 23, 0.08)"
+              strokeWidth="8"
               strokeLinecap="round"
               fill="none"
             />
             <path
+              id={pathId}
               d={pathData}
-              className="pipeline-arrow-path"
+              stroke="rgba(23, 23, 23, 0.28)"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeDasharray="7 9"
+              fill="none"
               markerEnd="url(#pipeline-arrowhead)"
             />
-            <path d={pathData} className="pipeline-arrow-flow" />
 
-            {[0, 0.52, 1.04].map((beginAt, packetIndex) => (
+            {[0, 0.65].map((beginAt, packetIndex) => (
               <circle
                 key={`${pathId}-packet-${packetIndex}`}
-                r="2.7"
-                fill={packetIndex === 1 ? "#38BDF8" : "#93C5FD"}
+                r="3"
+                fill="#171717"
+                opacity="0.42"
               >
                 <animateMotion
-                  dur="1.9s"
-                  begin={`${beginAt + index * 0.2}s`}
+                  dur="2.4s"
+                  begin={`${beginAt + index * 0.18}s`}
                   repeatCount="indefinite"
                   rotate="auto"
                 >
