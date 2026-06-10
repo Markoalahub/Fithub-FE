@@ -3,7 +3,7 @@ import { ChevronLeft, UserPlus } from "lucide-react";
 import PMDashboard from "./pages/PM/PMDashboard.tsx";
 import DevDashboard from "@/src/pages/Dev/DevDashboard";
 import AdminDashboard from "./pages/Admin/AdminDashboard.tsx";
-import OnboardingScreen from "./pages/Auth/OnboardingScreen";
+import RoleSelectScreen from "./pages/Auth/RoleSelectScreen.tsx";
 import LoginScreen from "./pages/Auth/LoginScreen.tsx";
 import LandingScreen from "./pages/Auth/LandingScreen.tsx";
 import DevTrackSelector from "./pages/Auth/DevTrackSelector";
@@ -3113,7 +3113,7 @@ export default function App() {
 
     if (!onboardingRole) {
       return (
-        <OnboardingScreen
+        <RoleSelectScreen
           onSelectRole={setOnboardingRole}
           onOpenTutorial={() => {
             setOnboardingRole(null);
