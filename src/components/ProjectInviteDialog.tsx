@@ -1,6 +1,6 @@
 import { Search, UserPlus, X } from "lucide-react";
 import type { ProjectInviteUser } from "../services/api";
-import type { DemoProject } from "./PipelineLanding";
+import type { DemoProject } from "./ProjectWorkspaceSection";
 
 interface ProjectInviteDialogProps {
   open: boolean;
@@ -103,7 +103,11 @@ export default function ProjectInviteDialog({
             <div className="flex flex-col gap-4 rounded-xl border border-gray-200 bg-gray-50 p-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex min-w-0 items-center gap-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-sm font-semibold text-gray-700">
-                  {(matchedInviteUser.nickname || matchedInviteUser.username || "?")
+                  {(
+                    matchedInviteUser.nickname ||
+                    matchedInviteUser.username ||
+                    "?"
+                  )
                     .slice(0, 1)
                     .toUpperCase()}
                 </div>

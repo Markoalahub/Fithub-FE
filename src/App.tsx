@@ -1,20 +1,21 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, UserPlus } from "lucide-react";
-import PMDashboard from "./pages/PM/PMDashboard.tsx";
-import DevDashboard from "@/src/pages/Dev/DevDashboard";
-import AdminDashboard from "./pages/Admin/AdminDashboard.tsx";
-import OnboardingScreen from "./pages/Auth/OnboardingScreen";
+import RoleSelectScreen from "./pages/Auth/RoleSelectScreen.tsx";
 import LoginScreen from "./pages/Auth/LoginScreen.tsx";
-import TutorialOnboarding from "./pages/Auth/TutorialOnboarding";
+import LandingScreen from "./pages/Auth/LandingScreen.tsx";
 import DevTrackSelector from "./pages/Auth/DevTrackSelector";
 import PlannerNicknameOnboarding from "./pages/Auth/PlannerNicknameOnboarding";
 import AppHeader from "./components/layout/AppHeader";
 import MyInfoSection from "./components/MyInfoSection";
 import PipelineCanvas from "./components/PipelineCanvas";
-import PipelineLanding from "./components/PipelineLanding";
+import ProjectWorkspaceSection from "./components/ProjectWorkspaceSection.tsx";
 import ProjectInviteDialog from "./components/ProjectInviteDialog";
 import CustomDialog from "./components/CustomDialog";
-import type { DemoProject, PipelineCategoryOption } from "./components/PipelineLanding";
+import FeatureQuestionComingSoon from "./components/FeatureQuestionComingSoon";
+import type {
+  DemoProject,
+  PipelineCategoryOption,
+} from "./components/ProjectWorkspaceSection.tsx";
 import {
   createProject,
   createPipelineGithubIssue,
@@ -47,8 +48,6 @@ import type {
   CardPosition,
   ConnectedGithubRepository,
   Feature,
-  FeatureQuestion,
-  KnowledgeDocument,
   PipelineProposal,
   PipelineProposalAction,
   QuestionMessage,
@@ -224,22 +223,11 @@ const readStoredConnectedGithubRepo = (
         parsed.githubRepoId === undefined
           ? undefined
           : Number(parsed.githubRepoId),
-      connectedAt:
-        parsed.connectedAt || new Date().toLocaleString("ko-KR"),
+      connectedAt: parsed.connectedAt || new Date().toLocaleString("ko-KR"),
     };
   } catch {
     return null;
   }
-};
-
-const formatFileSize = (size: number) => {
-  if (size >= 1024 * 1024) {
-    return `${(size / (1024 * 1024)).toFixed(1)}MB`;
-  }
-  if (size >= 1024) {
-    return `${Math.max(1, Math.round(size / 1024))}KB`;
-  }
-  return `${size}B`;
 };
 
 const normalizeDeveloperRole = (value: string | null | undefined) => {
@@ -362,8 +350,12 @@ const ONBOARDING_ALREADY_COMPLETED_MESSAGE = "이미 온보딩이 완료되었�
 const isAlreadyCompletedOnboardingError = (error: unknown) =>
   getErrorMessage(error).includes(ONBOARDING_ALREADY_COMPLETED_MESSAGE);
 
-const normalizeCategory = (value?: string) => (value ?? "").trim().toUpperCase();
-const PIPELINE_GENERATION_CATEGORIES: PipelineGenerationCategory[] = ["FE", "BE"];
+const normalizeCategory = (value?: string) =>
+  (value ?? "").trim().toUpperCase();
+const PIPELINE_GENERATION_CATEGORIES: PipelineGenerationCategory[] = [
+  "FE",
+  "BE",
+];
 
 const toPipelineGenerationCategory = (
   value?: string,
@@ -449,7 +441,9 @@ const mapGeneratedFeatsToFeatures = (
       const featureId = index + 1;
       const featureName = feat.featTitle?.trim() || `Feature ${feat.featId}`;
       const details =
-        feat.featDetails.length > 0 ? feat.featDetails : ["세부 작업 내용 없음"];
+        feat.featDetails.length > 0
+          ? feat.featDetails
+          : ["세부 작업 내용 없음"];
 
       return {
         id: featureId,
@@ -684,7 +678,7 @@ type PipelineTrackMeta = {
   githubRepoUrl: string | null;
   category: PipelineGenerationCategory;
 };
-type PipelineLandingStep =
+type ProjectWorkspaceSectionStep =
   | "project-list"
   | "project-detail"
   | "create-project"
@@ -712,9 +706,8 @@ export default function App() {
       isNewSocialUser: false,
       flow: "none",
     });
-  const [hasSeenTutorial, setHasSeenTutorial] = useState<boolean>(
-    () => typeof window !== "undefined" && window.localStorage.getItem("fithub.seenTutorial") === "1",
-  );
+
+  const [hasEnteredLanding, setHasEnteredLanding] = useState(false);
   const [activeProjectId, setActiveProjectId] = useState<number | null>(() =>
     readStoredActiveProjectId(),
   );
@@ -738,7 +731,6 @@ export default function App() {
     useState<ConnectedGithubRepository | null>(() =>
       readStoredConnectedGithubRepo("backend"),
     );
-  const [knowledgeDocs, setKnowledgeDocs] = useState<KnowledgeDocument[]>([]);
   const [isGeneratingPipeline, setIsGeneratingPipeline] = useState(false);
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [isFetchingProjects, setIsFetchingProjects] = useState(false);
@@ -755,7 +747,8 @@ export default function App() {
   );
   // Pipeline landing flow state
   const [demoProjects, setDemoProjects] = useState<DemoProject[]>([]);
-  const [selectedDemoProject, setSelectedDemoProject] = useState<DemoProject | null>(null);
+  const [selectedDemoProject, setSelectedDemoProject] =
+    useState<DemoProject | null>(null);
   const [selectedProjectDetail, setSelectedProjectDetail] =
     useState<ProjectDetail | null>(null);
   const [projectPipelineSummaries, setProjectPipelineSummaries] = useState<
@@ -775,22 +768,20 @@ export default function App() {
     useState(false);
   const [projectInviteNickname, setProjectInviteNickname] = useState("");
   const [, setDemoPipelines] = useState<DemoPipeline[]>([]);
-  const [pipelineLandingStep, setPipelineLandingStep] = useState<PipelineLandingStep>("project-list");
+  const [ProjectWorkspaceSectionStep, setProjectWorkspaceSectionStep] =
+    useState<ProjectWorkspaceSectionStep>("project-list");
   const [showCreateProjectDialog, setShowCreateProjectDialog] = useState(false);
-  const [hasShownCreateProjectDialog, setHasShownCreateProjectDialog] = useState<boolean>(
-    () => typeof window !== "undefined" && window.localStorage.getItem("fithub.shownCreateProjectDialog") === "1",
-  );
+  const [hasShownCreateProjectDialog, setHasShownCreateProjectDialog] =
+    useState<boolean>(
+      () =>
+        typeof window !== "undefined" &&
+        window.localStorage.getItem("fithub.shownCreateProjectDialog") === "1",
+    );
   const [frontendPipelineProposals, setFrontendPipelineProposals] = useState<
     PipelineProposal[]
   >([]);
   const [backendPipelineProposals, setBackendPipelineProposals] = useState<
     PipelineProposal[]
-  >([]);
-  const [frontendFeatureQuestions, setFrontendFeatureQuestions] = useState<
-    FeatureQuestion[]
-  >([]);
-  const [backendFeatureQuestions, setBackendFeatureQuestions] = useState<
-    FeatureQuestion[]
   >([]);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const lastMessageFingerprintRef = useRef<{ key: string; at: number } | null>(
@@ -806,15 +797,6 @@ export default function App() {
   const [backendCardPositions, setBackendCardPositions] = useState<
     Map<number, CardPosition>
   >(new Map());
-
-  // Sub-section states
-  const [pmSubSection, setPmSubSection] = useState<"ai" | "review">("ai");
-  const [adminSubSection, setAdminSubSection] = useState<
-    "knowledge" | "profile"
-  >("knowledge");
-  const [devSettingsSubSection, setDevSettingsSubSection] = useState<
-    "project" | "profile"
-  >("project");
 
   const isDevUser =
     authUser?.role === "dev" ||
@@ -835,16 +817,8 @@ export default function App() {
     activeTrack === "frontend"
       ? frontendPipelineProposals
       : backendPipelineProposals;
-  const featureQuestions =
-    activeTrack === "frontend"
-      ? frontendFeatureQuestions
-      : backendFeatureQuestions;
   const projectName =
     activeTrack === "frontend" ? frontendProjectName : backendProjectName;
-  const connectedGithubRepo =
-    activeTrack === "frontend"
-      ? frontendConnectedGithubRepo
-      : backendConnectedGithubRepo;
   const activePipelineMeta =
     activeTrack === "frontend" ? frontendPipelineMeta : backendPipelineMeta;
 
@@ -889,24 +863,6 @@ export default function App() {
     setBackendPipelineProposals(updater);
   };
 
-  const setFeatureQuestions: React.Dispatch<
-    React.SetStateAction<FeatureQuestion[]>
-  > = (updater) => {
-    if (activeTrack === "frontend") {
-      setFrontendFeatureQuestions(updater);
-      return;
-    }
-    setBackendFeatureQuestions(updater);
-  };
-
-  const setProjectName = (nextProjectName: string) => {
-    if (activeTrack === "frontend") {
-      setFrontendProjectName(nextProjectName);
-      return;
-    }
-    setBackendProjectName(nextProjectName);
-  };
-
   const setPipelineMetaForTrack = (
     track: DevTrack,
     updater: React.SetStateAction<PipelineTrackMeta>,
@@ -927,7 +883,10 @@ export default function App() {
       window.localStorage.removeItem(ACTIVE_PROJECT_ID_STORAGE_KEY);
       return;
     }
-    window.localStorage.setItem(ACTIVE_PROJECT_ID_STORAGE_KEY, String(projectId));
+    window.localStorage.setItem(
+      ACTIVE_PROJECT_ID_STORAGE_KEY,
+      String(projectId),
+    );
   };
 
   const syncActiveProject = (project: DemoProject) => {
@@ -981,12 +940,10 @@ export default function App() {
   const resetTrackCollaborationState = (track: DevTrack) => {
     if (track === "frontend") {
       setFrontendPipelineProposals([]);
-      setFrontendFeatureQuestions([]);
       setFrontendCardPositions(new Map());
       return;
     }
     setBackendPipelineProposals([]);
-    setBackendFeatureQuestions([]);
     setBackendCardPositions(new Map());
   };
 
@@ -1120,7 +1077,9 @@ export default function App() {
             category !== null,
         );
       setDemoPipelines((prev) => {
-        const next = prev.filter((pipeline) => pipeline.projectId !== projectId);
+        const next = prev.filter(
+          (pipeline) => pipeline.projectId !== projectId,
+        );
         if (categories.length === 0) {
           return next;
         }
@@ -1211,13 +1170,18 @@ export default function App() {
     if (typeof window === "undefined") {
       return;
     }
-    const callbackPaths = new Set([OAUTH_CALLBACK_PATH, LEGACY_GITHUB_CALLBACK_PATH]);
+    const callbackPaths = new Set([
+      OAUTH_CALLBACK_PATH,
+      LEGACY_GITHUB_CALLBACK_PATH,
+    ]);
     if (!callbackPaths.has(window.location.pathname)) {
       return;
     }
 
     const queryParams = new URLSearchParams(window.location.search);
-    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const hashParams = new URLSearchParams(
+      window.location.hash.replace(/^#/, ""),
+    );
     const params = new URLSearchParams(queryParams);
     hashParams.forEach((value, key) => {
       params.set(key, value);
@@ -1299,7 +1263,10 @@ export default function App() {
     }
 
     if (provider === "github" && githubAccessToken) {
-      window.localStorage.setItem("fithub.githubAccessToken", githubAccessToken);
+      window.localStorage.setItem(
+        "fithub.githubAccessToken",
+        githubAccessToken,
+      );
     } else {
       window.localStorage.removeItem("fithub.githubAccessToken");
     }
@@ -1347,7 +1314,6 @@ export default function App() {
     setActiveTab("pipeline");
     if (nextRole === "pm") {
       setPmSelectedTrack("frontend");
-      setPmSubSection("ai");
     }
 
     window.history.replaceState({}, "", "/");
@@ -1368,7 +1334,7 @@ export default function App() {
       silent: true,
       clearOnUnauthorized: true,
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -1381,7 +1347,6 @@ export default function App() {
     );
     setOnboardingRole("pm");
     setPmSelectedTrack("frontend");
-    setPmSubSection("ai");
   }, [authUser?.provider, authUser?.role]);
 
   useEffect(() => {
@@ -1411,23 +1376,6 @@ export default function App() {
     pushToast("로그아웃 되었습니다.", "info");
   };
 
-  const saveProjectName = (nextProjectName: string) => {
-    const normalizedName = nextProjectName.trim();
-    if (!normalizedName) {
-      pushToast("프로젝트 이름은 비워둘 수 없습니다.", "warning");
-      return;
-    }
-
-    setProjectName(normalizedName);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(
-        getProjectNameStorageKey(activeTrack),
-        normalizedName,
-      );
-    }
-    pushToast("프로젝트 이름을 저장했습니다.", "success");
-  };
-
   const getRepositoryFullNameFromUrl = (repoUrl: string) =>
     repoUrl
       .trim()
@@ -1440,11 +1388,14 @@ export default function App() {
     repository?: DeveloperRepositoryDetail,
   ) => {
     const category =
-      toPipelineGenerationCategory(response.category) ?? activePipelineMeta.category;
+      toPipelineGenerationCategory(response.category) ??
+      activePipelineMeta.category;
     const track = getTrackByPipelineCategory(category);
     const repoUrl = response.githubRepoUrl ?? repository?.repoUrl ?? "";
     const fullName =
-      repository?.repoUrlName || getRepositoryFullNameFromUrl(repoUrl) || repoUrl;
+      repository?.repoUrlName ||
+      getRepositoryFullNameFromUrl(repoUrl) ||
+      repoUrl;
     const [owner = "", repoNameFromFullName = ""] = fullName.split("/");
     const connectedRepository: ConnectedGithubRepository = {
       repositoryId: repository?.repoId ?? response.pipeId,
@@ -1516,10 +1467,13 @@ export default function App() {
     ).slice(0, 2000);
 
     try {
-      const createdIssue = await createPipelineGithubIssue(activePipelineMeta.pipeId, {
-        featDetail: issueTitle,
-        body: issueDescription,
-      });
+      const createdIssue = await createPipelineGithubIssue(
+        activePipelineMeta.pipeId,
+        {
+          featDetail: issueTitle,
+          body: issueDescription,
+        },
+      );
 
       setFeatures((prev) =>
         prev.map((feature) =>
@@ -1543,7 +1497,11 @@ export default function App() {
       );
 
       if (createdIssue.githubIssueUrl) {
-        window.open(createdIssue.githubIssueUrl, "_blank", "noopener,noreferrer");
+        window.open(
+          createdIssue.githubIssueUrl,
+          "_blank",
+          "noopener,noreferrer",
+        );
       }
 
       pushToast("GitHub Issue를 생성했습니다.", "success");
@@ -1558,29 +1516,10 @@ export default function App() {
     }
   };
 
-  const handleUploadKnowledgePdf = async (file: File) => {
-    const isPdfFile =
-      file.type === "application/pdf" || /\.pdf$/i.test(file.name);
-
-    if (!isPdfFile) {
-      pushToast("PDF 파일만 업로드할 수 있습니다.", "warning");
-      return;
-    }
-
-    setKnowledgeDocs((prev) => [
-      {
-        id: createId(),
-        name: file.name,
-        uploadedAt: new Date().toLocaleDateString("ko-KR"),
-        sizeLabel: formatFileSize(file.size),
-      },
-      ...prev,
-    ]);
-
-    pushToast("AI 지식 베이스 문서를 등록했습니다.", "success");
-  };
-
-  const handleCreateProjectByPm = async (params: { name: string; description: string }) => {
+  const handleCreateProjectByPm = async (params: {
+    name: string;
+    description: string;
+  }) => {
     if (!isPm) return;
 
     const projectNameInput = params.name.trim();
@@ -1635,7 +1574,7 @@ export default function App() {
       setProjectPipelineSummaries([]);
       setProjectPipelineEmptyMessage(null);
       syncActiveProject(newProject);
-      setPipelineLandingStep("pipeline-form");
+      setProjectWorkspaceSectionStep("pipeline-form");
 
       pushToast(
         `프로젝트 "${normalizedProjectName}"을(를) 생성했습니다.`,
@@ -1688,7 +1627,7 @@ export default function App() {
         selectedDemoProject?.id === deletedProject.id
       ) {
         clearActiveProject();
-        setPipelineLandingStep("project-list");
+        setProjectWorkspaceSectionStep("project-list");
       }
 
       setProjectPendingDelete(null);
@@ -1716,7 +1655,7 @@ export default function App() {
     setProjectPipelineEmptyMessage(null);
     syncActiveProject(project);
     applyProjectPipelinesToState(project.id, []);
-    setPipelineLandingStep("project-detail");
+    setProjectWorkspaceSectionStep("project-detail");
     setActiveTab("pipeline");
     setIsFetchingProjectDetail(true);
 
@@ -1799,7 +1738,9 @@ export default function App() {
         githubRepoUrl: pipeline.githubRepoUrl,
       });
       setDemoPipelines((prev) => {
-        const existing = prev.find((item) => item.projectId === activeProjectId);
+        const existing = prev.find(
+          (item) => item.projectId === activeProjectId,
+        );
         if (existing) {
           return prev.map((item) =>
             item.projectId === activeProjectId
@@ -1810,12 +1751,15 @@ export default function App() {
               : item,
           );
         }
-        return [...prev, { projectId: activeProjectId, categories: [category] }];
+        return [
+          ...prev,
+          { projectId: activeProjectId, categories: [category] },
+        ];
       });
       if (isPm) {
         setPmSelectedTrack(track);
       }
-      setPipelineLandingStep("canvas");
+      setProjectWorkspaceSectionStep("canvas");
       setActiveTab("pipeline");
     } catch (error) {
       console.error(error);
@@ -1986,7 +1930,9 @@ export default function App() {
     } catch (error) {
       console.error(error);
       pushToast(
-        error instanceof Error ? error.message : "프로젝트 초대에 실패했습니다.",
+        error instanceof Error
+          ? error.message
+          : "프로젝트 초대에 실패했습니다.",
         "warning",
       );
     } finally {
@@ -2097,16 +2043,6 @@ export default function App() {
         ];
       });
 
-      setKnowledgeDocs((prev) => [
-        {
-          id: createId(),
-          name: params.file.name,
-          uploadedAt: new Date().toLocaleDateString("ko-KR"),
-          sizeLabel: formatFileSize(params.file.size),
-        },
-        ...prev,
-      ]);
-
       await loadProjectPipelineSummaries(activeProjectId, {
         clearOnError: false,
         silent: true,
@@ -2116,7 +2052,7 @@ export default function App() {
       setPmSelectedTrack(
         appliedCategories.includes("FE") ? "frontend" : "backend",
       );
-      setPipelineLandingStep("canvas");
+      setProjectWorkspaceSectionStep("canvas");
       setActiveTab("pipeline");
 
       if (totalFeatures === 0) {
@@ -2185,9 +2121,9 @@ export default function App() {
         const selectedProject =
           storedActiveProjectId === null
             ? null
-            : normalizedProjects.find(
+            : (normalizedProjects.find(
                 (project) => project.id === storedActiveProjectId,
-              ) ?? null;
+              ) ?? null);
 
         if (selectedProject) {
           setSelectedDemoProject(selectedProject);
@@ -2226,7 +2162,7 @@ export default function App() {
     return () => {
       isCancelled = true;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authUser?.id, isDevUser, isPm]);
 
   useEffect(() => {
@@ -2234,29 +2170,6 @@ export default function App() {
     setProjectInviteNickname("");
     setIsProjectInviteDialogOpen(false);
   }, [activeProjectId]);
-
-  useEffect(() => {
-    setFeatureQuestions((prev) =>
-      prev.reduce<FeatureQuestion[]>((acc, question) => {
-        const matchedFeature = features.find(
-          (feature) => feature.id === question.featureId,
-        );
-        if (!matchedFeature) return acc;
-
-        const matchedTask = question.taskId
-          ? matchedFeature.tasks.find((task) => task.id === question.taskId)
-          : undefined;
-
-        acc.push({
-          ...question,
-          featureName: matchedFeature.name,
-          taskId: matchedTask?.id,
-          taskTitle: matchedTask?.title,
-        });
-        return acc;
-      }, []),
-    );
-  }, [features]);
 
   useEffect(() => {
     if (
@@ -2274,7 +2187,7 @@ export default function App() {
     if (typeof window !== "undefined") {
       window.localStorage.setItem("fithub.shownCreateProjectDialog", "1");
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     activeTab,
     demoProjects.length,
@@ -2308,275 +2221,6 @@ export default function App() {
       }),
     );
   }, [features]);
-
-  const createFeatureQuestion = ({
-    featureId,
-    taskId,
-    content,
-  }: {
-    featureId: number;
-    taskId?: string;
-    content: string;
-  }) => {
-    const matchedFeature = features.find((feature) => feature.id === featureId);
-    if (!matchedFeature || !content.trim()) {
-      pushToast("질문을 등록하려면 기능과 내용을 확인해 주세요.", "warning");
-      return;
-    }
-
-    const matchedTask = taskId
-      ? matchedFeature.tasks.find((task) => task.id === taskId)
-      : undefined;
-
-    const initialMessage = createQuestionMessage("pm", content);
-
-    const nextQuestion: FeatureQuestion = {
-      id: createId(),
-      featureId,
-      featureName: matchedFeature.name,
-      taskId: matchedTask?.id,
-      taskTitle: matchedTask?.title,
-      messages: [initialMessage],
-      createdAt: initialMessage.createdAt,
-      pmConfirmed: false,
-      devConfirmed: false,
-      closed: false,
-    };
-
-    setFeatureQuestions((prev) => [nextQuestion, ...prev]);
-    pushToast(`${devTrackLabel[activeTrack]} 질문을 등록했습니다.`, "success");
-  };
-
-  const addQuestionMessage = (
-    questionId: string,
-    role: "pm" | "dev-fe" | "dev-be",
-    content: string,
-  ) => {
-    const trimmed = content.trim();
-    if (!trimmed) {
-      pushToast("메시지를 입력해 주세요.", "warning");
-      return;
-    }
-
-    const targetQuestion = featureQuestions.find(
-      (question) => question.id === questionId,
-    );
-    if (
-      !targetQuestion ||
-      targetQuestion.closed ||
-      targetQuestion.pmConfirmed
-    ) {
-      pushToast("현재 질문에는 메시지를 추가할 수 없습니다.", "warning");
-      return;
-    }
-
-    const fingerprint = `${questionId}|${role}|${trimmed}`;
-    const now = Date.now();
-    const last = lastMessageFingerprintRef.current;
-    if (last && last.key === fingerprint && now - last.at < 800) {
-      pushToast("동일 메시지 중복 전송이 방지되었습니다.", "info");
-      return;
-    }
-    lastMessageFingerprintRef.current = { key: fingerprint, at: now };
-
-    setFeatureQuestions((prev) =>
-      prev.map((question) => {
-        if (question.id !== questionId) return question;
-        if (question.closed || question.pmConfirmed) return question;
-
-        return {
-          ...question,
-          messages: [
-            ...question.messages,
-            createQuestionMessage(role, trimmed),
-          ],
-        };
-      }),
-    );
-    pushToast("질문 채팅 메시지를 보냈습니다.", "success");
-  };
-
-  const updateQuestionMessage = (
-    questionId: string,
-    messageId: string,
-    role: "pm" | "dev-fe" | "dev-be",
-    content: string,
-  ) => {
-    const trimmed = content.trim();
-    if (!trimmed) {
-      pushToast("빈 메시지로 수정할 수 없습니다.", "warning");
-      return;
-    }
-
-    const targetQuestion = featureQuestions.find(
-      (question) => question.id === questionId,
-    );
-    const targetMessage = targetQuestion?.messages.find(
-      (message) => message.id === messageId && message.role === role,
-    );
-    if (
-      !targetQuestion ||
-      targetQuestion.closed ||
-      targetQuestion.pmConfirmed ||
-      !targetMessage
-    ) {
-      pushToast("수정 가능한 메시지를 찾을 수 없습니다.", "warning");
-      return;
-    }
-
-    setFeatureQuestions((prev) =>
-      prev.map((question) => {
-        if (question.id !== questionId) return question;
-        if (question.closed || question.pmConfirmed) return question;
-
-        return {
-          ...question,
-          messages: question.messages.map((message) =>
-            message.id === messageId && message.role === role
-              ? {
-                  ...message,
-                  content: trimmed,
-                }
-              : message,
-          ),
-        };
-      }),
-    );
-    pushToast("질문 메시지를 수정했습니다.", "success");
-  };
-
-  const deleteQuestionMessage = (
-    questionId: string,
-    messageId: string,
-    role: "pm" | "dev-fe" | "dev-be",
-  ) => {
-    const targetQuestion = featureQuestions.find(
-      (question) => question.id === questionId,
-    );
-    const targetMessage = targetQuestion?.messages.find(
-      (message) => message.id === messageId && message.role === role,
-    );
-    if (
-      !targetQuestion ||
-      targetQuestion.closed ||
-      targetQuestion.pmConfirmed ||
-      !targetMessage
-    ) {
-      pushToast("삭제 가능한 메시지를 찾을 수 없습니다.", "warning");
-      return;
-    }
-
-    const willRemoveQuestion = targetQuestion.messages.length === 1;
-
-    setFeatureQuestions((prev) =>
-      prev.flatMap((question) => {
-        if (question.id !== questionId) return [question];
-        if (question.closed || question.pmConfirmed) return [question];
-
-        const nextMessages = question.messages.filter(
-          (message) => !(message.id === messageId && message.role === role),
-        );
-
-        if (nextMessages.length === 0) return [];
-
-        return [{ ...question, messages: nextMessages }];
-      }),
-    );
-    pushToast(
-      willRemoveQuestion
-        ? "마지막 메시지를 삭제해 질문이 함께 정리되었습니다."
-        : "질문 메시지를 삭제했습니다.",
-      "info",
-    );
-  };
-
-  const deleteFeatureQuestion = (questionId: string) => {
-    const targetQuestion = featureQuestions.find(
-      (question) => question.id === questionId,
-    );
-    if (!targetQuestion) {
-      pushToast("삭제할 질문을 찾을 수 없습니다.", "warning");
-      return;
-    }
-
-    setFeatureQuestions((prev) =>
-      prev.filter((question) => question.id !== questionId),
-    );
-    pushToast("질문이 삭제되었습니다.", "info");
-  };
-
-  const confirmQuestionByPm = (questionId: string) => {
-    const targetQuestion = featureQuestions.find(
-      (question) => question.id === questionId,
-    );
-    if (!targetQuestion || targetQuestion.closed) {
-      pushToast("기획 확인할 질문을 찾을 수 없습니다.", "warning");
-      return;
-    }
-
-    setFeatureQuestions((prev) =>
-      prev.map((question) =>
-        question.id === questionId && !question.closed
-          ? {
-              ...question,
-              pmConfirmed: true,
-            }
-          : question,
-      ),
-    );
-    pushToast("질문에 기획 확인을 등록했습니다.", "success");
-  };
-
-  const cancelQuestionConfirmByPm = (questionId: string) => {
-    const targetQuestion = featureQuestions.find(
-      (question) => question.id === questionId,
-    );
-    if (!targetQuestion || targetQuestion.closed) {
-      pushToast("취소할 기획 확인 상태를 찾을 수 없습니다.", "warning");
-      return;
-    }
-
-    setFeatureQuestions((prev) =>
-      prev.map((question) =>
-        question.id === questionId && !question.closed
-          ? {
-              ...question,
-              pmConfirmed: false,
-            }
-          : question,
-      ),
-    );
-    pushToast("질문의 기획 확인을 취소했습니다.", "info");
-  };
-
-  const confirmQuestionByDev = (questionId: string) => {
-    const targetQuestion = featureQuestions.find(
-      (question) => question.id === questionId,
-    );
-    if (
-      !targetQuestion ||
-      targetQuestion.closed ||
-      !targetQuestion.pmConfirmed
-    ) {
-      pushToast("개발 최종확인 가능한 질문이 아닙니다.", "warning");
-      return;
-    }
-
-    setFeatureQuestions((prev) =>
-      prev.map((question) => {
-        if (question.id !== questionId) return question;
-        if (question.closed || !question.pmConfirmed) return question;
-
-        return {
-          ...question,
-          devConfirmed: true,
-          closed: true,
-          closedAt: getNowTimeLabel(),
-        };
-      }),
-    );
-    pushToast("질문을 개발 최종확인으로 완료했습니다.", "success");
-  };
 
   const createPipelineProposal = ({
     action,
@@ -3062,24 +2706,18 @@ export default function App() {
   };
 
   if (!authUser) {
-    if (!hasSeenTutorial) {
-      return (
-        <TutorialOnboarding
-          onComplete={() => {
-            if (typeof window !== "undefined") {
-              window.localStorage.setItem("fithub.seenTutorial", "1");
-            }
-            setHasSeenTutorial(true);
-          }}
-        />
-      );
+    if (!hasEnteredLanding && !onboardingRole) {
+      return <LandingScreen onComplete={() => setHasEnteredLanding(true)} />;
     }
 
     if (!onboardingRole) {
       return (
-        <OnboardingScreen
+        <RoleSelectScreen
           onSelectRole={setOnboardingRole}
-          onOpenTutorial={() => setHasSeenTutorial(false)}
+          onOpenTutorial={() => {
+            setOnboardingRole(null);
+            setHasEnteredLanding(false);
+          }}
         />
       );
     }
@@ -3116,30 +2754,27 @@ export default function App() {
     );
   }
 
-  const resolvedRole =
-    authUser.role === "dev" ? "dev-fe" : authUser.role;
+  const resolvedRole = authUser.role === "dev" ? "dev-fe" : authUser.role;
   const usesProjectLanding = isPm || isDevUser;
   const shouldShowProjectLanding =
     usesProjectLanding &&
-    (pipelineLandingStep !== "canvas" || !selectedDemoProject);
+    (ProjectWorkspaceSectionStep !== "canvas" || !selectedDemoProject);
   const shouldShowPipelineCanvas =
-    !shouldShowProjectLanding && (!isPm || pipelineLandingStep === "canvas");
+    !shouldShowProjectLanding &&
+    (!isPm || ProjectWorkspaceSectionStep === "canvas");
 
   return (
-    <div className="h-screen flex flex-col bg-[#F5F5F5] text-gray-900 overflow-hidden">
-      {/* Dark header */}
+    <div className="flex h-screen flex-col overflow-hidden bg-[#F6F6F4] text-neutral-950">
+      {/* Header */}
       <AppHeader
         authUser={authUser}
         activeTab={activeTab}
-        activeTrack={activeTrack}
         projectName={projectName}
         onTabChange={setActiveTab}
-        onTrackChange={(track) => setPmSelectedTrack(track)}
         onLogout={handleLogout}
       />
-
       {/* Main content (below header) */}
-      <div className="flex-1 flex overflow-hidden pt-12">
+      <div className="flex flex-1 overflow-hidden pt-14">
         {/* Pipeline tab */}
         {activeTab === "pipeline" && (
           <div className="flex flex-1 flex-col overflow-hidden">
@@ -3153,11 +2788,11 @@ export default function App() {
               cancelLabel="나중에"
               onConfirm={() => {
                 setShowCreateProjectDialog(false);
-                setPipelineLandingStep("create-project");
+                setProjectWorkspaceSectionStep("create-project");
               }}
               onCancel={() => {
                 setShowCreateProjectDialog(false);
-                setPipelineLandingStep("project-list");
+                setProjectWorkspaceSectionStep("project-list");
               }}
             />
             <CustomDialog
@@ -3194,10 +2829,10 @@ export default function App() {
 
             {/* Project landing: PM and developers both choose a project first */}
             {shouldShowProjectLanding && (
-              <PipelineLanding
+              <ProjectWorkspaceSection
                 step={
-                  pipelineLandingStep !== "canvas"
-                    ? pipelineLandingStep
+                  ProjectWorkspaceSectionStep !== "canvas"
+                    ? ProjectWorkspaceSectionStep
                     : "project-list"
                 }
                 projects={demoProjects}
@@ -3210,7 +2845,7 @@ export default function App() {
                 isFetchingProjectPipelines={isFetchingProjectPipelines}
                 isUpdatingProject={isUpdatingProject}
                 deletingProjectId={
-                  isDeletingProject ? projectPendingDelete?.id ?? null : null
+                  isDeletingProject ? (projectPendingDelete?.id ?? null) : null
                 }
                 isGeneratingPipeline={isGeneratingPipeline}
                 generatingFileName={generatingFileName}
@@ -3230,8 +2865,12 @@ export default function App() {
                 onSelectProject={(proj) => {
                   void handleSelectProject(proj);
                 }}
-                onGoToCreateProject={() => setPipelineLandingStep("create-project")}
-                onGoToPipelineForm={() => setPipelineLandingStep("pipeline-form")}
+                onGoToCreateProject={() =>
+                  setProjectWorkspaceSectionStep("create-project")
+                }
+                onGoToPipelineForm={() =>
+                  setProjectWorkspaceSectionStep("pipeline-form")
+                }
                 onCreateProject={(params) => handleCreateProjectByPm(params)}
                 onUpdateProject={(params) => handleUpdateProjectByPm(params)}
                 onRequestDeleteProject={handleRequestDeleteProjectByPm}
@@ -3239,11 +2878,16 @@ export default function App() {
                 onViewPipeline={(category) =>
                   handleViewProjectPipelineByCategory(category)
                 }
-                onGeneratePipeline={(params) => handleGeneratePmPipeline(params)}
-                onCancelCreateProject={() => setPipelineLandingStep("project-list")}
+                onGeneratePipeline={(params) =>
+                  handleGeneratePmPipeline(params)
+                }
+                onCancelCreateProject={() =>
+                  setProjectWorkspaceSectionStep("project-list")
+                }
                 onBackToPipelines={() =>
-                  setPipelineLandingStep(
-                    pipelineLandingStep === "pipeline-form" && selectedDemoProject
+                  setProjectWorkspaceSectionStep(
+                    ProjectWorkspaceSectionStep === "pipeline-form" &&
+                      selectedDemoProject
                       ? "project-detail"
                       : "project-list",
                   )
@@ -3259,13 +2903,17 @@ export default function App() {
                 {usesProjectLanding && selectedDemoProject && (
                   <div className="flex shrink-0 items-center gap-2 border-b border-gray-100 bg-white px-5 py-2">
                     <button
-                      onClick={() => setPipelineLandingStep("project-list")}
+                      onClick={() =>
+                        setProjectWorkspaceSectionStep("project-list")
+                      }
                       className="flex items-center gap-1 text-xs text-gray-400 transition-colors hover:text-gray-700"
                     >
                       <ChevronLeft className="h-3 w-3" /> 프로젝트 목록
                     </button>
                     <span className="text-xs text-gray-200">/</span>
-                    <span className="text-xs font-medium text-gray-900">{selectedDemoProject.name}</span>
+                    <span className="text-xs font-medium text-gray-900">
+                      {selectedDemoProject.name}
+                    </span>
                     {isPm && (
                       <>
                         <button
@@ -3274,12 +2922,6 @@ export default function App() {
                           className="ml-auto inline-flex items-center gap-1 text-xs font-semibold text-gray-500 transition-colors hover:text-gray-900"
                         >
                           <UserPlus className="h-3 w-3" /> 팀원 초대
-                        </button>
-                        <button
-                          onClick={() => setPipelineLandingStep("pipeline-form")}
-                          className="text-xs text-indigo-500 transition-colors hover:text-indigo-700"
-                        >
-                          + 파이프라인 추가
                         </button>
                       </>
                     )}
@@ -3309,7 +2951,10 @@ export default function App() {
                       })
                     }
                     onDeleteFeature={(featureId) =>
-                      createPipelineProposal({ action: "delete-feature", featureId })
+                      createPipelineProposal({
+                        action: "delete-feature",
+                        featureId,
+                      })
                     }
                     onAddTask={(featureId, taskTitle) =>
                       createPipelineProposal({
@@ -3369,7 +3014,11 @@ export default function App() {
                         content,
                       )
                     }
-                    onUpdatePipelineProposalMessage={(proposalId, messageId, content) =>
+                    onUpdatePipelineProposalMessage={(
+                      proposalId,
+                      messageId,
+                      content,
+                    ) =>
                       updatePipelineProposalMessage(
                         proposalId,
                         messageId,
@@ -3397,181 +3046,16 @@ export default function App() {
           </div>
         )}
 
-        {/* Questions tab - PM */}
-        {activeTab === "questions" && authUser.role === "pm" && (
-          <div className="flex-1 overflow-y-auto p-6">
-            {/* PM sub-tabs */}
-            <div className="flex items-center gap-2 mb-5">
-              <button
-                onClick={() => setPmSubSection("ai")}
-                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
-                  pmSubSection === "ai"
-                    ? "bg-white text-gray-900 shadow-sm border border-[#E5E5E5]"
-                    : "text-[#9E9E9E] hover:text-gray-700"
-                }`}
-              >
-                기능 질문 작성
-              </button>
-              <button
-                onClick={() => setPmSubSection("review")}
-                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
-                  pmSubSection === "review"
-                    ? "bg-white text-gray-900 shadow-sm border border-[#E5E5E5]"
-                    : "text-[#9E9E9E] hover:text-gray-700"
-                }`}
-              >
-                질문 타임라인
-              </button>
-            </div>
-            <PMDashboard
-              section={pmSubSection}
-              features={features}
-              featureQuestions={featureQuestions}
-              onCreateFeatureQuestion={createFeatureQuestion}
-              onAddQuestionMessage={(questionId, content) =>
-                addQuestionMessage(questionId, "pm", content)
-              }
-              onUpdateQuestionMessage={(questionId, messageId, content) =>
-                updateQuestionMessage(questionId, messageId, "pm", content)
-              }
-              onDeleteQuestionMessage={(questionId, messageId) =>
-                deleteQuestionMessage(questionId, messageId, "pm")
-              }
-              onDeleteQuestion={deleteFeatureQuestion}
-              onConfirmQuestionByPm={confirmQuestionByPm}
-              onCancelQuestionConfirmByPm={cancelQuestionConfirmByPm}
-              onMoveSection={setPmSubSection}
-            />
+        {/* Questions tab */}
+        {activeTab === "questions" && (
+          <div className="flex-1 overflow-y-auto bg-[#F6F6F4] p-6">
+            <FeatureQuestionComingSoon />
           </div>
         )}
 
-        {/* Questions tab - Dev */}
-        {activeTab === "questions" && isDevUser && (
-          <div className="flex-1 overflow-y-auto p-6">
-            <DevDashboard
-              section="feedback"
-              projectId={activeProjectId}
-              projectName={projectName}
-              connectedGithubRepo={connectedGithubRepo}
-              featureQuestions={featureQuestions}
-              onAddQuestionMessage={(questionId, content) =>
-                addQuestionMessage(questionId, resolvedRole, content)
-              }
-              onUpdateQuestionMessage={(questionId, messageId, content) =>
-                updateQuestionMessage(
-                  questionId,
-                  messageId,
-                  resolvedRole,
-                  content,
-                )
-              }
-              onDeleteQuestionMessage={(questionId, messageId) =>
-                deleteQuestionMessage(questionId, messageId, resolvedRole)
-              }
-              onConfirmQuestionByDev={confirmQuestionByDev}
-              onSaveProjectName={saveProjectName}
-            />
-          </div>
-        )}
-
-        {/* Settings tab - PM */}
-        {activeTab === "settings" && authUser.role === "pm" && (
-          <div className="flex-1 overflow-y-auto p-6">
-            {/* Sub-tabs for PM settings */}
-            <div className="flex items-center gap-2 mb-5">
-              <button
-                onClick={() => setAdminSubSection("knowledge")}
-                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
-                  adminSubSection === "knowledge"
-                    ? "bg-white text-gray-900 shadow-sm border border-[#E5E5E5]"
-                    : "text-[#9E9E9E] hover:text-gray-700"
-                }`}
-              >
-                AI 지식 베이스
-              </button>
-              <button
-                onClick={() => setAdminSubSection("profile")}
-                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
-                  adminSubSection === "profile"
-                    ? "bg-white text-gray-900 shadow-sm border border-[#E5E5E5]"
-                    : "text-[#9E9E9E] hover:text-gray-700"
-                }`}
-              >
-                내 정보
-              </button>
-            </div>
-            {adminSubSection === "profile" ? (
-              <MyInfoSection
-                authUser={authUser}
-                activeTrackLabel={devTrackLabel[activeTrack]}
-                connectedGithubRepo={connectedGithubRepo}
-              />
-            ) : (
-              <AdminDashboard
-                knowledgeDocs={knowledgeDocs}
-                isGeneratingPipeline={isGeneratingPipeline}
-                onUploadKnowledgePdf={handleUploadKnowledgePdf}
-              />
-            )}
-          </div>
-        )}
-
-        {/* Settings tab - Dev */}
-        {activeTab === "settings" && isDevUser && (
-          <div className="flex-1 overflow-y-auto p-6">
-            <div className="flex items-center gap-2 mb-5">
-              <button
-                onClick={() => setDevSettingsSubSection("project")}
-                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
-                  devSettingsSubSection === "project"
-                    ? "bg-white text-gray-900 shadow-sm border border-[#E5E5E5]"
-                    : "text-[#9E9E9E] hover:text-gray-700"
-                }`}
-              >
-                프로젝트 설정
-              </button>
-              <button
-                onClick={() => setDevSettingsSubSection("profile")}
-                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
-                  devSettingsSubSection === "profile"
-                    ? "bg-white text-gray-900 shadow-sm border border-[#E5E5E5]"
-                    : "text-[#9E9E9E] hover:text-gray-700"
-                }`}
-              >
-                내 정보
-              </button>
-            </div>
-            {devSettingsSubSection === "project" ? (
-              <DevDashboard
-                section="project"
-                projectId={activeProjectId}
-                projectName={projectName}
-                connectedGithubRepo={connectedGithubRepo}
-                featureQuestions={featureQuestions}
-                onAddQuestionMessage={(questionId, content) =>
-                  addQuestionMessage(questionId, resolvedRole, content)
-                }
-                onUpdateQuestionMessage={(questionId, messageId, content) =>
-                  updateQuestionMessage(
-                    questionId,
-                    messageId,
-                    resolvedRole,
-                    content,
-                  )
-                }
-                onDeleteQuestionMessage={(questionId, messageId) =>
-                  deleteQuestionMessage(questionId, messageId, resolvedRole)
-                }
-                onConfirmQuestionByDev={confirmQuestionByDev}
-                onSaveProjectName={saveProjectName}
-              />
-            ) : (
-              <MyInfoSection
-                authUser={authUser}
-                activeTrackLabel={devTrackLabel[activeTrack]}
-                connectedGithubRepo={connectedGithubRepo}
-              />
-            )}
+        {activeTab === "settings" && (
+          <div className="flex-1 overflow-y-auto bg-[#F6F6F4] p-6">
+            <MyInfoSection authUser={authUser} />
           </div>
         )}
       </div>
@@ -3581,12 +3065,12 @@ export default function App() {
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className={`toast-fade w-full rounded-xl border border-gray-200 border-l-4 bg-white/96 px-3 py-2 text-sm font-medium shadow-lg backdrop-blur-sm ${
+            className={`toast-fade w-full rounded-2xl border bg-white/95 px-4 py-3 text-sm font-semibold shadow-lg backdrop-blur-sm ${
               toast.tone === "success"
-                ? "border-l-[#6366F1] text-gray-900"
+                ? "border-neutral-950 text-neutral-950"
                 : toast.tone === "warning"
-                  ? "border-l-gray-400 text-gray-700"
-                  : "border-l-gray-200 text-gray-600"
+                  ? "border-neutral-300 text-neutral-700"
+                  : "border-neutral-200 text-neutral-600"
             }`}
           >
             {toast.message}
