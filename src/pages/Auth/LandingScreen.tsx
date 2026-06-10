@@ -1,13 +1,17 @@
 import type { LucideIcon } from "lucide-react";
 import {
   ArrowRight,
+  BadgeCheck,
   CheckCircle2,
+  Crown,
   FileText,
   GitBranch,
   Layers,
   MessageSquare,
+  Rocket,
   Sparkles,
   Users,
+  Zap,
 } from "lucide-react";
 import fithubServiceIcon from "../../assets/fithub-service-icon.png";
 
@@ -25,6 +29,18 @@ type WorkflowStep = {
 type BetaFeature = {
   title: string;
   description: string;
+};
+
+type PricingPlan = {
+  name: string;
+  price: string;
+  billingLabel?: string;
+  pipelineQuota: string;
+  projectLimit: string;
+  description: string;
+  badge?: string;
+  Icon: LucideIcon;
+  highlighted?: boolean;
 };
 
 const workflowSteps: WorkflowStep[] = [
@@ -69,6 +85,54 @@ const betaFeatures: BetaFeature[] = [
   },
 ];
 
+const pricingPlans: PricingPlan[] = [
+  {
+    name: "Free",
+    price: "₩0",
+    billingLabel: "/ 월",
+    pipelineQuota: "파이프라인 생성 월 2회",
+    projectLimit: "프로젝트 1개",
+    description:
+      "현재 베타 테스트에서 무료로 사용할 수 있는 플랜입니다. PRD 기반 파이프라인 생성 흐름을 가볍게 체험할 수 있습니다.",
+    badge: "현재 베타 제공",
+    Icon: BadgeCheck,
+    highlighted: true,
+  },
+  {
+    name: "Plus",
+    price: "₩14,900",
+    billingLabel: "/ 월",
+    pipelineQuota: "파이프라인 생성 월 10회",
+    projectLimit: "프로젝트 3개",
+    description:
+      "개인 프로젝트나 소규모 팀에서 반복적으로 PRD 파이프라인 생성을 테스트할 수 있는 예정 플랜입니다.",
+    badge: "출시 예정",
+    Icon: Zap,
+  },
+  {
+    name: "Pro",
+    price: "₩54,900",
+    billingLabel: "/ 월",
+    pipelineQuota: "파이프라인 생성 월 50회",
+    projectLimit: "프로젝트 5개",
+    description:
+      "여러 프로젝트를 동시에 관리하는 PM·개발팀을 위한 예정 플랜입니다. 더 많은 프로젝트와 파이프라인 생성 횟수를 제공합니다.",
+    badge: "출시 예정",
+    Icon: Rocket,
+  },
+  {
+    name: "Max",
+    price: "₩129,000~",
+    billingLabel: "/ 월",
+    pipelineQuota: "파이프라인 생성 월 100회~ + 크레딧 추가",
+    projectLimit: "프로젝트 별도 문의",
+    description:
+      "많은 PRD를 분석하거나 추가 크레딧, 프로젝트 확장이 필요한 팀을 위한 확장형 예정 플랜입니다.",
+    badge: "출시 예정",
+    Icon: Crown,
+  },
+];
+
 export default function LandingScreen({ onComplete }: LandingScreenProps) {
   return (
     <main className="min-h-screen bg-[#F6F6F4] text-neutral-950">
@@ -91,6 +155,9 @@ export default function LandingScreen({ onComplete }: LandingScreenProps) {
             <a href="#workflow" className="hover:text-neutral-950">
               작동 방식
             </a>
+            <a href="#pricing" className="hover:text-neutral-950">
+              요금 안내
+            </a>
             <a href="#preview" className="hover:text-neutral-950">
               미리보기
             </a>
@@ -100,7 +167,7 @@ export default function LandingScreen({ onComplete }: LandingScreenProps) {
             onClick={onComplete}
             className="inline-flex items-center gap-2 rounded-full bg-neutral-950 px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-neutral-800"
           >
-            베타 시작하기
+            무료로 체험해보기
             <ArrowRight className="h-3.5 w-3.5" />
           </button>
         </div>
@@ -128,11 +195,12 @@ export default function LandingScreen({ onComplete }: LandingScreenProps) {
 
           <div className="mt-5 rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
             <p className="text-sm font-semibold text-neutral-900">
-              현재 베타에서 체험 가능한 기능
+              현재 Free 베타로 체험 가능
             </p>
             <p className="mt-1 text-sm leading-6 text-neutral-500">
-              PRD PDF 분석, Frontend/Backend 파이프라인 생성, 기획자·개발자 간
-              파이프라인 공유 기능을 중심으로 제공합니다.
+              지금은 Free 플랜으로 월 2회의 파이프라인 생성 테스트와 프로젝트
+              1개 생성을 제공합니다. PRD PDF 분석, Frontend/Backend 파이프라인
+              생성, 기획자·개발자 간 실시간 공유 흐름을 먼저 체험할 수 있습니다.
             </p>
           </div>
 
@@ -141,7 +209,7 @@ export default function LandingScreen({ onComplete }: LandingScreenProps) {
               onClick={onComplete}
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-neutral-950 px-6 py-3 text-sm font-bold text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-neutral-800"
             >
-              베타 시작하기
+              무료로 체험해보기
               <ArrowRight className="h-4 w-4" />
             </button>
 
@@ -205,12 +273,13 @@ export default function LandingScreen({ onComplete }: LandingScreenProps) {
                     FE
                   </span>
                 </div>
+
                 <div className="space-y-2">
                   <div className="rounded-lg bg-white/10 px-3 py-2 text-xs text-neutral-200">
                     역할 선택 UI 구성
                   </div>
                   <div className="rounded-lg bg-white/10 px-3 py-2 text-xs text-neutral-200">
-                    베타 시작 CTA 연결
+                    무료 체험 CTA 연결
                   </div>
                 </div>
               </div>
@@ -222,6 +291,7 @@ export default function LandingScreen({ onComplete }: LandingScreenProps) {
                     BE
                   </span>
                 </div>
+
                 <div className="space-y-2">
                   <div className="rounded-lg bg-white/10 px-3 py-2 text-xs text-neutral-200">
                     PRD PDF 업로드 처리
@@ -320,8 +390,118 @@ export default function LandingScreen({ onComplete }: LandingScreenProps) {
         </div>
       </section>
 
+      {/* Pricing Preview */}
+      <section id="pricing" className="border-y border-neutral-200 bg-white">
+        <div className="mx-auto max-w-6xl px-6 py-20">
+          <div className="mb-10 flex flex-col justify-between gap-5 md:flex-row md:items-end">
+            <div className="max-w-2xl">
+              <p className="text-xs font-bold uppercase tracking-[0.22em] text-neutral-400">
+                Pricing Preview
+              </p>
+              <h2 className="mt-3 text-3xl font-black tracking-tight text-neutral-950 md:text-4xl">
+                현재는 Free 베타로 먼저 체험할 수 있습니다.
+              </h2>
+              <p className="mt-4 text-sm leading-7 text-neutral-600">
+                추후 업데이트에서는 사용량과 프로젝트 생성 수에 따라 Free, Plus,
+                Pro, Max 플랜을 제공할 예정입니다. 현재 베타에서는 Free 플랜
+                기준으로 월 2회의 파이프라인 생성 테스트와 프로젝트 1개 생성을
+                사용할 수 있습니다.
+              </p>
+            </div>
+
+            <div className="w-fit rounded-full border border-neutral-200 bg-[#F6F6F4] px-4 py-2 text-xs font-semibold text-neutral-500">
+              예정 금액 · 정식 출시 전 변경 가능
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+            {pricingPlans.map((plan) => (
+              <div
+                key={plan.name}
+                className={`relative rounded-3xl border p-6 transition-all hover:-translate-y-1 hover:shadow-lg ${
+                  plan.highlighted
+                    ? "border-neutral-950 bg-neutral-950 text-white"
+                    : "border-neutral-200 bg-[#F6F6F4] text-neutral-950 hover:bg-white"
+                }`}
+              >
+                {plan.badge && (
+                  <div
+                    className={`mb-5 inline-flex rounded-full px-3 py-1 text-[10px] font-bold ${
+                      plan.highlighted
+                        ? "bg-white text-neutral-950"
+                        : "border border-neutral-200 bg-white text-neutral-500"
+                    }`}
+                  >
+                    {plan.badge}
+                  </div>
+                )}
+
+                <div
+                  className={`mb-5 flex h-11 w-11 items-center justify-center rounded-2xl ${
+                    plan.highlighted
+                      ? "bg-white/10 text-white ring-1 ring-white/10"
+                      : "bg-neutral-950 text-white"
+                  }`}
+                >
+                  <plan.Icon className="h-5 w-5" />
+                </div>
+
+                <h3 className="text-xl font-black tracking-tight">
+                  {plan.name}
+                </h3>
+
+                <div className="mt-4">
+                  <span className="text-3xl font-black">{plan.price}</span>
+                  {plan.billingLabel && (
+                    <span
+                      className={`ml-1 text-xs ${
+                        plan.highlighted
+                          ? "text-neutral-400"
+                          : "text-neutral-500"
+                      }`}
+                    >
+                      {plan.billingLabel}
+                    </span>
+                  )}
+                </div>
+
+                <div className="mt-4 space-y-2">
+                  <div
+                    className={`rounded-xl px-3 py-2 text-xs font-bold ${
+                      plan.highlighted
+                        ? "bg-white/10 text-neutral-100"
+                        : "border border-neutral-200 bg-white text-neutral-800"
+                    }`}
+                  >
+                    {plan.pipelineQuota}
+                  </div>
+
+                  <div
+                    className={`rounded-xl px-3 py-2 text-xs font-bold ${
+                      plan.highlighted
+                        ? "bg-white/10 text-neutral-100"
+                        : "border border-neutral-200 bg-white text-neutral-800"
+                    }`}
+                  >
+                    {plan.projectLimit}
+                  </div>
+                </div>
+
+                <p
+                  className={`mt-4 text-sm leading-6 ${
+                    plan.highlighted ? "text-neutral-400" : "text-neutral-500"
+                  }`}
+                >
+                  {plan.description}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* Beta Notice */}
-      <section className="mx-auto max-w-6xl px-6 pb-20">
+      <section className="mx-auto max-w-6xl px-6 py-20">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-[0.9fr_1.1fr]">
           <div className="rounded-[2rem] border border-neutral-200 bg-white p-8 shadow-sm">
             <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl bg-neutral-950 text-white">
@@ -348,19 +528,20 @@ export default function LandingScreen({ onComplete }: LandingScreenProps) {
             <h2 className="text-3xl font-black tracking-tight md:text-4xl">
               PRD 기반 파이프라인을
               <br />
-              지금 바로 체험해보세요.
+              지금 무료로 체험해보세요.
             </h2>
 
             <p className="mt-4 max-w-xl text-sm leading-7 text-neutral-400">
-              베타 시작 후 역할을 선택하면 기획자 또는 개발자 관점에서 생성된
-              파이프라인 공유 흐름을 확인할 수 있습니다.
+              현재는 Free 베타로 월 2회의 파이프라인 생성 테스트와 프로젝트 1개
+              생성을 제공합니다. PRD 기반 파이프라인 생성과 공유 흐름을 먼저
+              체험해보세요.
             </p>
 
             <button
               onClick={onComplete}
               className="mt-8 inline-flex items-center justify-center gap-2 rounded-xl bg-white px-6 py-3 text-sm font-bold text-neutral-950 transition-colors hover:bg-neutral-200"
             >
-              베타 시작하기
+              무료로 체험해보기
               <ArrowRight className="h-4 w-4" />
             </button>
           </div>
