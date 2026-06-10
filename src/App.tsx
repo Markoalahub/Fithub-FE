@@ -2923,14 +2923,6 @@ export default function App() {
                         >
                           <UserPlus className="h-3 w-3" /> 팀원 초대
                         </button>
-                        <button
-                          onClick={() =>
-                            setProjectWorkspaceSectionStep("pipeline-form")
-                          }
-                          className="text-xs text-indigo-500 transition-colors hover:text-indigo-700"
-                        >
-                          + 파이프라인 추가
-                        </button>
                       </>
                     )}
                   </div>
