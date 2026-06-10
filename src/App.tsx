@@ -1,8 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, UserPlus } from "lucide-react";
-import PMDashboard from "./pages/PM/PMDashboard.tsx";
-import DevDashboard from "@/src/pages/Dev/DevDashboard";
-import AdminDashboard from "./pages/Admin/AdminDashboard.tsx";
 import RoleSelectScreen from "./pages/Auth/RoleSelectScreen.tsx";
 import LoginScreen from "./pages/Auth/LoginScreen.tsx";
 import LandingScreen from "./pages/Auth/LandingScreen.tsx";
@@ -14,6 +11,7 @@ import PipelineCanvas from "./components/PipelineCanvas";
 import PipelineLanding from "./components/PipelineLanding";
 import ProjectInviteDialog from "./components/ProjectInviteDialog";
 import CustomDialog from "./components/CustomDialog";
+import FeatureQuestionComingSoon from "./components/FeatureQuestionComingSoon";
 import type {
   DemoProject,
   PipelineCategoryOption,
@@ -50,8 +48,6 @@ import type {
   CardPosition,
   ConnectedGithubRepository,
   Feature,
-  FeatureQuestion,
-  KnowledgeDocument,
   PipelineProposal,
   PipelineProposalAction,
   QuestionMessage,
@@ -232,16 +228,6 @@ const readStoredConnectedGithubRepo = (
   } catch {
     return null;
   }
-};
-
-const formatFileSize = (size: number) => {
-  if (size >= 1024 * 1024) {
-    return `${(size / (1024 * 1024)).toFixed(1)}MB`;
-  }
-  if (size >= 1024) {
-    return `${Math.max(1, Math.round(size / 1024))}KB`;
-  }
-  return `${size}B`;
 };
 
 const normalizeDeveloperRole = (value: string | null | undefined) => {
@@ -745,7 +731,6 @@ export default function App() {
     useState<ConnectedGithubRepository | null>(() =>
       readStoredConnectedGithubRepo("backend"),
     );
-  const [knowledgeDocs, setKnowledgeDocs] = useState<KnowledgeDocument[]>([]);
   const [isGeneratingPipeline, setIsGeneratingPipeline] = useState(false);
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [isFetchingProjects, setIsFetchingProjects] = useState(false);
@@ -798,12 +783,6 @@ export default function App() {
   const [backendPipelineProposals, setBackendPipelineProposals] = useState<
     PipelineProposal[]
   >([]);
-  const [frontendFeatureQuestions, setFrontendFeatureQuestions] = useState<
-    FeatureQuestion[]
-  >([]);
-  const [backendFeatureQuestions, setBackendFeatureQuestions] = useState<
-    FeatureQuestion[]
-  >([]);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const lastMessageFingerprintRef = useRef<{ key: string; at: number } | null>(
     null,
@@ -818,15 +797,6 @@ export default function App() {
   const [backendCardPositions, setBackendCardPositions] = useState<
     Map<number, CardPosition>
   >(new Map());
-
-  // Sub-section states
-  const [pmSubSection, setPmSubSection] = useState<"ai" | "review">("ai");
-  const [adminSubSection, setAdminSubSection] = useState<
-    "knowledge" | "profile"
-  >("knowledge");
-  const [devSettingsSubSection, setDevSettingsSubSection] = useState<
-    "project" | "profile"
-  >("project");
 
   const isDevUser =
     authUser?.role === "dev" ||
@@ -847,16 +817,8 @@ export default function App() {
     activeTrack === "frontend"
       ? frontendPipelineProposals
       : backendPipelineProposals;
-  const featureQuestions =
-    activeTrack === "frontend"
-      ? frontendFeatureQuestions
-      : backendFeatureQuestions;
   const projectName =
     activeTrack === "frontend" ? frontendProjectName : backendProjectName;
-  const connectedGithubRepo =
-    activeTrack === "frontend"
-      ? frontendConnectedGithubRepo
-      : backendConnectedGithubRepo;
   const activePipelineMeta =
     activeTrack === "frontend" ? frontendPipelineMeta : backendPipelineMeta;
 
@@ -899,24 +861,6 @@ export default function App() {
       return;
     }
     setBackendPipelineProposals(updater);
-  };
-
-  const setFeatureQuestions: React.Dispatch<
-    React.SetStateAction<FeatureQuestion[]>
-  > = (updater) => {
-    if (activeTrack === "frontend") {
-      setFrontendFeatureQuestions(updater);
-      return;
-    }
-    setBackendFeatureQuestions(updater);
-  };
-
-  const setProjectName = (nextProjectName: string) => {
-    if (activeTrack === "frontend") {
-      setFrontendProjectName(nextProjectName);
-      return;
-    }
-    setBackendProjectName(nextProjectName);
   };
 
   const setPipelineMetaForTrack = (
@@ -996,12 +940,10 @@ export default function App() {
   const resetTrackCollaborationState = (track: DevTrack) => {
     if (track === "frontend") {
       setFrontendPipelineProposals([]);
-      setFrontendFeatureQuestions([]);
       setFrontendCardPositions(new Map());
       return;
     }
     setBackendPipelineProposals([]);
-    setBackendFeatureQuestions([]);
     setBackendCardPositions(new Map());
   };
 
@@ -1372,7 +1314,6 @@ export default function App() {
     setActiveTab("pipeline");
     if (nextRole === "pm") {
       setPmSelectedTrack("frontend");
-      setPmSubSection("ai");
     }
 
     window.history.replaceState({}, "", "/");
@@ -1406,7 +1347,6 @@ export default function App() {
     );
     setOnboardingRole("pm");
     setPmSelectedTrack("frontend");
-    setPmSubSection("ai");
   }, [authUser?.provider, authUser?.role]);
 
   useEffect(() => {
@@ -1434,23 +1374,6 @@ export default function App() {
       window.localStorage.removeItem("fithub.refreshToken");
     }
     pushToast("로그아웃 되었습니다.", "info");
-  };
-
-  const saveProjectName = (nextProjectName: string) => {
-    const normalizedName = nextProjectName.trim();
-    if (!normalizedName) {
-      pushToast("프로젝트 이름은 비워둘 수 없습니다.", "warning");
-      return;
-    }
-
-    setProjectName(normalizedName);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(
-        getProjectNameStorageKey(activeTrack),
-        normalizedName,
-      );
-    }
-    pushToast("프로젝트 이름을 저장했습니다.", "success");
   };
 
   const getRepositoryFullNameFromUrl = (repoUrl: string) =>
@@ -1591,28 +1514,6 @@ export default function App() {
         "warning",
       );
     }
-  };
-
-  const handleUploadKnowledgePdf = async (file: File) => {
-    const isPdfFile =
-      file.type === "application/pdf" || /\.pdf$/i.test(file.name);
-
-    if (!isPdfFile) {
-      pushToast("PDF 파일만 업로드할 수 있습니다.", "warning");
-      return;
-    }
-
-    setKnowledgeDocs((prev) => [
-      {
-        id: createId(),
-        name: file.name,
-        uploadedAt: new Date().toLocaleDateString("ko-KR"),
-        sizeLabel: formatFileSize(file.size),
-      },
-      ...prev,
-    ]);
-
-    pushToast("AI 지식 베이스 문서를 등록했습니다.", "success");
   };
 
   const handleCreateProjectByPm = async (params: {
@@ -2142,16 +2043,6 @@ export default function App() {
         ];
       });
 
-      setKnowledgeDocs((prev) => [
-        {
-          id: createId(),
-          name: params.file.name,
-          uploadedAt: new Date().toLocaleDateString("ko-KR"),
-          sizeLabel: formatFileSize(params.file.size),
-        },
-        ...prev,
-      ]);
-
       await loadProjectPipelineSummaries(activeProjectId, {
         clearOnError: false,
         silent: true,
@@ -2281,29 +2172,6 @@ export default function App() {
   }, [activeProjectId]);
 
   useEffect(() => {
-    setFeatureQuestions((prev) =>
-      prev.reduce<FeatureQuestion[]>((acc, question) => {
-        const matchedFeature = features.find(
-          (feature) => feature.id === question.featureId,
-        );
-        if (!matchedFeature) return acc;
-
-        const matchedTask = question.taskId
-          ? matchedFeature.tasks.find((task) => task.id === question.taskId)
-          : undefined;
-
-        acc.push({
-          ...question,
-          featureName: matchedFeature.name,
-          taskId: matchedTask?.id,
-          taskTitle: matchedTask?.title,
-        });
-        return acc;
-      }, []),
-    );
-  }, [features]);
-
-  useEffect(() => {
     if (
       !isPm ||
       activeTab !== "pipeline" ||
@@ -2353,275 +2221,6 @@ export default function App() {
       }),
     );
   }, [features]);
-
-  const createFeatureQuestion = ({
-    featureId,
-    taskId,
-    content,
-  }: {
-    featureId: number;
-    taskId?: string;
-    content: string;
-  }) => {
-    const matchedFeature = features.find((feature) => feature.id === featureId);
-    if (!matchedFeature || !content.trim()) {
-      pushToast("질문을 등록하려면 기능과 내용을 확인해 주세요.", "warning");
-      return;
-    }
-
-    const matchedTask = taskId
-      ? matchedFeature.tasks.find((task) => task.id === taskId)
-      : undefined;
-
-    const initialMessage = createQuestionMessage("pm", content);
-
-    const nextQuestion: FeatureQuestion = {
-      id: createId(),
-      featureId,
-      featureName: matchedFeature.name,
-      taskId: matchedTask?.id,
-      taskTitle: matchedTask?.title,
-      messages: [initialMessage],
-      createdAt: initialMessage.createdAt,
-      pmConfirmed: false,
-      devConfirmed: false,
-      closed: false,
-    };
-
-    setFeatureQuestions((prev) => [nextQuestion, ...prev]);
-    pushToast(`${devTrackLabel[activeTrack]} 질문을 등록했습니다.`, "success");
-  };
-
-  const addQuestionMessage = (
-    questionId: string,
-    role: "pm" | "dev-fe" | "dev-be",
-    content: string,
-  ) => {
-    const trimmed = content.trim();
-    if (!trimmed) {
-      pushToast("메시지를 입력해 주세요.", "warning");
-      return;
-    }
-
-    const targetQuestion = featureQuestions.find(
-      (question) => question.id === questionId,
-    );
-    if (
-      !targetQuestion ||
-      targetQuestion.closed ||
-      targetQuestion.pmConfirmed
-    ) {
-      pushToast("현재 질문에는 메시지를 추가할 수 없습니다.", "warning");
-      return;
-    }
-
-    const fingerprint = `${questionId}|${role}|${trimmed}`;
-    const now = Date.now();
-    const last = lastMessageFingerprintRef.current;
-    if (last && last.key === fingerprint && now - last.at < 800) {
-      pushToast("동일 메시지 중복 전송이 방지되었습니다.", "info");
-      return;
-    }
-    lastMessageFingerprintRef.current = { key: fingerprint, at: now };
-
-    setFeatureQuestions((prev) =>
-      prev.map((question) => {
-        if (question.id !== questionId) return question;
-        if (question.closed || question.pmConfirmed) return question;
-
-        return {
-          ...question,
-          messages: [
-            ...question.messages,
-            createQuestionMessage(role, trimmed),
-          ],
-        };
-      }),
-    );
-    pushToast("질문 채팅 메시지를 보냈습니다.", "success");
-  };
-
-  const updateQuestionMessage = (
-    questionId: string,
-    messageId: string,
-    role: "pm" | "dev-fe" | "dev-be",
-    content: string,
-  ) => {
-    const trimmed = content.trim();
-    if (!trimmed) {
-      pushToast("빈 메시지로 수정할 수 없습니다.", "warning");
-      return;
-    }
-
-    const targetQuestion = featureQuestions.find(
-      (question) => question.id === questionId,
-    );
-    const targetMessage = targetQuestion?.messages.find(
-      (message) => message.id === messageId && message.role === role,
-    );
-    if (
-      !targetQuestion ||
-      targetQuestion.closed ||
-      targetQuestion.pmConfirmed ||
-      !targetMessage
-    ) {
-      pushToast("수정 가능한 메시지를 찾을 수 없습니다.", "warning");
-      return;
-    }
-
-    setFeatureQuestions((prev) =>
-      prev.map((question) => {
-        if (question.id !== questionId) return question;
-        if (question.closed || question.pmConfirmed) return question;
-
-        return {
-          ...question,
-          messages: question.messages.map((message) =>
-            message.id === messageId && message.role === role
-              ? {
-                  ...message,
-                  content: trimmed,
-                }
-              : message,
-          ),
-        };
-      }),
-    );
-    pushToast("질문 메시지를 수정했습니다.", "success");
-  };
-
-  const deleteQuestionMessage = (
-    questionId: string,
-    messageId: string,
-    role: "pm" | "dev-fe" | "dev-be",
-  ) => {
-    const targetQuestion = featureQuestions.find(
-      (question) => question.id === questionId,
-    );
-    const targetMessage = targetQuestion?.messages.find(
-      (message) => message.id === messageId && message.role === role,
-    );
-    if (
-      !targetQuestion ||
-      targetQuestion.closed ||
-      targetQuestion.pmConfirmed ||
-      !targetMessage
-    ) {
-      pushToast("삭제 가능한 메시지를 찾을 수 없습니다.", "warning");
-      return;
-    }
-
-    const willRemoveQuestion = targetQuestion.messages.length === 1;
-
-    setFeatureQuestions((prev) =>
-      prev.flatMap((question) => {
-        if (question.id !== questionId) return [question];
-        if (question.closed || question.pmConfirmed) return [question];
-
-        const nextMessages = question.messages.filter(
-          (message) => !(message.id === messageId && message.role === role),
-        );
-
-        if (nextMessages.length === 0) return [];
-
-        return [{ ...question, messages: nextMessages }];
-      }),
-    );
-    pushToast(
-      willRemoveQuestion
-        ? "마지막 메시지를 삭제해 질문이 함께 정리되었습니다."
-        : "질문 메시지를 삭제했습니다.",
-      "info",
-    );
-  };
-
-  const deleteFeatureQuestion = (questionId: string) => {
-    const targetQuestion = featureQuestions.find(
-      (question) => question.id === questionId,
-    );
-    if (!targetQuestion) {
-      pushToast("삭제할 질문을 찾을 수 없습니다.", "warning");
-      return;
-    }
-
-    setFeatureQuestions((prev) =>
-      prev.filter((question) => question.id !== questionId),
-    );
-    pushToast("질문이 삭제되었습니다.", "info");
-  };
-
-  const confirmQuestionByPm = (questionId: string) => {
-    const targetQuestion = featureQuestions.find(
-      (question) => question.id === questionId,
-    );
-    if (!targetQuestion || targetQuestion.closed) {
-      pushToast("기획 확인할 질문을 찾을 수 없습니다.", "warning");
-      return;
-    }
-
-    setFeatureQuestions((prev) =>
-      prev.map((question) =>
-        question.id === questionId && !question.closed
-          ? {
-              ...question,
-              pmConfirmed: true,
-            }
-          : question,
-      ),
-    );
-    pushToast("질문에 기획 확인을 등록했습니다.", "success");
-  };
-
-  const cancelQuestionConfirmByPm = (questionId: string) => {
-    const targetQuestion = featureQuestions.find(
-      (question) => question.id === questionId,
-    );
-    if (!targetQuestion || targetQuestion.closed) {
-      pushToast("취소할 기획 확인 상태를 찾을 수 없습니다.", "warning");
-      return;
-    }
-
-    setFeatureQuestions((prev) =>
-      prev.map((question) =>
-        question.id === questionId && !question.closed
-          ? {
-              ...question,
-              pmConfirmed: false,
-            }
-          : question,
-      ),
-    );
-    pushToast("질문의 기획 확인을 취소했습니다.", "info");
-  };
-
-  const confirmQuestionByDev = (questionId: string) => {
-    const targetQuestion = featureQuestions.find(
-      (question) => question.id === questionId,
-    );
-    if (
-      !targetQuestion ||
-      targetQuestion.closed ||
-      !targetQuestion.pmConfirmed
-    ) {
-      pushToast("개발 최종확인 가능한 질문이 아닙니다.", "warning");
-      return;
-    }
-
-    setFeatureQuestions((prev) =>
-      prev.map((question) => {
-        if (question.id !== questionId) return question;
-        if (question.closed || !question.pmConfirmed) return question;
-
-        return {
-          ...question,
-          devConfirmed: true,
-          closed: true,
-          closedAt: getNowTimeLabel(),
-        };
-      }),
-    );
-    pushToast("질문을 개발 최종확인으로 완료했습니다.", "success");
-  };
 
   const createPipelineProposal = ({
     action,
@@ -3164,20 +2763,17 @@ export default function App() {
     !shouldShowProjectLanding && (!isPm || pipelineLandingStep === "canvas");
 
   return (
-    <div className="h-screen flex flex-col bg-[#F5F5F5] text-gray-900 overflow-hidden">
-      {/* Dark header */}
+    <div className="flex h-screen flex-col overflow-hidden bg-[#F6F6F4] text-neutral-950">
+      {/* Header */}
       <AppHeader
         authUser={authUser}
         activeTab={activeTab}
-        activeTrack={activeTrack}
         projectName={projectName}
         onTabChange={setActiveTab}
-        onTrackChange={(track) => setPmSelectedTrack(track)}
         onLogout={handleLogout}
       />
-
       {/* Main content (below header) */}
-      <div className="flex-1 flex overflow-hidden pt-12">
+      <div className="flex flex-1 overflow-hidden pt-14">
         {/* Pipeline tab */}
         {activeTab === "pipeline" && (
           <div className="flex flex-1 flex-col overflow-hidden">
@@ -3455,181 +3051,16 @@ export default function App() {
           </div>
         )}
 
-        {/* Questions tab - PM */}
-        {activeTab === "questions" && authUser.role === "pm" && (
-          <div className="flex-1 overflow-y-auto p-6">
-            {/* PM sub-tabs */}
-            <div className="flex items-center gap-2 mb-5">
-              <button
-                onClick={() => setPmSubSection("ai")}
-                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
-                  pmSubSection === "ai"
-                    ? "bg-white text-gray-900 shadow-sm border border-[#E5E5E5]"
-                    : "text-[#9E9E9E] hover:text-gray-700"
-                }`}
-              >
-                기능 질문 작성
-              </button>
-              <button
-                onClick={() => setPmSubSection("review")}
-                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
-                  pmSubSection === "review"
-                    ? "bg-white text-gray-900 shadow-sm border border-[#E5E5E5]"
-                    : "text-[#9E9E9E] hover:text-gray-700"
-                }`}
-              >
-                질문 타임라인
-              </button>
-            </div>
-            <PMDashboard
-              section={pmSubSection}
-              features={features}
-              featureQuestions={featureQuestions}
-              onCreateFeatureQuestion={createFeatureQuestion}
-              onAddQuestionMessage={(questionId, content) =>
-                addQuestionMessage(questionId, "pm", content)
-              }
-              onUpdateQuestionMessage={(questionId, messageId, content) =>
-                updateQuestionMessage(questionId, messageId, "pm", content)
-              }
-              onDeleteQuestionMessage={(questionId, messageId) =>
-                deleteQuestionMessage(questionId, messageId, "pm")
-              }
-              onDeleteQuestion={deleteFeatureQuestion}
-              onConfirmQuestionByPm={confirmQuestionByPm}
-              onCancelQuestionConfirmByPm={cancelQuestionConfirmByPm}
-              onMoveSection={setPmSubSection}
-            />
+        {/* Questions tab */}
+        {activeTab === "questions" && (
+          <div className="flex-1 overflow-y-auto bg-[#F6F6F4] p-6">
+            <FeatureQuestionComingSoon />
           </div>
         )}
 
-        {/* Questions tab - Dev */}
-        {activeTab === "questions" && isDevUser && (
-          <div className="flex-1 overflow-y-auto p-6">
-            <DevDashboard
-              section="feedback"
-              projectId={activeProjectId}
-              projectName={projectName}
-              connectedGithubRepo={connectedGithubRepo}
-              featureQuestions={featureQuestions}
-              onAddQuestionMessage={(questionId, content) =>
-                addQuestionMessage(questionId, resolvedRole, content)
-              }
-              onUpdateQuestionMessage={(questionId, messageId, content) =>
-                updateQuestionMessage(
-                  questionId,
-                  messageId,
-                  resolvedRole,
-                  content,
-                )
-              }
-              onDeleteQuestionMessage={(questionId, messageId) =>
-                deleteQuestionMessage(questionId, messageId, resolvedRole)
-              }
-              onConfirmQuestionByDev={confirmQuestionByDev}
-              onSaveProjectName={saveProjectName}
-            />
-          </div>
-        )}
-
-        {/* Settings tab - PM */}
-        {activeTab === "settings" && authUser.role === "pm" && (
-          <div className="flex-1 overflow-y-auto p-6">
-            {/* Sub-tabs for PM settings */}
-            <div className="flex items-center gap-2 mb-5">
-              <button
-                onClick={() => setAdminSubSection("knowledge")}
-                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
-                  adminSubSection === "knowledge"
-                    ? "bg-white text-gray-900 shadow-sm border border-[#E5E5E5]"
-                    : "text-[#9E9E9E] hover:text-gray-700"
-                }`}
-              >
-                AI 지식 베이스
-              </button>
-              <button
-                onClick={() => setAdminSubSection("profile")}
-                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
-                  adminSubSection === "profile"
-                    ? "bg-white text-gray-900 shadow-sm border border-[#E5E5E5]"
-                    : "text-[#9E9E9E] hover:text-gray-700"
-                }`}
-              >
-                내 정보
-              </button>
-            </div>
-            {adminSubSection === "profile" ? (
-              <MyInfoSection
-                authUser={authUser}
-                activeTrackLabel={devTrackLabel[activeTrack]}
-                connectedGithubRepo={connectedGithubRepo}
-              />
-            ) : (
-              <AdminDashboard
-                knowledgeDocs={knowledgeDocs}
-                isGeneratingPipeline={isGeneratingPipeline}
-                onUploadKnowledgePdf={handleUploadKnowledgePdf}
-              />
-            )}
-          </div>
-        )}
-
-        {/* Settings tab - Dev */}
-        {activeTab === "settings" && isDevUser && (
-          <div className="flex-1 overflow-y-auto p-6">
-            <div className="flex items-center gap-2 mb-5">
-              <button
-                onClick={() => setDevSettingsSubSection("project")}
-                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
-                  devSettingsSubSection === "project"
-                    ? "bg-white text-gray-900 shadow-sm border border-[#E5E5E5]"
-                    : "text-[#9E9E9E] hover:text-gray-700"
-                }`}
-              >
-                프로젝트 설정
-              </button>
-              <button
-                onClick={() => setDevSettingsSubSection("profile")}
-                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
-                  devSettingsSubSection === "profile"
-                    ? "bg-white text-gray-900 shadow-sm border border-[#E5E5E5]"
-                    : "text-[#9E9E9E] hover:text-gray-700"
-                }`}
-              >
-                내 정보
-              </button>
-            </div>
-            {devSettingsSubSection === "project" ? (
-              <DevDashboard
-                section="project"
-                projectId={activeProjectId}
-                projectName={projectName}
-                connectedGithubRepo={connectedGithubRepo}
-                featureQuestions={featureQuestions}
-                onAddQuestionMessage={(questionId, content) =>
-                  addQuestionMessage(questionId, resolvedRole, content)
-                }
-                onUpdateQuestionMessage={(questionId, messageId, content) =>
-                  updateQuestionMessage(
-                    questionId,
-                    messageId,
-                    resolvedRole,
-                    content,
-                  )
-                }
-                onDeleteQuestionMessage={(questionId, messageId) =>
-                  deleteQuestionMessage(questionId, messageId, resolvedRole)
-                }
-                onConfirmQuestionByDev={confirmQuestionByDev}
-                onSaveProjectName={saveProjectName}
-              />
-            ) : (
-              <MyInfoSection
-                authUser={authUser}
-                activeTrackLabel={devTrackLabel[activeTrack]}
-                connectedGithubRepo={connectedGithubRepo}
-              />
-            )}
+        {activeTab === "settings" && (
+          <div className="flex-1 overflow-y-auto bg-[#F6F6F4] p-6">
+            <MyInfoSection authUser={authUser} />
           </div>
         )}
       </div>
@@ -3639,12 +3070,12 @@ export default function App() {
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className={`toast-fade w-full rounded-xl border border-gray-200 border-l-4 bg-white/96 px-3 py-2 text-sm font-medium shadow-lg backdrop-blur-sm ${
+            className={`toast-fade w-full rounded-2xl border bg-white/95 px-4 py-3 text-sm font-semibold shadow-lg backdrop-blur-sm ${
               toast.tone === "success"
-                ? "border-l-[#6366F1] text-gray-900"
+                ? "border-neutral-950 text-neutral-950"
                 : toast.tone === "warning"
-                  ? "border-l-gray-400 text-gray-700"
-                  : "border-l-gray-200 text-gray-600"
+                  ? "border-neutral-300 text-neutral-700"
+                  : "border-neutral-200 text-neutral-600"
             }`}
           >
             {toast.message}

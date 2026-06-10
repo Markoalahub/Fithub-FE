@@ -1,107 +1,88 @@
-import type { AuthUser, ConnectedGithubRepository } from "../types/index";
+import { BadgeCheck, UserCircle, WandSparkles } from "lucide-react";
+import type { AuthUser } from "../types/index";
 
 interface MyInfoSectionProps {
   authUser: AuthUser;
-  activeTrackLabel: string;
-  connectedGithubRepo: ConnectedGithubRepository | null;
 }
 
-const roleLabel: Record<string, string> = {
+const ROLE_LABELS: Record<string, string> = {
   pm: "기획자",
-  "dev-fe": "프론트엔드 개발자",
-  "dev-be": "백엔드 개발자",
+  dev: "개발자",
+  "dev-fe": "FE 개발자",
+  "dev-be": "BE 개발자",
 };
 
-const providerLabel: Record<string, string> = {
-  github: "GitHub",
-  kakao: "Kakao",
-};
-
-const maskToken = (token: string | null) => {
-  const normalized = (token ?? "").trim();
-  if (!normalized) return "없음";
-  if (normalized.length <= 24) return normalized;
-  return `${normalized.slice(0, 12)}...${normalized.slice(-8)}`;
-};
-
-const readLocal = (key: string) =>
-  typeof window === "undefined" ? null : window.localStorage.getItem(key);
-
-export default function MyInfoSection({
-  authUser,
-  activeTrackLabel,
-  connectedGithubRepo,
-}: MyInfoSectionProps) {
-  const accessToken =
-    readLocal("fithub.apiToken") ?? readLocal("fithub.authToken");
-  const refreshToken = readLocal("fithub.refreshToken");
+export default function MyInfoSection({ authUser }: MyInfoSectionProps) {
+  const remainingCount = authUser.aiPipelineGenerationRemainingCount ?? 0;
 
   return (
-    <section className="rounded-2xl border border-gray-200 bg-white p-8 min-h-[620px]">
-      <div className="pb-6 mb-6 border-b border-gray-100">
-        <h3 className="text-base font-semibold text-gray-900">내 정보</h3>
-        <p className="text-sm text-gray-500 mt-1">
-          현재 로그인 계정과 인증 정보를 확인할 수 있습니다.
+    <section className="mx-auto max-w-3xl">
+      <div className="mb-6">
+        <p className="text-xs font-bold uppercase tracking-[0.22em] text-neutral-400">
+          My Info
+        </p>
+        <h2 className="mt-2 text-3xl font-black tracking-tight text-neutral-950">
+          내 정보
+        </h2>
+        <p className="mt-2 text-sm text-neutral-500">
+          현재 로그인된 계정과 Free 베타 사용 정보를 확인할 수 있습니다.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <InfoItem label="이름" value={authUser.name || "-"} />
-        <InfoItem label="이메일" value={authUser.email || "-"} />
-        <InfoItem
-          label="역할"
-          value={roleLabel[authUser.role] ?? authUser.role}
-        />
-        <InfoItem
-          label="로그인 방식"
-          value={providerLabel[authUser.provider] ?? authUser.provider}
-        />
-        <InfoItem label="사용자 ID" value={authUser.id} />
-        <InfoItem label="백엔드 직군" value={authUser.jobRole || "-"} />
-        <InfoItem
-          label="AI 파이프라인 생성 가능 횟수"
-          value={
-            authUser.aiPipelineGenerationRemainingCount === undefined
-              ? "-"
-              : `${authUser.aiPipelineGenerationRemainingCount}회`
-          }
-        />
-        <InfoItem label="현재 작업 트랙" value={activeTrackLabel} />
-        <InfoItem
-          label="연결 저장소"
-          value={connectedGithubRepo?.fullName ?? "미연결"}
-        />
-        <InfoItem
-          label="저장소 연결 시간"
-          value={connectedGithubRepo?.connectedAt ?? "미연결"}
-        />
-      </div>
+      <div className="overflow-hidden rounded-[2rem] border border-neutral-200 bg-white p-3 shadow-sm">
+        <div className="rounded-[1.5rem] bg-neutral-950 p-6 text-white">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs font-semibold text-neutral-300">
+                <BadgeCheck className="h-3.5 w-3.5" />
+                Free Plan
+              </div>
 
-      <div className="mt-6 space-y-3">
-        <InfoItem label="Access Token" value={maskToken(accessToken)} mono />
-        <InfoItem label="Refresh Token" value={maskToken(refreshToken)} mono />
+              <h3 className="text-2xl font-black tracking-tight">
+                {authUser.name}
+              </h3>
+
+              <p className="mt-2 text-sm text-neutral-400">
+                Fithub Beta를 Free 플랜으로 이용 중입니다.
+              </p>
+            </div>
+
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-neutral-950">
+              <UserCircle className="h-7 w-7" />
+            </div>
+          </div>
+
+          <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="rounded-2xl bg-white/10 p-4 ring-1 ring-white/10">
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-neutral-400">
+                Role
+              </p>
+              <p className="mt-2 text-sm font-bold text-white">
+                {ROLE_LABELS[authUser.role] ?? authUser.role}
+              </p>
+            </div>
+
+            <div className="rounded-2xl bg-white/10 p-4 ring-1 ring-white/10">
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-neutral-400">
+                Name
+              </p>
+              <p className="mt-2 truncate text-sm font-bold text-white">
+                {authUser.name}
+              </p>
+            </div>
+
+            <div className="rounded-2xl bg-white/10 p-4 ring-1 ring-white/10">
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-neutral-400">
+                AI Token
+              </p>
+              <p className="mt-2 flex items-center gap-1 text-sm font-bold text-white">
+                <WandSparkles className="h-4 w-4" />
+                {remainingCount}회 남음
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
-  );
-}
-
-function InfoItem({
-  label,
-  value,
-  mono = false,
-}: {
-  label: string;
-  value: string;
-  mono?: boolean;
-}) {
-  return (
-    <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-      <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-1">
-        {label}
-      </p>
-      <p className={`text-sm text-gray-900 break-all ${mono ? "font-mono" : ""}`}>
-        {value}
-      </p>
-    </div>
   );
 }
