@@ -38,7 +38,7 @@ export type DemoProject = {
 
 export type PipelineCategoryOption = "FE" | "BE" | "ALL";
 
-interface PipelineLandingProps {
+interface ProjectWorkspaceSectionProps {
   step: "project-list" | "project-detail" | "create-project" | "pipeline-form";
   projects: DemoProject[];
   selectedProject: DemoProject | null;
@@ -184,7 +184,7 @@ function SmallMetric({ label, value }: { label: string; value: string }) {
   );
 }
 
-export default function PipelineLanding({
+export default function ProjectWorkspaceSection({
   step,
   projects,
   selectedProject,
@@ -217,7 +217,7 @@ export default function PipelineLanding({
   onCancelCreateProject,
   onBackToPipelines,
   onPushToast,
-}: PipelineLandingProps) {
+}: ProjectWorkspaceSectionProps) {
   const [nameInput, setNameInput] = useState("");
   const [descriptionInput, setDescriptionInput] = useState("");
   const [categoryOption, setCategoryOption] =

@@ -8,14 +8,14 @@ import PlannerNicknameOnboarding from "./pages/Auth/PlannerNicknameOnboarding";
 import AppHeader from "./components/layout/AppHeader";
 import MyInfoSection from "./components/MyInfoSection";
 import PipelineCanvas from "./components/PipelineCanvas";
-import PipelineLanding from "./components/PipelineLanding";
+import ProjectWorkspaceSection from "./components/ProjectWorkspaceSection.tsx";
 import ProjectInviteDialog from "./components/ProjectInviteDialog";
 import CustomDialog from "./components/CustomDialog";
 import FeatureQuestionComingSoon from "./components/FeatureQuestionComingSoon";
 import type {
   DemoProject,
   PipelineCategoryOption,
-} from "./components/PipelineLanding";
+} from "./components/ProjectWorkspaceSection.tsx";
 import {
   createProject,
   createPipelineGithubIssue,
@@ -678,7 +678,7 @@ type PipelineTrackMeta = {
   githubRepoUrl: string | null;
   category: PipelineGenerationCategory;
 };
-type PipelineLandingStep =
+type ProjectWorkspaceSectionStep =
   | "project-list"
   | "project-detail"
   | "create-project"
@@ -768,8 +768,8 @@ export default function App() {
     useState(false);
   const [projectInviteNickname, setProjectInviteNickname] = useState("");
   const [, setDemoPipelines] = useState<DemoPipeline[]>([]);
-  const [pipelineLandingStep, setPipelineLandingStep] =
-    useState<PipelineLandingStep>("project-list");
+  const [ProjectWorkspaceSectionStep, setProjectWorkspaceSectionStep] =
+    useState<ProjectWorkspaceSectionStep>("project-list");
   const [showCreateProjectDialog, setShowCreateProjectDialog] = useState(false);
   const [hasShownCreateProjectDialog, setHasShownCreateProjectDialog] =
     useState<boolean>(
@@ -1574,7 +1574,7 @@ export default function App() {
       setProjectPipelineSummaries([]);
       setProjectPipelineEmptyMessage(null);
       syncActiveProject(newProject);
-      setPipelineLandingStep("pipeline-form");
+      setProjectWorkspaceSectionStep("pipeline-form");
 
       pushToast(
         `프로젝트 "${normalizedProjectName}"을(를) 생성했습니다.`,
@@ -1627,7 +1627,7 @@ export default function App() {
         selectedDemoProject?.id === deletedProject.id
       ) {
         clearActiveProject();
-        setPipelineLandingStep("project-list");
+        setProjectWorkspaceSectionStep("project-list");
       }
 
       setProjectPendingDelete(null);
@@ -1655,7 +1655,7 @@ export default function App() {
     setProjectPipelineEmptyMessage(null);
     syncActiveProject(project);
     applyProjectPipelinesToState(project.id, []);
-    setPipelineLandingStep("project-detail");
+    setProjectWorkspaceSectionStep("project-detail");
     setActiveTab("pipeline");
     setIsFetchingProjectDetail(true);
 
@@ -1759,7 +1759,7 @@ export default function App() {
       if (isPm) {
         setPmSelectedTrack(track);
       }
-      setPipelineLandingStep("canvas");
+      setProjectWorkspaceSectionStep("canvas");
       setActiveTab("pipeline");
     } catch (error) {
       console.error(error);
@@ -2052,7 +2052,7 @@ export default function App() {
       setPmSelectedTrack(
         appliedCategories.includes("FE") ? "frontend" : "backend",
       );
-      setPipelineLandingStep("canvas");
+      setProjectWorkspaceSectionStep("canvas");
       setActiveTab("pipeline");
 
       if (totalFeatures === 0) {
@@ -2758,9 +2758,10 @@ export default function App() {
   const usesProjectLanding = isPm || isDevUser;
   const shouldShowProjectLanding =
     usesProjectLanding &&
-    (pipelineLandingStep !== "canvas" || !selectedDemoProject);
+    (ProjectWorkspaceSectionStep !== "canvas" || !selectedDemoProject);
   const shouldShowPipelineCanvas =
-    !shouldShowProjectLanding && (!isPm || pipelineLandingStep === "canvas");
+    !shouldShowProjectLanding &&
+    (!isPm || ProjectWorkspaceSectionStep === "canvas");
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-[#F6F6F4] text-neutral-950">
@@ -2787,11 +2788,11 @@ export default function App() {
               cancelLabel="나중에"
               onConfirm={() => {
                 setShowCreateProjectDialog(false);
-                setPipelineLandingStep("create-project");
+                setProjectWorkspaceSectionStep("create-project");
               }}
               onCancel={() => {
                 setShowCreateProjectDialog(false);
-                setPipelineLandingStep("project-list");
+                setProjectWorkspaceSectionStep("project-list");
               }}
             />
             <CustomDialog
@@ -2828,10 +2829,10 @@ export default function App() {
 
             {/* Project landing: PM and developers both choose a project first */}
             {shouldShowProjectLanding && (
-              <PipelineLanding
+              <ProjectWorkspaceSection
                 step={
-                  pipelineLandingStep !== "canvas"
-                    ? pipelineLandingStep
+                  ProjectWorkspaceSectionStep !== "canvas"
+                    ? ProjectWorkspaceSectionStep
                     : "project-list"
                 }
                 projects={demoProjects}
@@ -2865,10 +2866,10 @@ export default function App() {
                   void handleSelectProject(proj);
                 }}
                 onGoToCreateProject={() =>
-                  setPipelineLandingStep("create-project")
+                  setProjectWorkspaceSectionStep("create-project")
                 }
                 onGoToPipelineForm={() =>
-                  setPipelineLandingStep("pipeline-form")
+                  setProjectWorkspaceSectionStep("pipeline-form")
                 }
                 onCreateProject={(params) => handleCreateProjectByPm(params)}
                 onUpdateProject={(params) => handleUpdateProjectByPm(params)}
@@ -2881,11 +2882,11 @@ export default function App() {
                   handleGeneratePmPipeline(params)
                 }
                 onCancelCreateProject={() =>
-                  setPipelineLandingStep("project-list")
+                  setProjectWorkspaceSectionStep("project-list")
                 }
                 onBackToPipelines={() =>
-                  setPipelineLandingStep(
-                    pipelineLandingStep === "pipeline-form" &&
+                  setProjectWorkspaceSectionStep(
+                    ProjectWorkspaceSectionStep === "pipeline-form" &&
                       selectedDemoProject
                       ? "project-detail"
                       : "project-list",
@@ -2902,7 +2903,9 @@ export default function App() {
                 {usesProjectLanding && selectedDemoProject && (
                   <div className="flex shrink-0 items-center gap-2 border-b border-gray-100 bg-white px-5 py-2">
                     <button
-                      onClick={() => setPipelineLandingStep("project-list")}
+                      onClick={() =>
+                        setProjectWorkspaceSectionStep("project-list")
+                      }
                       className="flex items-center gap-1 text-xs text-gray-400 transition-colors hover:text-gray-700"
                     >
                       <ChevronLeft className="h-3 w-3" /> 프로젝트 목록
@@ -2922,7 +2925,7 @@ export default function App() {
                         </button>
                         <button
                           onClick={() =>
-                            setPipelineLandingStep("pipeline-form")
+                            setProjectWorkspaceSectionStep("pipeline-form")
                           }
                           className="text-xs text-indigo-500 transition-colors hover:text-indigo-700"
                         >
