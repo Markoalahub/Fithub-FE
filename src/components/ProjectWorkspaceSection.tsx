@@ -49,6 +49,7 @@ interface ProjectWorkspaceSectionProps {
   isFetchingProjectDetail: boolean;
   isFetchingProjectPipelines: boolean;
   isUpdatingProject: boolean;
+  isDemoMode: boolean;
   deletingProjectId: number | null;
   isGeneratingPipeline: boolean;
   generatingFileName: string | null;
@@ -74,7 +75,7 @@ interface ProjectWorkspaceSectionProps {
   onOpenProjectInvite: () => void;
   onViewPipeline: (category: PipelineGenerationCategory) => Promise<void>;
   onGeneratePipeline: (params: {
-    file: File;
+    file: File | null;
     category: PipelineCategoryOption;
     techStack: string;
     requirements: string;
@@ -195,6 +196,7 @@ export default function ProjectWorkspaceSection({
   isFetchingProjectDetail,
   isFetchingProjectPipelines,
   isUpdatingProject,
+  isDemoMode,
   deletingProjectId,
   isGeneratingPipeline,
   generatingFileName,
@@ -342,7 +344,7 @@ export default function ProjectWorkspaceSection({
       return;
     }
 
-    if (!pdfFile) {
+    if (!isDemoMode && !pdfFile) {
       onPushToast("PDF 파일을 선택해 주세요.", "warning");
       return;
     }
@@ -963,17 +965,20 @@ export default function ProjectWorkspaceSection({
                           파이프라인 생성
                         </h2>
                         <p className="mt-2 text-sm leading-6 text-neutral-500">
-                          PRD PDF와 기술 스택, 요구사항을 입력해 프로젝트
-                          파이프라인을 생성하세요.
+                          {isDemoMode
+                            ? "기술 스택과 요구사항만 입력해 목업 PRD 파이프라인을 생성하세요."
+                            : "PRD PDF와 기술 스택, 요구사항을 입력해 프로젝트 파이프라인을 생성하세요."}
                         </p>
                       </div>
 
                       <div>
                         <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.18em] text-neutral-400">
                           PRD / 기획서 PDF{" "}
-                          <span className="normal-case text-neutral-950">
-                            *
-                          </span>
+                          {!isDemoMode && (
+                            <span className="normal-case text-neutral-950">
+                              *
+                            </span>
+                          )}
                         </label>
                         <input
                           ref={fileInputRef}
@@ -1045,7 +1050,9 @@ export default function ProjectWorkspaceSection({
                                   PDF를 끌어다 놓거나 클릭하여 선택
                                 </p>
                                 <p className="mt-1 text-xs text-neutral-400">
-                                  PRD, 기획서 PDF 파일을 지원합니다.
+                                  {isDemoMode
+                                    ? "선택하지 않으면 목업 PRD로 생성합니다."
+                                    : "PRD, 기획서 PDF 파일을 지원합니다."}
                                 </p>
                               </div>
                             </div>
@@ -1135,7 +1142,7 @@ export default function ProjectWorkspaceSection({
                         onClick={() => void handleSubmitGeneratePipeline()}
                         disabled={
                           hasNoAiCalls ||
-                          !pdfFile ||
+                          (!isDemoMode && !pdfFile) ||
                           !techStackInput.trim() ||
                           !requirementsInput.trim()
                         }

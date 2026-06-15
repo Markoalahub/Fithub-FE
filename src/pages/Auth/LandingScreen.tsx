@@ -156,7 +156,7 @@ export default function LandingScreen({ onComplete }: LandingScreenProps) {
               작동 방식
             </a>
             <a href="#pricing" className="hover:text-neutral-950">
-              요금 안내
+              체험 범위
             </a>
             <a href="#preview" className="hover:text-neutral-950">
               미리보기
@@ -167,7 +167,7 @@ export default function LandingScreen({ onComplete }: LandingScreenProps) {
             onClick={onComplete}
             className="inline-flex items-center gap-2 rounded-full bg-neutral-950 px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-neutral-800"
           >
-            무료로 체험해보기
+            기획자로 체험하기
             <ArrowRight className="h-3.5 w-3.5" />
           </button>
         </div>
@@ -178,29 +178,29 @@ export default function LandingScreen({ onComplete }: LandingScreenProps) {
         <div className="auth-fade-up">
           <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-600 shadow-sm">
             <Sparkles className="h-3.5 w-3.5 text-neutral-900" />
-            Fithub Beta
+            Fithub Demo
           </div>
 
           <h1 className="max-w-3xl text-4xl font-black tracking-tight text-neutral-950 md:text-6xl">
-            PRD를 분석해
+            서버 없이 먼저
             <br />
-            FE/BE 파이프라인으로.
+            Fithub을 체험하세요.
           </h1>
 
           <p className="mt-6 max-w-xl text-base leading-8 text-neutral-600">
-            Fithub은 서비스 기획 PRD PDF를 분석해 Frontend와 Backend
-            파이프라인을 생성하고, 기획자와 개발자가 같은 작업 흐름을 실시간으로
-            공유할 수 있도록 돕는 베타 서비스입니다.
+            현재 서버 비용 절감을 위해 백엔드는 잠시 닫혀 있습니다. 그동안에도
+            Fithub의 랜딩, 기획자 화면, FE/BE 파이프라인, 협업 흐름을 목업
+            데이터로 체험할 수 있습니다.
           </p>
 
           <div className="mt-5 rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
             <p className="text-sm font-semibold text-neutral-900">
-              현재 Free 베타로 체험 가능
+              서버 재오픈 전 체험판
             </p>
             <p className="mt-1 text-sm leading-6 text-neutral-500">
-              지금은 Free 플랜으로 월 2회의 파이프라인 생성 테스트와 프로젝트
-              1개 생성을 제공합니다. PRD PDF 분석, Frontend/Backend 파이프라인
-              생성, 기획자·개발자 간 실시간 공유 흐름을 먼저 체험할 수 있습니다.
+              로그인 없이 기획자 계정으로 바로 시작합니다. 기본 프로젝트와
+              FE/BE 파이프라인이 준비되어 있고, 화면 안에서 PM/FE/BE 역할을
+              전환하며 협업 기능을 확인할 수 있습니다.
             </p>
           </div>
 
@@ -209,7 +209,7 @@ export default function LandingScreen({ onComplete }: LandingScreenProps) {
               onClick={onComplete}
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-neutral-950 px-6 py-3 text-sm font-bold text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-neutral-800"
             >
-              무료로 체험해보기
+              기획자로 체험하기
               <ArrowRight className="h-4 w-4" />
             </button>
 
@@ -252,7 +252,7 @@ export default function LandingScreen({ onComplete }: LandingScreenProps) {
                 />
                 <div>
                   <p className="text-xs font-semibold text-neutral-400">
-                    Beta Pipeline
+                    Demo Pipeline
                   </p>
                   <h2 className="mt-1 text-lg font-bold">
                     서비스 기획 PRD.pdf
@@ -279,7 +279,7 @@ export default function LandingScreen({ onComplete }: LandingScreenProps) {
                     역할 선택 UI 구성
                   </div>
                   <div className="rounded-lg bg-white/10 px-3 py-2 text-xs text-neutral-200">
-                    무료 체험 CTA 연결
+                    기획자 체험 CTA 연결
                   </div>
                 </div>
               </div>
@@ -396,16 +396,15 @@ export default function LandingScreen({ onComplete }: LandingScreenProps) {
           <div className="mb-10 flex flex-col justify-between gap-5 md:flex-row md:items-end">
             <div className="max-w-2xl">
               <p className="text-xs font-bold uppercase tracking-[0.22em] text-neutral-400">
-                Pricing Preview
+                Demo Scope
               </p>
               <h2 className="mt-3 text-3xl font-black tracking-tight text-neutral-950 md:text-4xl">
-                현재는 Free 베타로 먼저 체험할 수 있습니다.
+                현재는 서버 없이 핵심 흐름을 먼저 체험할 수 있습니다.
               </h2>
               <p className="mt-4 text-sm leading-7 text-neutral-600">
                 추후 업데이트에서는 사용량과 프로젝트 생성 수에 따라 Free, Plus,
-                Pro, Max 플랜을 제공할 예정입니다. 현재 베타에서는 Free 플랜
-                기준으로 월 2회의 파이프라인 생성 테스트와 프로젝트 1개 생성을
-                사용할 수 있습니다.
+                Pro, Max 플랜을 제공할 예정입니다. 지금 체험판에서는 서버 호출
+                없이 목업 프로젝트와 FE/BE 파이프라인을 확인할 수 있습니다.
               </p>
             </div>
 
@@ -528,20 +527,19 @@ export default function LandingScreen({ onComplete }: LandingScreenProps) {
             <h2 className="text-3xl font-black tracking-tight md:text-4xl">
               PRD 기반 파이프라인을
               <br />
-              지금 무료로 체험해보세요.
+              지금 서버 없이 체험해보세요.
             </h2>
 
             <p className="mt-4 max-w-xl text-sm leading-7 text-neutral-400">
-              현재는 Free 베타로 월 2회의 파이프라인 생성 테스트와 프로젝트 1개
-              생성을 제공합니다. PRD 기반 파이프라인 생성과 공유 흐름을 먼저
-              체험해보세요.
+              지금은 서버 없이도 PRD 기반 파이프라인 생성과 공유 흐름을 먼저
+              체험할 수 있습니다. 마지막 리뷰 탭에서 의견도 남겨주세요.
             </p>
 
             <button
               onClick={onComplete}
               className="mt-8 inline-flex items-center justify-center gap-2 rounded-xl bg-white px-6 py-3 text-sm font-bold text-neutral-950 transition-colors hover:bg-neutral-200"
             >
-              무료로 체험해보기
+              기획자로 체험하기
               <ArrowRight className="h-4 w-4" />
             </button>
           </div>

@@ -1,7 +1,7 @@
 export * from "./auth";
 
 export type CardPosition = { x: number; y: number };
-export type AppTab = "pipeline" | "questions" | "settings";
+export type AppTab = "pipeline" | "questions" | "settings" | "review";
 
 export type Task = {
   id: string;

@@ -14,10 +14,17 @@ import {
   type DeveloperRepositoryDetail,
   type PipelineGithubConnectionResponse,
 } from "../services/api";
+import {
+  DEMO_PROJECT,
+  DEMO_REPOSITORIES,
+  createDemoGithubConnection,
+} from "../demo/demoData";
 
 interface PipelineGithubConnectorProps {
   pipelineId: number | null;
+  projectId?: number | null;
   githubRepoUrl: string | null;
+  isDemoMode?: boolean;
   onConnected: (
     response: PipelineGithubConnectionResponse,
     repository?: DeveloperRepositoryDetail,
@@ -34,7 +41,9 @@ const formatDateLabel = (value: string | null | undefined) => {
 
 export default function PipelineGithubConnector({
   pipelineId,
+  projectId,
   githubRepoUrl,
+  isDemoMode = false,
   onConnected,
   onPushToast,
 }: PipelineGithubConnectorProps) {
@@ -56,6 +65,16 @@ export default function PipelineGithubConnector({
 
     setIsLoadingRepositories(true);
     setErrorMessage(null);
+
+    if (isDemoMode) {
+      window.setTimeout(() => {
+        setRepositories(DEMO_REPOSITORIES);
+        setSelectedRepository(null);
+        setIsLoadingRepositories(false);
+      }, 250);
+      return;
+    }
+
     try {
       const response = await fetchDeveloperRepositories();
       setRepositories(response.repositories);
@@ -87,6 +106,16 @@ export default function PipelineGithubConnector({
   const loadRepositoryDetail = async (repository: DeveloperRepository) => {
     setIsLoadingRepositoryDetail(true);
     setErrorMessage(null);
+
+    if (isDemoMode) {
+      const detail =
+        DEMO_REPOSITORIES.find((item) => item.repoId === repository.repoId) ??
+        null;
+      setSelectedRepository(detail);
+      setIsLoadingRepositoryDetail(false);
+      return detail;
+    }
+
     try {
       const detail = await fetchDeveloperRepositoryDetail(repository.repoId);
       setSelectedRepository(detail);
@@ -117,6 +146,23 @@ export default function PipelineGithubConnector({
           ? selectedRepository
           : await loadRepositoryDetail(repository);
       if (!detail) return;
+
+      if (isDemoMode) {
+        const category = pipelineId === 2201 ? "BE" : "FE";
+        const response = createDemoGithubConnection({
+          pipelineId,
+          projectId: projectId ?? DEMO_PROJECT.id,
+          category,
+          repoUrl: detail.repoUrl,
+        });
+        onConnected(response, detail);
+        onPushToast(
+          `${detail.repoUrlName} 데모 레포지토리를 연결했습니다.`,
+          "success",
+        );
+        setIsOpen(false);
+        return;
+      }
 
       const response = await connectPipelineGithubRepository(pipelineId, {
         githubRepoUrl: detail.repoUrl,

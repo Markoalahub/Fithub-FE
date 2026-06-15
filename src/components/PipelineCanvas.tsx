@@ -14,6 +14,8 @@ import {
   Github,
   GripVertical,
   Loader2,
+  MessageSquare,
+  Plus,
   RotateCcw,
   Sparkles,
   ZoomIn,
@@ -24,8 +26,10 @@ import type {
   DeveloperRepositoryDetail,
   PipelineGithubConnectionResponse,
 } from "../services/api";
+import FeatureCard from "./FeatureCard";
 import PipelineGithubConnector from "./PipelineGithubConnector";
 import PipelineArrows from "./PipelineArrows";
+import ProposalPanel from "./ProposalPanel";
 
 const CARD_WIDTH = 300;
 const CARD_HEIGHT_DEFAULT = 132;
@@ -37,6 +41,8 @@ const CANVAS_MIN_H = 2000;
 const ZOOM_MIN = 0.5;
 const ZOOM_MAX = 1.8;
 const ZOOM_STEP = 0.1;
+const PROPOSAL_PANEL_MIN_WIDTH = 320;
+const PROPOSAL_PANEL_MAX_WIDTH = 560;
 
 type DragState = {
   featureId: number;
@@ -72,6 +78,8 @@ interface PipelineCanvasProps {
   onToggleDevTaskCheck?: (featureId: number, taskId: string) => void;
   onPublishTaskToGithubIssue?: (featureId: number, taskId: string) => void;
   onCreateTaskProposal?: (featureId: number, proposedValue: string) => void;
+  isDemoMode?: boolean;
+  projectId?: number | null;
   pipelineId?: number | null;
   githubRepoUrl?: string | null;
   onPipelineGithubConnected?: (
@@ -112,13 +120,30 @@ export default function PipelineCanvas({
   features,
   cardPositions,
   onUpdateCardPosition,
+  pipelineProposals = [],
   isGeneratingPipeline,
   generatingFileName,
+  onEditFeature,
+  onDeleteFeature,
+  onAddTask,
+  onEditTask,
+  onDeleteTask,
+  onTogglePmTaskConfirm,
+  onAddNewFeature,
+  onToggleDevTaskCheck,
   onPublishTaskToGithubIssue,
+  onCreateTaskProposal,
+  isDemoMode = false,
+  projectId,
   pipelineId,
   githubRepoUrl,
   onPipelineGithubConnected,
   onPushToast,
+  onAddPipelineProposalMessage,
+  onUpdatePipelineProposalMessage,
+  onDeletePipelineProposalMessage,
+  onUpdatePipelineProposalValue,
+  onTogglePipelineProposalConfirm,
 }: PipelineCanvasProps) {
   const isPm = role === "pm";
   const isDev = !isPm;
@@ -126,6 +151,9 @@ export default function PipelineCanvas({
   const [expandedFeatureIds, setExpandedFeatureIds] = useState<number[]>([]);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
+  const [isProposalPanelOpen, setIsProposalPanelOpen] = useState(false);
+  const [proposalPanelWidth, setProposalPanelWidth] = useState(400);
+  const [newFeatureDraft, setNewFeatureDraft] = useState("");
   const [cardHeights, setCardHeights] = useState<Map<number, number>>(
     new Map(),
   );
@@ -308,6 +336,49 @@ export default function PipelineCanvas({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [changeZoom, resetView]);
 
+  const handleProposalPanelResizePointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      const startX = event.clientX;
+      const startWidth = proposalPanelWidth;
+
+      const handlePointerMove = (moveEvent: PointerEvent) => {
+        const nextWidth = startWidth - (moveEvent.clientX - startX);
+        setProposalPanelWidth(
+          Math.min(
+            PROPOSAL_PANEL_MAX_WIDTH,
+            Math.max(PROPOSAL_PANEL_MIN_WIDTH, nextWidth),
+          ),
+        );
+      };
+
+      const handlePointerUp = () => {
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+        window.removeEventListener("pointermove", handlePointerMove);
+        window.removeEventListener("pointerup", handlePointerUp);
+      };
+
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+      window.addEventListener("pointermove", handlePointerMove);
+      window.addEventListener("pointerup", handlePointerUp);
+    },
+    [proposalPanelWidth],
+  );
+
+  const submitNewFeatureProposal = useCallback(() => {
+    const trimmed = newFeatureDraft.trim();
+    if (!trimmed) {
+      onPushToast?.("추가할 기능명을 입력해 주세요.", "warning");
+      return;
+    }
+
+    onAddNewFeature?.(trimmed);
+    setNewFeatureDraft("");
+    setIsProposalPanelOpen(true);
+  }, [newFeatureDraft, onAddNewFeature, onPushToast]);
+
   const handleWheel = useCallback(
     (event: React.WheelEvent<HTMLDivElement>) => {
       if (!event.ctrlKey && !event.metaKey) return;
@@ -408,7 +479,9 @@ export default function PipelineCanvas({
       {isDev && onPipelineGithubConnected && onPushToast && (
         <PipelineGithubConnector
           pipelineId={pipelineId ?? null}
+          projectId={projectId ?? null}
           githubRepoUrl={githubRepoUrl ?? null}
+          isDemoMode={isDemoMode}
           onConnected={onPipelineGithubConnected}
           onPushToast={onPushToast}
         />
@@ -473,22 +546,56 @@ export default function PipelineCanvas({
                           width: CARD_WIDTH,
                         }}
                       >
-                        <ReadOnlyFeatureCard
-                          index={index}
+                        <FeatureCard
                           feature={feature}
+                          role={role}
                           isExpanded={isExpanded}
-                          isDragging={isDragging}
-                          isDev={isDev}
-                          canCreateGithubIssue={Boolean(
-                            isDev && onPublishTaskToGithubIssue,
-                          )}
-                          pipelineId={pipelineId ?? null}
                           onToggleExpand={() => toggleExpand(feature.id)}
                           onDragHandlePointerDown={(event) =>
                             handleDragHandlePointerDown(event, feature.id)
                           }
+                          isDragging={isDragging}
+                          onEditFeature={
+                            onEditFeature
+                              ? (featureId, newName) => {
+                                  onEditFeature(featureId, newName);
+                                  setIsProposalPanelOpen(true);
+                                }
+                              : undefined
+                          }
+                          onDeleteFeature={
+                            onDeleteFeature
+                              ? (featureId) => {
+                                  onDeleteFeature(featureId);
+                                  setIsProposalPanelOpen(true);
+                                }
+                              : undefined
+                          }
+                          onAddTask={onAddTask}
+                          onEditTask={
+                            onEditTask
+                              ? (featureId, taskId, newTitle) => {
+                                  onEditTask(featureId, taskId, newTitle);
+                                  setIsProposalPanelOpen(true);
+                                }
+                              : undefined
+                          }
+                          onDeleteTask={
+                            onDeleteTask
+                              ? (featureId, taskId) => {
+                                  onDeleteTask(featureId, taskId);
+                                  setIsProposalPanelOpen(true);
+                                }
+                              : undefined
+                          }
+                          onTogglePmTaskConfirm={onTogglePmTaskConfirm}
+                          onToggleDevTaskCheck={onToggleDevTaskCheck}
                           onPublishTaskToGithubIssue={
                             onPublishTaskToGithubIssue
+                          }
+                          onCreateTaskProposal={onCreateTaskProposal}
+                          onOpenProposalPanel={() =>
+                            setIsProposalPanelOpen(true)
                           }
                         />
                       </div>
@@ -560,12 +667,80 @@ export default function PipelineCanvas({
               </button>
             </div>
 
+            <div
+              data-ui-control="true"
+              className="pointer-events-auto absolute right-4 top-4 flex max-w-[calc(100%-2rem)] flex-wrap items-center justify-end gap-2"
+            >
+              {isPm && onAddNewFeature && (
+                <div className="flex items-center gap-1 rounded-2xl border border-neutral-200 bg-white/95 p-1.5 shadow-sm backdrop-blur">
+                  <input
+                    value={newFeatureDraft}
+                    maxLength={40}
+                    onChange={(event) => setNewFeatureDraft(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (
+                        event.key === "Enter" &&
+                        !event.nativeEvent.isComposing
+                      ) {
+                        event.preventDefault();
+                        submitNewFeatureProposal();
+                      }
+                    }}
+                    placeholder="신규 기능명"
+                    className="w-32 rounded-xl border border-neutral-200 px-3 py-2 text-xs font-semibold text-neutral-800 outline-none transition-colors placeholder:text-neutral-300 focus:border-neutral-950 sm:w-40"
+                  />
+                  <button
+                    type="button"
+                    onClick={submitNewFeatureProposal}
+                    className="inline-flex items-center gap-1 rounded-xl bg-neutral-950 px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-neutral-800"
+                    title="기능 추가 제안"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">제안</span>
+                  </button>
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setIsProposalPanelOpen((prev) => !prev)}
+                className="inline-flex items-center gap-1.5 rounded-2xl border border-neutral-200 bg-white/95 px-3 py-2 text-xs font-bold text-neutral-700 shadow-sm backdrop-blur transition-colors hover:bg-neutral-950 hover:text-white"
+              >
+                <MessageSquare className="h-3.5 w-3.5" />
+                협업 패널
+                {pipelineProposals.length > 0 && (
+                  <span className="rounded-full bg-neutral-950 px-1.5 py-0.5 text-[9px] text-white">
+                    {pipelineProposals.length}
+                  </span>
+                )}
+              </button>
+            </div>
+
             <div className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full border border-neutral-200 bg-white/95 px-4 py-2 text-xs font-semibold text-neutral-500 shadow-sm backdrop-blur">
               배경 드래그로 이동 · Ctrl + 휠 / Ctrl + + / Ctrl + - 로 확대·축소
               · Ctrl + 0 초기화
             </div>
           </div>
         </div>
+        {isProposalPanelOpen &&
+          onAddPipelineProposalMessage &&
+          onUpdatePipelineProposalMessage &&
+          onDeletePipelineProposalMessage &&
+          onUpdatePipelineProposalValue &&
+          onTogglePipelineProposalConfirm && (
+            <ProposalPanel
+              role={role}
+              pipelineProposals={pipelineProposals}
+              width={proposalPanelWidth}
+              onResizePointerDown={handleProposalPanelResizePointerDown}
+              onClose={() => setIsProposalPanelOpen(false)}
+              onAddMessage={onAddPipelineProposalMessage}
+              onUpdateMessage={onUpdatePipelineProposalMessage}
+              onDeleteMessage={onDeletePipelineProposalMessage}
+              onUpdateProposalValue={onUpdatePipelineProposalValue}
+              onToggleConfirm={onTogglePipelineProposalConfirm}
+            />
+          )}
       </div>
     </>
   );
