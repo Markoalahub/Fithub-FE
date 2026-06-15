@@ -185,6 +185,58 @@ function SmallMetric({ label, value }: { label: string; value: string }) {
   );
 }
 
+const DEMO_FLOW_STEPS = [
+  "직군 선택",
+  "프로젝트 생성",
+  "사용자 초대",
+  "PRD 목업 추가",
+  "파이프라인 조회",
+  "내 정보 보기",
+  "리뷰 쓰기",
+];
+
+function DemoFlowGuide({ currentStep }: { currentStep: number }) {
+  return (
+    <div className="mx-auto w-full max-w-6xl px-6 pt-6">
+      <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm">
+        <div className="flex items-center gap-2 overflow-x-auto px-3 py-3">
+          {DEMO_FLOW_STEPS.map((label, index) => {
+            const step = index + 1;
+            const active = step === currentStep;
+            const done = step < currentStep;
+
+            return (
+              <div
+                key={label}
+                className={`flex shrink-0 items-center gap-2 rounded-full px-3 py-2 text-xs font-black transition-colors ${
+                  active
+                    ? "bg-neutral-950 text-white"
+                    : done
+                      ? "bg-neutral-100 text-neutral-700"
+                      : "text-neutral-400"
+                }`}
+              >
+                <span
+                  className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] ${
+                    active
+                      ? "bg-white text-neutral-950"
+                      : done
+                        ? "bg-neutral-950 text-white"
+                        : "bg-neutral-100 text-neutral-400"
+                  }`}
+                >
+                  {step}
+                </span>
+                {label}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ProjectWorkspaceSection({
   step,
   projects,
@@ -244,6 +296,19 @@ export default function ProjectWorkspaceSection({
     projectDetail?.projectDescription?.trim() ||
     selectedProject?.description?.trim() ||
     "프로젝트 설명이 없습니다.";
+  const memberCount = projectDetail?.memberCount ?? 0;
+  const hasInvitedMember = memberCount > 1;
+  const hasGeneratedPipelines = pipelineSummaries.length > 0;
+  const demoFlowStep =
+    step === "pipeline-form"
+      ? 4
+      : step === "project-detail"
+        ? hasGeneratedPipelines
+          ? 5
+          : hasInvitedMember
+            ? 4
+            : 3
+        : 2;
 
   useEffect(() => {
     setEditNameInput(projectDetail?.projectName ?? selectedProject?.name ?? "");
@@ -374,11 +439,13 @@ export default function ProjectWorkspaceSection({
     ? "아직 프로젝트가 없습니다."
     : "참여 중인 프로젝트가 없습니다.";
   const emptyDescription = canCreateProject
-    ? "첫 프로젝트를 생성하면 PRD PDF 기반 파이프라인 생성을 시작할 수 있습니다."
+    ? "첫 프로젝트를 생성하면 PRD 목업 기반 파이프라인 생성을 시작할 수 있습니다."
     : "기획자가 초대한 프로젝트가 생기면 이곳에 표시됩니다.";
 
   return (
     <div className="flex h-full flex-col overflow-y-auto bg-[#F6F6F4] text-neutral-950">
+      {isDemoMode && <DemoFlowGuide currentStep={demoFlowStep} />}
+
       {step === "project-list" && (
         <div className="mx-auto flex min-h-full w-full max-w-6xl flex-col justify-center px-6 py-10">
           <PageTitle
@@ -680,8 +747,7 @@ export default function ProjectWorkspaceSection({
                                           `${pipeline.category} 파이프라인`}
                                       </p>
                                       <p className="mt-0.5 truncate text-xs text-neutral-400">
-                                        {pipeline.githubRepoUrl ??
-                                          "GitHub 저장소 미연결"}
+                                        목업 PRD 기반 고정 결과
                                       </p>
                                     </div>
                                   </div>
@@ -706,35 +772,58 @@ export default function ProjectWorkspaceSection({
                       )}
 
                       <div className="grid gap-2 pt-2">
-                        <button
-                          type="button"
-                          disabled={isFetchingProjectPipelines}
-                          onClick={() => void onViewPipeline("FE")}
-                          className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-bold text-neutral-950 transition-colors hover:bg-neutral-200 disabled:opacity-50"
-                        >
-                          <Layers className="h-4 w-4" />
-                          FE 파이프라인 보기
-                        </button>
+                        {isDemoMode && !hasInvitedMember ? (
+                          <button
+                            type="button"
+                            onClick={onOpenProjectInvite}
+                            className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-bold text-neutral-950 transition-colors hover:bg-neutral-200"
+                          >
+                            <UserPlus className="h-4 w-4" />
+                            사용자 초대하기
+                          </button>
+                        ) : hasGeneratedPipelines ? (
+                          <>
+                            <button
+                              type="button"
+                              disabled={isFetchingProjectPipelines}
+                              onClick={() => void onViewPipeline("FE")}
+                              className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-bold text-neutral-950 transition-colors hover:bg-neutral-200 disabled:opacity-50"
+                            >
+                              <Layers className="h-4 w-4" />
+                              FE 파이프라인 보기
+                            </button>
 
-                        <button
-                          type="button"
-                          disabled={isFetchingProjectPipelines}
-                          onClick={() => void onViewPipeline("BE")}
-                          className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/10 px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-white/15 disabled:opacity-50"
-                        >
-                          <Server className="h-4 w-4" />
-                          BE 파이프라인 보기
-                        </button>
+                            <button
+                              type="button"
+                              disabled={isFetchingProjectPipelines}
+                              onClick={() => void onViewPipeline("BE")}
+                              className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/10 px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-white/15 disabled:opacity-50"
+                            >
+                              <Server className="h-4 w-4" />
+                              BE 파이프라인 보기
+                            </button>
 
-                        <button
-                          type="button"
-                          disabled={hasNoAiCalls}
-                          onClick={onGoToPipelineForm}
-                          className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/10 px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
-                        >
-                          <GitBranch className="h-4 w-4" />
-                          파이프라인 생성하기
-                        </button>
+                            <button
+                              type="button"
+                              disabled={hasNoAiCalls}
+                              onClick={onGoToPipelineForm}
+                              className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/10 px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              <GitBranch className="h-4 w-4" />
+                              PRD 목업으로 다시 생성
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={hasNoAiCalls}
+                            onClick={onGoToPipelineForm}
+                            className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-bold text-neutral-950 transition-colors hover:bg-neutral-200 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            <GitBranch className="h-4 w-4" />
+                            PRD 목업으로 파이프라인 생성
+                          </button>
+                        )}
                       </div>
                     </div>
                   ) : developerPipelineCategory ? (
@@ -906,7 +995,7 @@ export default function ProjectWorkspaceSection({
                       PRD를 FE/BE 파이프라인으로 변환합니다.
                     </h2>
                     <p className="mt-4 text-sm leading-7 text-neutral-400">
-                      서비스 기획 PRD PDF를 업로드하면 선택한 범위에 따라
+                      체험판에서는 목업 PRD를 기준으로 선택한 범위의
                       Frontend와 Backend 작업 흐름을 생성합니다.
                     </p>
                   </div>
@@ -930,7 +1019,7 @@ export default function ProjectWorkspaceSection({
                         현재 베타 제공 기능
                       </p>
                       <p className="mt-2 text-xs leading-6 text-neutral-400">
-                        PDF 분석, FE/BE 파이프라인 생성, 프로젝트별 파이프라인
+                        PRD 목업, FE/BE 파이프라인 생성, 프로젝트별 파이프라인
                         조회 기능을 먼저 제공합니다.
                       </p>
                     </div>
@@ -973,91 +1062,109 @@ export default function ProjectWorkspaceSection({
 
                       <div>
                         <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.18em] text-neutral-400">
-                          PRD / 기획서 PDF{" "}
+                          {isDemoMode ? "PRD 목업" : "PRD / 기획서 PDF"}{" "}
                           {!isDemoMode && (
                             <span className="normal-case text-neutral-950">
                               *
                             </span>
                           )}
                         </label>
-                        <input
-                          ref={fileInputRef}
-                          type="file"
-                          accept=".pdf,application/pdf"
-                          onChange={handleFileInputChange}
-                          className="hidden"
-                        />
-                        <div
-                          ref={dropZoneRef}
-                          onDragEnter={handleDragEnter}
-                          onDragLeave={handleDragLeave}
-                          onDragOver={handleDragOver}
-                          onDrop={handleDrop}
-                          onClick={() => fileInputRef.current?.click()}
-                          className={`flex min-h-[160px] cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed p-6 text-center transition-all ${
-                            isDragOver
-                              ? "border-neutral-950 bg-white"
-                              : pdfFile
-                                ? "border-neutral-950 bg-white"
-                                : "border-neutral-200 bg-white hover:border-neutral-400 hover:bg-neutral-50"
-                          }`}
-                        >
-                          {pdfFile ? (
-                            <div className="flex w-full max-w-md items-center gap-3 rounded-2xl border border-neutral-200 bg-[#F6F6F4] p-4 text-left">
-                              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-neutral-950 text-white">
-                                <FileText
-                                  className="h-5 w-5"
-                                  strokeWidth={1.5}
-                                />
-                              </div>
-                              <div className="min-w-0 flex-1">
-                                <p className="truncate text-sm font-bold text-neutral-950">
-                                  {pdfFile.name}
-                                </p>
-                                <p className="mt-0.5 text-xs text-neutral-400">
-                                  PDF · {getFileSizeLabel(pdfFile)} · 클릭하여
-                                  다시 선택
-                                </p>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  setPdfFile(null);
-                                }}
-                                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-400 transition-colors hover:bg-neutral-950 hover:text-white"
-                              >
-                                <X className="h-3.5 w-3.5" />
-                              </button>
+                        {isDemoMode ? (
+                          <div className="flex min-h-[160px] flex-col items-center justify-center rounded-2xl border-2 border-dashed border-neutral-950 bg-white p-6 text-center">
+                            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-neutral-950 text-white">
+                              <FileText className="h-5 w-5" strokeWidth={1.5} />
                             </div>
-                          ) : isDragOver ? (
-                            <div className="flex flex-col items-center gap-3">
-                              <Upload
-                                className="h-8 w-8 text-neutral-950"
-                                strokeWidth={1.5}
-                              />
-                              <p className="text-sm font-bold text-neutral-950">
-                                여기에 PDF를 놓으세요.
-                              </p>
+                            <p className="mt-4 text-sm font-bold text-neutral-800">
+                              Fithub 체험 PRD 목업.pdf
+                            </p>
+                            <p className="mt-1 max-w-sm text-xs leading-5 text-neutral-400">
+                              업로드 없이 고정 목업 PRD를 사용합니다. 아래 입력값은
+                              체험 흐름 확인용이며 생성 결과는 고정됩니다.
+                            </p>
+                          </div>
+                        ) : (
+                          <>
+                            <input
+                              ref={fileInputRef}
+                              type="file"
+                              accept=".pdf,application/pdf"
+                              onChange={handleFileInputChange}
+                              className="hidden"
+                            />
+                            <div
+                              ref={dropZoneRef}
+                              onDragEnter={handleDragEnter}
+                              onDragLeave={handleDragLeave}
+                              onDragOver={handleDragOver}
+                              onDrop={handleDrop}
+                              onClick={() => fileInputRef.current?.click()}
+                              className={`flex min-h-[160px] cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed p-6 text-center transition-all ${
+                                isDragOver
+                                  ? "border-neutral-950 bg-white"
+                                  : pdfFile
+                                    ? "border-neutral-950 bg-white"
+                                    : "border-neutral-200 bg-white hover:border-neutral-400 hover:bg-neutral-50"
+                              }`}
+                            >
+                              {pdfFile ? (
+                                <div className="flex w-full max-w-md items-center gap-3 rounded-2xl border border-neutral-200 bg-[#F6F6F4] p-4 text-left">
+                                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-neutral-950 text-white">
+                                    <FileText
+                                      className="h-5 w-5"
+                                      strokeWidth={1.5}
+                                    />
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <p className="truncate text-sm font-bold text-neutral-950">
+                                      {pdfFile.name}
+                                    </p>
+                                    <p className="mt-0.5 text-xs text-neutral-400">
+                                      PDF · {getFileSizeLabel(pdfFile)} · 클릭하여
+                                      다시 선택
+                                    </p>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      setPdfFile(null);
+                                    }}
+                                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-400 transition-colors hover:bg-neutral-950 hover:text-white"
+                                  >
+                                    <X className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                              ) : isDragOver ? (
+                                <div className="flex flex-col items-center gap-3">
+                                  <Upload
+                                    className="h-8 w-8 text-neutral-950"
+                                    strokeWidth={1.5}
+                                  />
+                                  <p className="text-sm font-bold text-neutral-950">
+                                    여기에 PDF를 놓으세요.
+                                  </p>
+                                </div>
+                              ) : (
+                                <div className="flex flex-col items-center gap-3">
+                                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-neutral-950 text-white">
+                                    <Upload
+                                      className="h-5 w-5"
+                                      strokeWidth={1.5}
+                                    />
+                                  </div>
+                                  <div>
+                                    <p className="text-sm font-bold text-neutral-700">
+                                      PDF를 끌어다 놓거나 클릭하여 선택
+                                    </p>
+                                    <p className="mt-1 text-xs text-neutral-400">
+                                      PRD, 기획서 PDF 파일을 지원합니다.
+                                    </p>
+                                  </div>
+                                </div>
+                              )}
                             </div>
-                          ) : (
-                            <div className="flex flex-col items-center gap-3">
-                              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-neutral-950 text-white">
-                                <Upload className="h-5 w-5" strokeWidth={1.5} />
-                              </div>
-                              <div>
-                                <p className="text-sm font-bold text-neutral-700">
-                                  PDF를 끌어다 놓거나 클릭하여 선택
-                                </p>
-                                <p className="mt-1 text-xs text-neutral-400">
-                                  {isDemoMode
-                                    ? "선택하지 않으면 목업 PRD로 생성합니다."
-                                    : "PRD, 기획서 PDF 파일을 지원합니다."}
-                                </p>
-                              </div>
-                            </div>
-                          )}
-                        </div>
+                          </>
+                        )}
                       </div>
 
                       <div>

@@ -1,22 +1,15 @@
 export * from "./auth";
 
 export type CardPosition = { x: number; y: number };
-export type AppTab = "pipeline" | "questions" | "settings" | "review";
+export type AppTab = "pipeline" | "settings" | "review";
 
 export type Task = {
   id: string;
   title: string;
   description?: string;
-  completed?: boolean;
-  devChecked: boolean;
-  pmConfirmed: boolean;
   isAiSuggested?: boolean;
   pipelineId?: number;
   pipelineStepId?: number;
-  issueId?: number;
-  githubIssueNumber?: number;
-  githubIssueUrl?: string;
-  githubIssueState?: string;
 };
 
 export type Feature = {
@@ -25,84 +18,9 @@ export type Feature = {
   tasks: Task[];
 };
 
-export type PipelineProposalAction =
-  | "add-feature"
-  | "edit-feature"
-  | "delete-feature"
-  | "add-task"
-  | "edit-task"
-  | "delete-task";
-
-export type PipelineProposalStatus = "pending" | "approved" | "rejected";
-
-export type PipelineProposal = {
-  id: string;
-  action: PipelineProposalAction;
-  featureId?: number;
-  featureName?: string;
-  taskId?: string;
-  taskTitle?: string;
-  proposedValue?: string;
-  messages: QuestionMessage[];
-  createdAt: string;
-  status: PipelineProposalStatus;
-  pmConfirmed: boolean;
-  devConfirmed: boolean;
-  closedAt?: string;
-  resultMessage?: string;
-};
-
-export type TimelineMessage = {
-  id: string;
-  role: "pm" | "dev-fe" | "dev-be";
-  content: string;
-  aiTranslation: string;
-  time: string;
-};
-
-export type FeatureQuestion = {
-  id: string;
-  featureId: number;
-  featureName: string;
-  taskId: string | undefined;
-  taskTitle: string | undefined;
-  messages: QuestionMessage[];
-  createdAt: string;
-  pmConfirmed: boolean;
-  devConfirmed: boolean;
-  closed: boolean;
-  closedAt?: string;
-};
-
-export type QuestionMessage = {
-  id: string;
-  role: "pm" | "dev-fe" | "dev-be";
-  content: string;
-  createdAt: string;
-};
-
 export type KnowledgeDocument = {
   id: string;
   name: string;
   uploadedAt: string;
   sizeLabel: string;
-};
-
-export type ConnectedGithubRepository = {
-  repositoryId: number;
-  repoUrl: string;
-  owner: string;
-  name: string;
-  fullName: string;
-  htmlUrl: string;
-  description?: string;
-  language?: string;
-  defaultBranch: string;
-  stars: number;
-  forks: number;
-  openIssuesCount?: number;
-  projectId?: number;
-  category?: string;
-  githubRepoId?: number;
-  connectedAt: string;
 };

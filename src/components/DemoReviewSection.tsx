@@ -11,13 +11,13 @@ export default function DemoReviewSection() {
               <Star className="h-6 w-6" />
             </div>
             <p className="text-xs font-bold uppercase tracking-[0.22em] text-neutral-500">
-              Review
+              Step 07 · Review
             </p>
             <h2 className="mt-3 text-3xl font-black tracking-tight">
               어떠셨나요?
             </h2>
             <p className="mt-4 text-sm leading-7 text-neutral-400">
-              서버리스 체험판에서 확인한 파이프라인 생성, 역할 전환, 협업 흐름에
+              프로젝트 생성부터 PRD 목업 파이프라인 조회까지 체험한 흐름에
               대한 의견을 남겨주세요.
             </p>
           </div>

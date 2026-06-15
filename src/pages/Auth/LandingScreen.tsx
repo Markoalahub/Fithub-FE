@@ -45,43 +45,43 @@ type PricingPlan = {
 
 const workflowSteps: WorkflowStep[] = [
   {
-    eyebrow: "01 · PRD PDF",
-    title: "서비스 기획서 업로드",
+    eyebrow: "01 · Role",
+    title: "기획자 체험 시작",
     description:
-      "PM이 작성한 PRD PDF를 기반으로 서비스 요구사항과 기능 단위를 분석합니다.",
+      "기획자 직군을 선택하고 서버 없이 동작하는 PM 데모 세션으로 진입합니다.",
     Icon: FileText,
   },
   {
-    eyebrow: "02 · AI Pipeline",
-    title: "FE/BE 파이프라인 생성",
+    eyebrow: "02 · Project",
+    title: "프로젝트와 사용자 초대",
     description:
-      "AI가 요구사항을 Frontend와 Backend 작업 흐름으로 나누어 파이프라인을 생성합니다.",
-    Icon: GitBranch,
+      "프로젝트를 직접 만들고 목업 사용자를 초대한 뒤 파이프라인 생성 단계로 이동합니다.",
+    Icon: Users,
   },
   {
-    eyebrow: "03 · Shared Workspace",
-    title: "실시간 파이프라인 공유",
+    eyebrow: "03 · Mock PRD",
+    title: "FE/BE 파이프라인 조회",
     description:
-      "기획자와 개발자가 같은 파이프라인을 기준으로 기능과 세부작업을 함께 확인합니다.",
-    Icon: Users,
+      "PRD 목업과 입력한 요청 내용으로 고정 FE/BE 파이프라인 결과를 조회합니다.",
+    Icon: GitBranch,
   },
 ];
 
 const betaFeatures: BetaFeature[] = [
   {
-    title: "PRD PDF 기반 파이프라인 생성",
+    title: "PRD 목업 기반 파이프라인 생성",
     description:
-      "서비스 기획 문서를 업로드하면 AI가 핵심 기능과 구현 단위를 분석해 파이프라인으로 정리합니다.",
+      "PDF 업로드 없이 목업 PRD를 사용해 체험판 생성 흐름을 바로 확인할 수 있습니다.",
   },
   {
     title: "Frontend / Backend 작업 분리",
     description:
-      "하나의 PRD에서 프론트엔드와 백엔드 작업을 분리해 각 역할에 맞는 개발 흐름을 확인할 수 있습니다.",
+      "하나의 요청에서 프론트엔드와 백엔드 작업 결과를 분리해 조회할 수 있습니다.",
   },
   {
-    title: "기획자·개발자 간 실시간 공유",
+    title: "프로젝트 생성과 사용자 초대",
     description:
-      "생성된 파이프라인을 기준으로 PM과 개발자가 같은 화면에서 작업 내용을 확인하고 소통할 수 있습니다.",
+      "프로젝트 생성, 목업 사용자 초대, 파이프라인 생성까지 PM 체험 흐름을 순서대로 진행합니다.",
   },
 ];
 
@@ -189,8 +189,8 @@ export default function LandingScreen({ onComplete }: LandingScreenProps) {
 
           <p className="mt-6 max-w-xl text-base leading-8 text-neutral-600">
             현재 서버 비용 절감을 위해 백엔드는 잠시 닫혀 있습니다. 그동안에도
-            Fithub의 랜딩, 기획자 화면, FE/BE 파이프라인, 협업 흐름을 목업
-            데이터로 체험할 수 있습니다.
+            Fithub의 기획자 화면, 프로젝트 생성, 사용자 초대, FE/BE 파이프라인
+            조회를 목업 데이터로 체험할 수 있습니다.
           </p>
 
           <div className="mt-5 rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
@@ -198,9 +198,8 @@ export default function LandingScreen({ onComplete }: LandingScreenProps) {
               서버 재오픈 전 체험판
             </p>
             <p className="mt-1 text-sm leading-6 text-neutral-500">
-              로그인 없이 기획자 계정으로 바로 시작합니다. 기본 프로젝트와
-              FE/BE 파이프라인이 준비되어 있고, 화면 안에서 PM/FE/BE 역할을
-              전환하며 협업 기능을 확인할 수 있습니다.
+              로그인 없이 직군 선택 화면을 거쳐 기획자 계정으로 시작합니다.
+              프로젝트 생성부터 리뷰 작성까지 7단계 흐름으로 구성되어 있습니다.
             </p>
           </div>
 
@@ -224,15 +223,15 @@ export default function LandingScreen({ onComplete }: LandingScreenProps) {
           <div className="mt-10 grid max-w-lg grid-cols-3 gap-3">
             <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
               <p className="text-xl font-black text-neutral-950">PRD</p>
-              <p className="mt-1 text-xs text-neutral-500">PDF 분석</p>
+              <p className="mt-1 text-xs text-neutral-500">목업 사용</p>
             </div>
             <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
               <p className="text-xl font-black text-neutral-950">FE/BE</p>
               <p className="mt-1 text-xs text-neutral-500">작업 분리</p>
             </div>
             <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
-              <p className="text-xl font-black text-neutral-950">Share</p>
-              <p className="mt-1 text-xs text-neutral-500">실시간 공유</p>
+              <p className="text-xl font-black text-neutral-950">Review</p>
+              <p className="mt-1 text-xs text-neutral-500">의견 남기기</p>
             </div>
           </div>
         </div>
@@ -294,7 +293,7 @@ export default function LandingScreen({ onComplete }: LandingScreenProps) {
 
                 <div className="space-y-2">
                   <div className="rounded-lg bg-white/10 px-3 py-2 text-xs text-neutral-200">
-                    PRD PDF 업로드 처리
+                    PRD 목업 입력 처리
                   </div>
                   <div className="rounded-lg bg-white/10 px-3 py-2 text-xs text-neutral-200">
                     FE/BE 파이프라인 응답 구조화
@@ -305,11 +304,11 @@ export default function LandingScreen({ onComplete }: LandingScreenProps) {
               <div className="rounded-2xl bg-white p-4 text-neutral-950">
                 <div className="mb-2 flex items-center gap-2">
                   <MessageSquare className="h-4 w-4" />
-                  <p className="text-sm font-bold">실시간 공유</p>
+                  <p className="text-sm font-bold">리뷰 수집</p>
                 </div>
                 <p className="text-xs leading-relaxed text-neutral-500">
-                  기획자는 생성된 파이프라인을 확인하고, 개발자는 같은 작업
-                  단위를 기준으로 구현 범위를 검토합니다.
+                  체험을 마친 뒤 내 정보와 리뷰 탭으로 이동해 사용 의견을
+                  남길 수 있습니다.
                 </p>
               </div>
             </div>
@@ -510,18 +509,18 @@ export default function LandingScreen({ onComplete }: LandingScreenProps) {
               Current Beta Scope
             </p>
             <h2 className="mt-3 text-2xl font-black tracking-tight text-neutral-950">
-              베타에서는 파이프라인 생성과 공유에 집중합니다.
+              베타에서는 PM 체험 플로우에 집중합니다.
             </h2>
             <p className="mt-4 text-sm leading-7 text-neutral-600">
               현재 버전은 전체 프로젝트 관리 도구가 아니라, PRD 기반 파이프라인
-              생성과 기획자·개발자 간 공유 흐름을 검증하기 위한 베타입니다.
+              생성과 기획자 화면의 핵심 흐름을 검증하기 위한 베타입니다.
             </p>
           </div>
 
           <div className="rounded-[2rem] bg-neutral-950 p-8 text-white">
             <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs font-semibold text-neutral-300">
               <Users className="h-3.5 w-3.5" />
-              기획자와 개발자를 같은 흐름으로 연결
+              서버 없이도 기획자 흐름 먼저 체험
             </div>
 
             <h2 className="text-3xl font-black tracking-tight md:text-4xl">

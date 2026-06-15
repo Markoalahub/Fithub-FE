@@ -1,10 +1,7 @@
 import type { DemoProject } from "../components/ProjectWorkspaceSection";
 import type {
-  DeveloperRepositoryDetail,
   GenerateProjectPipelineResponse,
   PipelineGenerationCategory,
-  PipelineGithubConnectionResponse,
-  PipelineGithubIssueResponse,
   ProjectDetail,
   ProjectPipelineSummary,
 } from "../services/api";
@@ -48,7 +45,7 @@ export const DEMO_PROJECT: DemoProject = {
   id: 1001,
   name: "Fithub 체험 프로젝트",
   description:
-    "서버 재오픈 전에도 PRD 기반 파이프라인 생성과 PM/개발자 협업 흐름을 둘러볼 수 있는 목업 프로젝트입니다.",
+    "서버 재오픈 전에도 프로젝트 생성, 사용자 초대, PRD 목업 파이프라인 생성을 둘러볼 수 있는 목업 프로젝트입니다.",
   creatorId: 1,
   creatorNickname: DEMO_USERS.pm.name,
   createdAt: "2026-06-15T09:00:00.000Z",
@@ -59,12 +56,8 @@ export const DEMO_PROJECT_DETAIL: ProjectDetail = {
   projectId: DEMO_PROJECT.id,
   projectName: DEMO_PROJECT.name,
   projectDescription: DEMO_PROJECT.description,
-  members: [
-    { userId: 1, nickname: DEMO_USERS.pm.name },
-    { userId: 2, nickname: DEMO_USERS["dev-fe"].name },
-    { userId: 3, nickname: DEMO_USERS["dev-be"].name },
-  ],
-  memberCount: 3,
+  members: [{ userId: 1, nickname: DEMO_USERS.pm.name }],
+  memberCount: 1,
 };
 
 const DEMO_FE_PIPELINE: GenerateProjectPipelineResponse = {
@@ -77,42 +70,42 @@ const DEMO_FE_PIPELINE: GenerateProjectPipelineResponse = {
   feats: [
     {
       featId: 1,
-      featTitle: "체험판 랜딩 및 진입",
+      featTitle: "기획자 체험 진입",
       priority: 1,
       featDetails: [
-        "서버 재오픈 전 체험판 안내 문구와 CTA 구성",
-        "기획자로 체험하기 클릭 시 PM 데모 세션 생성",
-        "모바일/데스크톱에서 첫 화면 CTA가 잘 보이도록 반응형 조정",
+        "랜딩에서 서버 재오픈 전 체험판 안내와 CTA 표시",
+        "직군 선택 화면에서 기획자 카드만 활성화",
+        "기획자 선택 시 PM 데모 세션을 생성하고 프로젝트 생성 단계로 이동",
       ],
     },
     {
       featId: 2,
-      featTitle: "프로젝트 워크스페이스",
+      featTitle: "프로젝트 생성과 사용자 초대",
       priority: 2,
       featDetails: [
-        "기본 목업 프로젝트 목록과 상세 화면 표시",
-        "프로젝트 수정/삭제/초대 액션을 로컬 상태로 처리",
-        "FE/BE 파이프라인 요약과 상세 진입 버튼 제공",
+        "사용자가 입력한 프로젝트명과 설명으로 로컬 프로젝트 생성",
+        "닉네임 조회 후 목업 사용자를 프로젝트 멤버로 추가",
+        "초대 완료 후 PRD 목업 파이프라인 생성 단계로 이동",
       ],
     },
     {
       featId: 3,
-      featTitle: "파이프라인 캔버스",
+      featTitle: "PRD 목업 파이프라인 생성",
       priority: 3,
       featDetails: [
-        "기능 카드 드래그, 확대/축소, 접기/펼치기 지원",
-        "PM/개발자 역할에 따라 제안, 체크, 확인 액션 노출",
-        "제안 채팅 패널에서 최종안 확인 및 반영 흐름 제공",
+        "PDF 업로드 없이 고정 목업 PRD 카드 표시",
+        "프론트엔드, 백엔드, ALL 생성 범위 선택 제공",
+        "기술 스택과 요청 내용을 입력받되 생성 결과는 고정 목업으로 반환",
       ],
     },
     {
       featId: 4,
-      featTitle: "리뷰 수집 화면",
+      featTitle: "파이프라인 조회와 리뷰",
       priority: 4,
       featDetails: [
-        "마지막 탭에 어떠셨나요? 리뷰 안내 화면 추가",
-        "리뷰 남기기 버튼을 Google Form 링크로 연결",
-        "체험 완료 후 다음 개선 포인트를 자연스럽게 남길 수 있게 구성",
+        "프로젝트 상세에서 FE/BE 파이프라인 조회 버튼 제공",
+        "읽기 전용 카드 보드에서 기능과 세부 작업 표시",
+        "내 정보 확인 후 리뷰 탭의 Google Form으로 이동",
       ],
     },
   ],
@@ -123,37 +116,37 @@ const DEMO_BE_PIPELINE: GenerateProjectPipelineResponse = {
   projectId: DEMO_PROJECT.id,
   category: "BE",
   version: 1,
-  techStack: "Spring Boot, PostgreSQL, GitHub API",
+  techStack: "Spring Boot, PostgreSQL",
   githubRepoUrl: null,
   feats: [
     {
       featId: 1,
-      featTitle: "데모 세션 API 대체",
+      featTitle: "서버리스 데모 세션",
       priority: 1,
       featDetails: [
-        "로그인 토큰 없이 데모 사용자 정보를 로컬에서 구성",
-        "프로젝트 목록/상세 조회 응답을 목업 데이터로 대체",
+        "로그인 토큰 없이 PM 데모 사용자 정보를 로컬에서 구성",
+        "백엔드 환경변수 없이도 앱 시작이 실패하지 않도록 데모 모드 유지",
         "서버 오류와 인증 만료 토스트가 데모 중 노출되지 않도록 분기",
       ],
     },
     {
       featId: 2,
-      featTitle: "파이프라인 생성 목업",
+      featTitle: "프로젝트와 초대 상태",
       priority: 2,
       featDetails: [
-        "PDF 업로드 없이 목업 PRD 분석 결과 반환",
-        "기술 스택과 요구사항 입력값을 생성 결과 메타데이터에 반영",
-        "FE/BE/ALL 선택에 맞춰 카테고리별 파이프라인 응답 생성",
+        "프로젝트 생성, 상세 조회, 멤버 추가를 로컬 상태로 처리",
+        "닉네임 검색 결과를 목업 사용자 응답으로 반환",
+        "초대 완료 후 파이프라인 생성 화면으로 이동할 상태를 갱신",
       ],
     },
     {
       featId: 3,
-      featTitle: "GitHub 연동 목업",
+      featTitle: "고정 파이프라인 응답",
       priority: 3,
       featDetails: [
-        "개발자 화면에서 연결 가능한 데모 저장소 목록 제공",
-        "저장소 연결 결과를 파이프라인 메타데이터에 저장",
-        "세부 작업별 GitHub Issue 생성 응답을 가짜 URL로 반환",
+        "PRD 파일 없이 FE/BE 목업 파이프라인 응답 반환",
+        "ALL 선택 시 프론트엔드와 백엔드 응답을 동시에 저장",
+        "요청 내용 입력값은 결과 변경 없이 체험 진행용으로만 사용",
       ],
     },
     {
@@ -176,39 +169,6 @@ export const DEMO_PIPELINES: Record<
   FE: DEMO_FE_PIPELINE,
   BE: DEMO_BE_PIPELINE,
 };
-
-export const DEMO_REPOSITORIES: DeveloperRepositoryDetail[] = [
-  {
-    repoId: 3101,
-    repoName: "fithub-demo-fe",
-    repoUrlName: "fithub-demo/fithub-demo-fe",
-    description: "Fithub 서버리스 체험판 프론트엔드 데모 저장소",
-    repoUrl: "https://github.com/fithub-demo/fithub-demo-fe",
-    isPrivate: false,
-    language: "TypeScript",
-    starCount: 42,
-    openIssuesCount: 3,
-    defaultBranch: "main",
-    updatedAt: "2026-06-15T09:00:00.000Z",
-    pushedAt: "2026-06-15T09:00:00.000Z",
-    cloneUrl: "https://github.com/fithub-demo/fithub-demo-fe.git",
-  },
-  {
-    repoId: 3102,
-    repoName: "fithub-demo-be",
-    repoUrlName: "fithub-demo/fithub-demo-be",
-    description: "Fithub 파이프라인 생성 API 목업 저장소",
-    repoUrl: "https://github.com/fithub-demo/fithub-demo-be",
-    isPrivate: false,
-    language: "Java",
-    starCount: 28,
-    openIssuesCount: 5,
-    defaultBranch: "main",
-    updatedAt: "2026-06-15T09:00:00.000Z",
-    pushedAt: "2026-06-15T09:00:00.000Z",
-    cloneUrl: "https://github.com/fithub-demo/fithub-demo-be.git",
-  },
-];
 
 export const cloneDemoUser = (role: UserRole): AuthUser => {
   const resolvedRole = role === "dev" ? "dev-fe" : role;
@@ -243,20 +203,16 @@ export const cloneDemoPipeline = ({
   requirements?: string;
 }): GenerateProjectPipelineResponse => {
   const source = DEMO_PIPELINES[category];
-  const normalizedTechStack = techStack?.trim();
-  const normalizedRequirements = requirements?.trim();
-  const extraDetail = normalizedRequirements
-    ? [`체험 입력 요구사항 반영: ${normalizedRequirements.slice(0, 90)}`]
-    : [];
+  void techStack;
+  void requirements;
 
   return {
     ...source,
     projectId,
-    techStack: normalizedTechStack || source.techStack,
-    feats: source.feats.map((feat, index) => ({
+    techStack: source.techStack,
+    feats: source.feats.map((feat) => ({
       ...feat,
-      featDetails:
-        index === 0 ? [...extraDetail, ...feat.featDetails] : [...feat.featDetails],
+      featDetails: [...feat.featDetails],
     })),
   };
 };
@@ -274,9 +230,6 @@ export const mapDemoPipelineToFeatures = (
         tasks: feat.featDetails.map((detail, detailIndex) => ({
           id: `${featureId}-${detailIndex + 1}`,
           title: detail,
-          completed: false,
-          devChecked: detailIndex === 0 && index < 2,
-          pmConfirmed: false,
           isAiSuggested: true,
           pipelineId: pipeline.pipeId,
           pipelineStepId: pipeline.pipeId * 100 + featureId * 10 + detailIndex + 1,
@@ -298,44 +251,3 @@ export const createDemoPipelineSummaries = (
       githubRepoUrl: pipeline.githubRepoUrl,
     };
   });
-
-export const createDemoGithubConnection = ({
-  pipelineId,
-  projectId,
-  category,
-  repoUrl,
-}: {
-  pipelineId: number;
-  projectId: number;
-  category: PipelineGenerationCategory;
-  repoUrl: string;
-}): PipelineGithubConnectionResponse => ({
-  pipeId: pipelineId,
-  projectId,
-  category,
-  version: 1,
-  techStack: DEMO_PIPELINES[category].techStack,
-  githubRepoUrl: repoUrl,
-});
-
-export const createDemoGithubIssue = ({
-  pipelineId,
-  title,
-  body,
-}: {
-  pipelineId: number;
-  title: string;
-  body: string;
-}): PipelineGithubIssueResponse => {
-  const githubIssueNumber =
-    100 + ((pipelineId + title.length + body.length) % 80);
-  return {
-    repoId: 3100 + (pipelineId % 10),
-    pipelineId,
-    githubIssueNumber,
-    githubIssueUrl: `https://github.com/fithub-demo/demo/issues/${githubIssueNumber}`,
-    title,
-    body,
-    state: "open",
-  };
-};

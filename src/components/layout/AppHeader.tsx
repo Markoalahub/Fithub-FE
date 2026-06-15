@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Activity, GitPullRequest, LogOut, Star, UserCircle } from "lucide-react";
+import { Activity, LogOut, Star, UserCircle } from "lucide-react";
 import type { AppTab } from "../../types/index";
 import type { AuthUser } from "../../types/auth";
 import fithubServiceIcon from "../../assets/fithub-service-icon.png";
@@ -8,9 +8,7 @@ interface AppHeaderProps {
   authUser: AuthUser;
   activeTab: AppTab;
   projectName: string;
-  isDemoMode?: boolean;
   onTabChange: (tab: AppTab) => void;
-  onDemoRoleChange?: (role: "pm" | "dev-fe" | "dev-be") => void;
   onLogout: () => void;
 }
 
@@ -28,11 +26,6 @@ const TABS: Array<{ id: AppTab; label: string; icon: ReactNode }> = [
     icon: <Activity className="h-3.5 w-3.5" />,
   },
   {
-    id: "questions",
-    label: "기능 질문",
-    icon: <GitPullRequest className="h-3.5 w-3.5" />,
-  },
-  {
     id: "settings",
     label: "내 정보",
     icon: <UserCircle className="h-3.5 w-3.5" />,
@@ -44,28 +37,14 @@ const TABS: Array<{ id: AppTab; label: string; icon: ReactNode }> = [
   },
 ];
 
-const DEMO_ROLE_OPTIONS: Array<{ role: "pm" | "dev-fe" | "dev-be"; label: string }> = [
-  { role: "pm", label: "PM" },
-  { role: "dev-fe", label: "FE" },
-  { role: "dev-be", label: "BE" },
-];
-
 export default function AppHeader({
   authUser,
   activeTab,
   projectName,
-  isDemoMode = false,
   onTabChange,
-  onDemoRoleChange,
   onLogout,
 }: AppHeaderProps) {
   const remainingCount = authUser.aiPipelineGenerationRemainingCount ?? 0;
-  const currentDemoRole: "pm" | "dev-fe" | "dev-be" =
-    authUser.role === "dev-be"
-      ? "dev-be"
-      : authUser.role === "dev" || authUser.role === "dev-fe"
-        ? "dev-fe"
-        : "pm";
 
   return (
     <header className="fixed left-0 right-0 top-0 z-50 h-14 border-b border-neutral-200 bg-[#F6F6F4]/90 px-4 backdrop-blur-xl">
@@ -115,25 +94,6 @@ export default function AppHeader({
         </nav>
 
         <div className="ml-auto flex shrink-0 items-center gap-2">
-          {isDemoMode && onDemoRoleChange && (
-            <div className="hidden items-center rounded-full border border-neutral-200 bg-white p-0.5 shadow-sm lg:flex">
-              {DEMO_ROLE_OPTIONS.map((option) => (
-                <button
-                  key={option.role}
-                  type="button"
-                  onClick={() => onDemoRoleChange(option.role)}
-                  className={`rounded-full px-2.5 py-1 text-[10px] font-black transition-colors ${
-                    currentDemoRole === option.role
-                      ? "bg-neutral-950 text-white"
-                      : "text-neutral-400 hover:bg-neutral-100 hover:text-neutral-800"
-                  }`}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          )}
-
           <span className="hidden rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-[10px] font-bold text-neutral-600 shadow-sm sm:inline-flex">
             {ROLE_LABELS[authUser.role] ?? authUser.role}
           </span>
