@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Activity, GitPullRequest, LogOut, UserCircle } from "lucide-react";
+import { Activity, LogOut, Star, UserCircle } from "lucide-react";
 import type { AppTab } from "../../types/index";
 import type { AuthUser } from "../../types/auth";
 import fithubServiceIcon from "../../assets/fithub-service-icon.png";
@@ -26,14 +26,14 @@ const TABS: Array<{ id: AppTab; label: string; icon: ReactNode }> = [
     icon: <Activity className="h-3.5 w-3.5" />,
   },
   {
-    id: "questions",
-    label: "기능 질문",
-    icon: <GitPullRequest className="h-3.5 w-3.5" />,
-  },
-  {
     id: "settings",
     label: "내 정보",
     icon: <UserCircle className="h-3.5 w-3.5" />,
+  },
+  {
+    id: "review",
+    label: "리뷰",
+    icon: <Star className="h-3.5 w-3.5" />,
   },
 ];
 
