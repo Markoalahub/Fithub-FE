@@ -2,7 +2,6 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
@@ -11,7 +10,6 @@ import {
   ChevronRight,
   CircleHelp,
   FileText,
-  Github,
   GripVertical,
   Loader2,
   RotateCcw,
@@ -19,13 +17,7 @@ import {
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
-import type { CardPosition, Feature, PipelineProposal } from "../types/index";
-import type {
-  DeveloperRepositoryDetail,
-  PipelineGithubConnectionResponse,
-} from "../services/api";
-import PipelineGithubConnector from "./PipelineGithubConnector";
-import PipelineArrows from "./PipelineArrows";
+import type { CardPosition, Feature } from "../types/index";
 
 const CARD_WIDTH = 300;
 const CARD_HEIGHT_DEFAULT = 132;
@@ -54,57 +46,13 @@ interface PipelineCanvasProps {
   features: Feature[];
   cardPositions: Map<number, CardPosition>;
   onUpdateCardPosition: (featureId: number, pos: CardPosition) => void;
-  pipelineProposals?: PipelineProposal[];
   isGeneratingPipeline: boolean;
   generatingFileName: string | null;
-
-  // Deprecated PM collaboration props. Kept only for compatibility with App.tsx.
-  onEditFeature?: (featureId: number, newName: string) => void;
-  onDeleteFeature?: (featureId: number) => void;
-  onAddTask?: (featureId: number, taskTitle: string) => void;
-  onEditTask?: (featureId: number, taskId: string, newTitle: string) => void;
-  onDeleteTask?: (featureId: number, taskId: string) => void;
-  onTogglePmTaskConfirm?: (featureId: number, taskId: string) => void;
-  onAddNewFeature?: (featureName: string) => void;
-  onUploadPrd?: (file: File) => void;
-
-  // Dev integration. GitHub Issue creation is kept.
-  onToggleDevTaskCheck?: (featureId: number, taskId: string) => void;
-  onPublishTaskToGithubIssue?: (featureId: number, taskId: string) => void;
-  onCreateTaskProposal?: (featureId: number, proposedValue: string) => void;
-  pipelineId?: number | null;
-  githubRepoUrl?: string | null;
-  onPipelineGithubConnected?: (
-    response: PipelineGithubConnectionResponse,
-    repository?: DeveloperRepositoryDetail,
-  ) => void;
-  onPushToast?: (message: string, tone: "success" | "info" | "warning") => void;
-
-  // Deprecated proposal panel props. Kept optional so existing JSX props do not break.
-  onAddPipelineProposalMessage?: (proposalId: string, content: string) => void;
-  onUpdatePipelineProposalMessage?: (
-    proposalId: string,
-    messageId: string,
-    content: string,
-  ) => void;
-  onDeletePipelineProposalMessage?: (
-    proposalId: string,
-    messageId: string,
-  ) => void;
-  onUpdatePipelineProposalValue?: (
-    proposalId: string,
-    proposedValue: string,
-  ) => void;
-  onTogglePipelineProposalConfirm?: (proposalId: string) => void;
 }
 
 function clampZoom(value: number) {
   const rounded = Math.round(value * 100) / 100;
   return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, rounded));
-}
-
-function getTaskIssueUrl(task: Feature["tasks"][number]) {
-  return task.githubIssueUrl ?? "";
 }
 
 export default function PipelineCanvas({
@@ -114,14 +62,8 @@ export default function PipelineCanvas({
   onUpdateCardPosition,
   isGeneratingPipeline,
   generatingFileName,
-  onPublishTaskToGithubIssue,
-  pipelineId,
-  githubRepoUrl,
-  onPipelineGithubConnected,
-  onPushToast,
 }: PipelineCanvasProps) {
   const isPm = role === "pm";
-  const isDev = !isPm;
 
   const [expandedFeatureIds, setExpandedFeatureIds] = useState<number[]>([]);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -197,18 +139,6 @@ export default function PipelineCanvas({
     features.map((feature) => feature.id).join(","),
     expandedFeatureIds.join(","),
   ]);
-
-  const orderedFeatureIds = useMemo(
-    () =>
-      [...features]
-        .sort(
-          (a, b) =>
-            (cardPositions.get(a.id)?.x ?? 0) -
-            (cardPositions.get(b.id)?.x ?? 0),
-        )
-        .map((feature) => feature.id),
-    [cardPositions, features],
-  );
 
   const canvasW = Math.max(
     CANVAS_MIN_W,
@@ -396,7 +326,7 @@ export default function PipelineCanvas({
             파이프라인을 불러오고 있습니다
           </p>
           <p className="mt-2 max-w-xs truncate text-sm text-neutral-500">
-            {generatingFileName ?? "파일 분석 중"}
+            {generatingFileName ?? "목업 PRD 분석 중"}
           </p>
         </div>
       </div>
@@ -404,203 +334,164 @@ export default function PipelineCanvas({
   }
 
   return (
-    <>
-      {isDev && onPipelineGithubConnected && onPushToast && (
-        <PipelineGithubConnector
-          pipelineId={pipelineId ?? null}
-          githubRepoUrl={githubRepoUrl ?? null}
-          onConnected={onPipelineGithubConnected}
-          onPushToast={onPushToast}
-        />
-      )}
-
-      <div className="flex flex-1 overflow-hidden bg-[#F6F6F4]">
-        <div className="relative min-w-0 flex-1 overflow-hidden">
+    <div className="flex flex-1 overflow-hidden bg-[#F6F6F4]">
+      <div className="relative min-w-0 flex-1 overflow-hidden">
+        <div
+          ref={viewportRef}
+          className="relative h-full overflow-auto"
+          onWheel={handleWheel}
+          style={{
+            background: "#F6F6F4",
+            backgroundImage:
+              "radial-gradient(circle, rgba(23,23,23,0.10) 1px, transparent 1px)",
+            backgroundSize: "26px 26px",
+          }}
+        >
           <div
-            ref={viewportRef}
-            className="relative h-full overflow-auto"
-            onWheel={handleWheel}
+            ref={canvasRef}
+            className="relative"
             style={{
-              background: "#F6F6F4",
-              backgroundImage:
-                "radial-gradient(circle, rgba(23,23,23,0.10) 1px, transparent 1px)",
-              backgroundSize: "26px 26px",
+              width: canvasW,
+              height: canvasH,
+              transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+              transformOrigin: "0 0",
             }}
+            onPointerDown={handleCanvasPointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerLeave={handlePointerUp}
           >
-            <div
-              ref={canvasRef}
-              className="relative"
-              style={{
-                width: canvasW,
-                height: canvasH,
-                transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-                transformOrigin: "0 0",
-              }}
-              onPointerDown={handleCanvasPointerDown}
-              onPointerMove={handlePointerMove}
-              onPointerUp={handlePointerUp}
-              onPointerLeave={handlePointerUp}
-            >
-              {features.length > 0 && (
-                <>
-                  <PipelineArrows
-                    orderedFeatureIds={orderedFeatureIds}
-                    cardPositions={cardPositions}
-                    cardHeights={cardHeights}
-                    canvasWidth={canvasW}
-                    canvasHeight={canvasH}
+            {features.map((feature, index) => {
+              const pos = cardPositions.get(feature.id) ?? { x: 0, y: 0 };
+              const isExpanded = expandedFeatureIds.includes(feature.id);
+              const isDragging =
+                dragStateRef.current?.featureId === feature.id;
+
+              return (
+                <div
+                  key={feature.id}
+                  data-card="true"
+                  ref={(element) => {
+                    if (element) cardRefs.current.set(feature.id, element);
+                    else cardRefs.current.delete(feature.id);
+                  }}
+                  style={{
+                    position: "absolute",
+                    left: pos.x,
+                    top: pos.y,
+                    width: CARD_WIDTH,
+                  }}
+                >
+                  <PipelineStepCard
+                    index={index}
+                    feature={feature}
+                    isExpanded={isExpanded}
+                    isDragging={isDragging}
+                    onToggleExpand={() => toggleExpand(feature.id)}
+                    onDragHandlePointerDown={(event) =>
+                      handleDragHandlePointerDown(event, feature.id)
+                    }
                   />
-
-                  {features.map((feature, index) => {
-                    const pos = cardPositions.get(feature.id) ?? { x: 0, y: 0 };
-                    const isExpanded = expandedFeatureIds.includes(feature.id);
-                    const isDragging =
-                      dragStateRef.current?.featureId === feature.id;
-
-                    return (
-                      <div
-                        key={feature.id}
-                        data-card="true"
-                        ref={(element) => {
-                          if (element)
-                            cardRefs.current.set(feature.id, element);
-                          else cardRefs.current.delete(feature.id);
-                        }}
-                        style={{
-                          position: "absolute",
-                          left: pos.x,
-                          top: pos.y,
-                          width: CARD_WIDTH,
-                        }}
-                      >
-                        <ReadOnlyFeatureCard
-                          index={index}
-                          feature={feature}
-                          isExpanded={isExpanded}
-                          isDragging={isDragging}
-                          isDev={isDev}
-                          canCreateGithubIssue={Boolean(
-                            isDev && onPublishTaskToGithubIssue,
-                          )}
-                          pipelineId={pipelineId ?? null}
-                          onToggleExpand={() => toggleExpand(feature.id)}
-                          onDragHandlePointerDown={(event) =>
-                            handleDragHandlePointerDown(event, feature.id)
-                          }
-                          onPublishTaskToGithubIssue={
-                            onPublishTaskToGithubIssue
-                          }
-                        />
-                      </div>
-                    );
-                  })}
-                </>
-              )}
-            </div>
-
-            {features.length === 0 && (
-              <div className="absolute inset-0 flex items-center justify-center px-5">
-                <div className="max-w-sm rounded-[2rem] border border-neutral-200 bg-white p-8 text-center shadow-sm">
-                  <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-neutral-950 text-white">
-                    {isPm ? (
-                      <Sparkles className="h-6 w-6" />
-                    ) : (
-                      <CircleHelp className="h-6 w-6" />
-                    )}
-                  </div>
-                  <h3 className="text-lg font-black tracking-tight text-neutral-950">
-                    {isPm ? "파이프라인이 없습니다" : "파이프라인 준비 중"}
-                  </h3>
-                  <p className="mt-3 text-sm leading-7 text-neutral-500">
-                    {isPm
-                      ? "프로젝트 상세 화면에서 PRD PDF를 업로드해 파이프라인을 생성해 주세요."
-                      : "기획자가 파이프라인을 생성하면 이곳에서 확인할 수 있습니다."}
-                  </p>
                 </div>
-              </div>
-            )}
+              );
+            })}
           </div>
 
-          <div className="pointer-events-none absolute inset-0 z-20">
-            <div
-              data-ui-control="true"
-              className="pointer-events-auto absolute left-4 top-4 flex items-center gap-1 rounded-2xl border border-neutral-200 bg-white/95 p-1.5 shadow-sm backdrop-blur"
+          {features.length === 0 && (
+            <div className="absolute inset-0 flex items-center justify-center px-5">
+              <div className="max-w-sm rounded-[2rem] border border-neutral-200 bg-white p-8 text-center shadow-sm">
+                <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-neutral-950 text-white">
+                  {isPm ? (
+                    <Sparkles className="h-6 w-6" />
+                  ) : (
+                    <CircleHelp className="h-6 w-6" />
+                  )}
+                </div>
+                <h3 className="text-lg font-black tracking-tight text-neutral-950">
+                  {isPm ? "파이프라인이 없습니다" : "파이프라인 준비 중"}
+                </h3>
+                <p className="mt-3 text-sm leading-7 text-neutral-500">
+                  {isPm
+                    ? "프로젝트 상세 화면에서 PRD 목업으로 파이프라인을 생성해 주세요."
+                    : "기획자가 파이프라인을 생성하면 이곳에서 확인할 수 있습니다."}
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="pointer-events-none absolute inset-0 z-20">
+          <div
+            data-ui-control="true"
+            className="pointer-events-auto absolute left-4 top-4 flex items-center gap-1 rounded-2xl border border-neutral-200 bg-white/95 p-1.5 shadow-sm backdrop-blur"
+          >
+            <button
+              type="button"
+              onClick={() => changeZoom(-ZOOM_STEP)}
+              disabled={zoom <= ZOOM_MIN}
+              className="rounded-xl p-2 text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-950 disabled:text-neutral-300"
+              title="축소"
             >
-              <button
-                type="button"
-                onClick={() => changeZoom(-ZOOM_STEP)}
-                disabled={zoom <= ZOOM_MIN}
-                className="rounded-xl p-2 text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-950 disabled:text-neutral-300"
-                title="축소"
-              >
-                <ZoomOut className="h-4 w-4" />
-              </button>
+              <ZoomOut className="h-4 w-4" />
+            </button>
 
-              <span className="min-w-[54px] text-center text-xs font-black text-neutral-700">
-                {Math.round(zoom * 100)}%
-              </span>
+            <span className="min-w-[54px] text-center text-xs font-black text-neutral-700">
+              {Math.round(zoom * 100)}%
+            </span>
 
-              <button
-                type="button"
-                onClick={() => changeZoom(ZOOM_STEP)}
-                disabled={zoom >= ZOOM_MAX}
-                className="rounded-xl p-2 text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-950 disabled:text-neutral-300"
-                title="확대"
-              >
-                <ZoomIn className="h-4 w-4" />
-              </button>
+            <button
+              type="button"
+              onClick={() => changeZoom(ZOOM_STEP)}
+              disabled={zoom >= ZOOM_MAX}
+              className="rounded-xl p-2 text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-950 disabled:text-neutral-300"
+              title="확대"
+            >
+              <ZoomIn className="h-4 w-4" />
+            </button>
 
-              <button
-                type="button"
-                onClick={resetView}
-                className="rounded-xl p-2 text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-950"
-                title="뷰 초기화"
-              >
-                <RotateCcw className="h-4 w-4" />
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={resetView}
+              className="rounded-xl p-2 text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-950"
+              title="뷰 초기화"
+            >
+              <RotateCcw className="h-4 w-4" />
+            </button>
+          </div>
 
-            <div className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full border border-neutral-200 bg-white/95 px-4 py-2 text-xs font-semibold text-neutral-500 shadow-sm backdrop-blur">
-              배경 드래그로 이동 · Ctrl + 휠 / Ctrl + + / Ctrl + - 로 확대·축소
-              · Ctrl + 0 초기화
-            </div>
+          <div className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full border border-neutral-200 bg-white/95 px-4 py-2 text-xs font-semibold text-neutral-500 shadow-sm backdrop-blur">
+            배경 드래그로 이동 · Ctrl + 휠 / Ctrl + + / Ctrl + - 로 확대·축소
+            · Ctrl + 0 초기화
           </div>
         </div>
       </div>
-    </>
+    </div>
   );
 }
 
-interface ReadOnlyFeatureCardProps {
+interface PipelineStepCardProps {
   index: number;
   feature: Feature;
   isExpanded: boolean;
   isDragging: boolean;
-  isDev: boolean;
-  canCreateGithubIssue: boolean;
-  pipelineId: number | null;
   onToggleExpand: () => void;
   onDragHandlePointerDown: (event: React.PointerEvent) => void;
-  onPublishTaskToGithubIssue?: (featureId: number, taskId: string) => void;
 }
 
-function ReadOnlyFeatureCard({
+function PipelineStepCard({
   index,
   feature,
   isExpanded,
   isDragging,
-  isDev,
-  canCreateGithubIssue,
-  pipelineId,
   onToggleExpand,
   onDragHandlePointerDown,
-  onPublishTaskToGithubIssue,
-}: ReadOnlyFeatureCardProps) {
+}: PipelineStepCardProps) {
   const visibleTasks = isExpanded ? feature.tasks : feature.tasks.slice(0, 3);
   const hiddenTaskCount = Math.max(
     0,
     feature.tasks.length - visibleTasks.length,
   );
+  const ExpandIcon = isExpanded ? ChevronDown : ChevronRight;
 
   return (
     <article
@@ -616,14 +507,24 @@ function ReadOnlyFeatureCard({
             STEP {String(index + 1).padStart(2, "0")}
           </span>
 
-          <button
-            type="button"
-            onPointerDown={onDragHandlePointerDown}
-            className="cursor-grab rounded-xl p-1.5 text-white/50 transition-colors hover:bg-white/10 hover:text-white active:cursor-grabbing"
-            title="카드 이동"
-          >
-            <GripVertical className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={onToggleExpand}
+              className="rounded-xl p-1.5 text-white/60 transition-colors hover:bg-white/10 hover:text-white"
+              title={isExpanded ? "접기" : "펼치기"}
+            >
+              <ExpandIcon className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onPointerDown={onDragHandlePointerDown}
+              className="cursor-grab rounded-xl p-1.5 text-white/50 transition-colors hover:bg-white/10 hover:text-white active:cursor-grabbing"
+              title="카드 이동"
+            >
+              <GripVertical className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
         <h3 className="line-clamp-2 text-base font-black leading-snug tracking-tight">
@@ -631,80 +532,42 @@ function ReadOnlyFeatureCard({
         </h3>
 
         <p className="mt-2 text-xs font-medium text-neutral-400">
-          이슈 생성 기능 {feature.tasks.length}개
+          세부 작업 {feature.tasks.length}개
         </p>
       </div>
 
       <div className="p-3">
         <div className="space-y-2">
           {visibleTasks.length > 0 ? (
-            visibleTasks.map((task, taskIndex) => {
-              const issueUrl = getTaskIssueUrl(task);
-              const hasIssue = Boolean(
-                issueUrl || task.issueId || task.githubIssueNumber,
-              );
+            visibleTasks.map((task, taskIndex) => (
+              <div
+                key={task.id}
+                className="rounded-2xl border border-neutral-200 bg-white p-3"
+              >
+                <div className="flex items-start gap-2.5">
+                  <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-[10px] font-black text-neutral-500">
+                    {taskIndex + 1}
+                  </div>
 
-              return (
-                <div
-                  key={task.id}
-                  className="rounded-2xl border border-neutral-200 bg-white p-3"
-                >
-                  <div className="flex items-start gap-2.5">
-                    <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-[10px] font-black text-neutral-500">
-                      {taskIndex + 1}
-                    </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="break-words text-sm font-bold leading-6 text-neutral-800">
+                      {task.title}
+                    </p>
 
-                    <div className="min-w-0 flex-1">
-                      <p className="break-words text-sm font-bold leading-6 text-neutral-850">
-                        {task.title}
+                    {task.description && (
+                      <p className="mt-1 break-words text-xs leading-5 text-neutral-500">
+                        {task.description}
                       </p>
-
-                      {task.description && (
-                        <p className="mt-1 break-words text-xs leading-5 text-neutral-500">
-                          {task.description}
-                        </p>
-                      )}
-
-                      {isDev && canCreateGithubIssue && (
-                        <div className="mt-3">
-                          {issueUrl ? (
-                            <a
-                              href={issueUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-neutral-950 px-3 py-1.5 text-[11px] font-bold text-white transition-colors hover:bg-neutral-800"
-                            >
-                              <Github className="h-3.5 w-3.5" />
-                              GitHub 열기
-                            </a>
-                          ) : (
-                            <button
-                              type="button"
-                              disabled={!pipelineId || hasIssue}
-                              onClick={() =>
-                                onPublishTaskToGithubIssue?.(
-                                  feature.id,
-                                  task.id,
-                                )
-                              }
-                              className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-[11px] font-bold text-neutral-600 transition-colors hover:bg-neutral-950 hover:text-white disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:text-neutral-400"
-                            >
-                              <Github className="h-3.5 w-3.5" />
-                              {hasIssue ? "Issue 생성됨" : "GitHub Issue"}
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
+                    )}
                   </div>
                 </div>
-              );
-            })
+              </div>
+            ))
           ) : (
             <div className="rounded-2xl border border-dashed border-neutral-200 bg-[#F6F6F4] p-4 text-center">
               <FileText className="mx-auto h-5 w-5 text-neutral-300" />
               <p className="mt-2 text-xs font-semibold text-neutral-400">
-                서브 기능이 없습니다.
+                세부 작업이 없습니다.
               </p>
             </div>
           )}
@@ -716,7 +579,7 @@ function ReadOnlyFeatureCard({
             onClick={onToggleExpand}
             className="mt-2 w-full rounded-2xl border border-neutral-200 bg-white px-3 py-2 text-xs font-bold text-neutral-400 transition-colors hover:bg-[#F6F6F4] hover:text-neutral-700"
           >
-            서브 기능 {hiddenTaskCount}개 더 보기
+            세부 작업 {hiddenTaskCount}개 더 보기
           </button>
         )}
       </div>

@@ -5,7 +5,7 @@ const trimTrailingSlashes = (value: string) => value.replace(/\/+$/, "");
 const normalizeBaseRoot = (value: string) =>
   trimTrailingSlashes(value.trim()).replace(/\/api\/v[12]$/i, "");
 
-const getRequiredBackendBaseUrl = () => {
+const getBackendBaseUrl = () => {
   const value = (
     import.meta.env.VITE_BE_BASE_URL ??
     import.meta.env.VITE_BE_API_BASE_URL ??
@@ -13,9 +13,7 @@ const getRequiredBackendBaseUrl = () => {
   ).trim();
 
   if (!value) {
-    throw new Error(
-      "Missing backend base URL. Set VITE_BE_BASE_URL to /api/proxy on Vercel.",
-    );
+    return "/api/proxy";
   }
 
   return normalizeBaseRoot(value);
@@ -45,6 +43,6 @@ export const buildBackendUrl = (baseUrl: string, path = "") => {
   return new URL(url, getBrowserOrigin()).toString();
 };
 
-export const BE_BASE_URL = getRequiredBackendBaseUrl();
+export const BE_BASE_URL = getBackendBaseUrl();
 export const OAUTH_BASE_URL = `${BE_BASE_URL}/oauth2`;
 export const API_V1_BASE_URL = `${BE_BASE_URL}/api/v1`;

@@ -24,6 +24,7 @@ const roleCards: Array<{
   icon: ReactNode;
   description: string;
   points: string[];
+  disabled?: boolean;
 }> = [
   {
     role: "pm",
@@ -34,8 +35,8 @@ const roleCards: Array<{
     borderHover: "hover:border-neutral-400",
     icon: <PenSquare className="h-12 w-12 text-white" strokeWidth={1.5} />,
     description:
-      "PRD PDF를 기반으로 Frontend / Backend 파이프라인을 생성하고 개발자와 공유합니다.",
-    points: ["PRD 업로드", "FE/BE 파이프라인 생성", "개발자와 작업 흐름 공유"],
+      "프로젝트를 만들고 사용자를 초대한 뒤 PRD 목업으로 FE/BE 파이프라인을 생성합니다.",
+    points: ["프로젝트 생성", "사용자 초대", "PRD 목업 파이프라인 생성"],
   },
   {
     role: "dev",
@@ -46,8 +47,9 @@ const roleCards: Array<{
     borderHover: "hover:border-neutral-500",
     icon: <Code2 className="h-12 w-12 text-white" strokeWidth={1.5} />,
     description:
-      "생성된 파이프라인을 확인하고 기획자와 같은 기준으로 기능과 세부작업을 검토합니다.",
-    points: ["파이프라인 확인", "기능·세부작업 검토", "기획자와 실시간 공유"],
+      "개발자 체험은 서버 재오픈 이후 다시 제공할 예정입니다.",
+    points: ["파이프라인 확인", "개발자 워크스페이스", "서버 재오픈 후 제공"],
+    disabled: true,
   },
 ];
 
@@ -79,8 +81,8 @@ export default function RoleSelectScreen({
           </h1>
 
           <p className="mt-3 max-w-xl text-sm leading-7 text-neutral-500">
-            현재 베타에서는 PRD PDF 기반 Frontend / Backend 파이프라인 생성과
-            기획자·개발자 간 실시간 공유 기능을 체험할 수 있습니다.
+            서버 재오픈 전 체험판은 기획자 흐름만 제공합니다. 프로젝트 생성,
+            사용자 초대, PRD 목업 파이프라인 생성을 순서대로 체험해 보세요.
           </p>
         </div>
 
@@ -90,10 +92,19 @@ export default function RoleSelectScreen({
             <button
               key={card.role}
               type="button"
-              onClick={() => onSelectRole(card.role as UserRole)}
-              className={`group overflow-hidden rounded-[1.5rem] border border-neutral-200 bg-white text-left shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-xl auth-fade-up ${
+              disabled={card.disabled}
+              onClick={() => {
+                if (!card.disabled) {
+                  onSelectRole(card.role as UserRole);
+                }
+              }}
+              className={`group overflow-hidden rounded-[1.5rem] border border-neutral-200 bg-white text-left shadow-sm transition-all duration-200 auth-fade-up ${
                 i === 0 ? "auth-delay-1" : "auth-delay-2"
-              } ${card.borderHover}`}
+              } ${
+                card.disabled
+                  ? "cursor-not-allowed opacity-55"
+                  : `hover:-translate-y-1 hover:shadow-xl ${card.borderHover}`
+              }`}
             >
               <div
                 className={`${card.bg} flex flex-col items-center justify-center gap-4 px-6 py-12`}
@@ -105,7 +116,7 @@ export default function RoleSelectScreen({
                 </div>
 
                 <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold tracking-wide text-neutral-100">
-                  {card.subtitle}
+                  {card.disabled ? "준비 중" : card.subtitle}
                 </span>
               </div>
 
@@ -130,9 +141,15 @@ export default function RoleSelectScreen({
                   ))}
                 </div>
 
-                <div className="mt-6 inline-flex items-center gap-1 text-sm font-bold text-neutral-950 transition-all duration-150 group-hover:gap-2">
-                  이 역할로 베타 시작
-                  <ArrowRight className="h-4 w-4" />
+                <div
+                  className={`mt-6 inline-flex items-center gap-1 text-sm font-bold transition-all duration-150 ${
+                    card.disabled
+                      ? "text-neutral-400"
+                      : "text-neutral-950 group-hover:gap-2"
+                  }`}
+                >
+                  {card.disabled ? "현재 선택 불가" : "이 역할로 체험 시작"}
+                  {!card.disabled && <ArrowRight className="h-4 w-4" />}
                 </div>
               </div>
             </button>

@@ -1,8 +1,9 @@
-import { BadgeCheck, UserCircle, WandSparkles } from "lucide-react";
+import { BadgeCheck, Star, UserCircle, WandSparkles } from "lucide-react";
 import type { AuthUser } from "../types/index";
 
 interface MyInfoSectionProps {
   authUser: AuthUser;
+  onGoToReview?: () => void;
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -12,20 +13,23 @@ const ROLE_LABELS: Record<string, string> = {
   "dev-be": "BE 개발자",
 };
 
-export default function MyInfoSection({ authUser }: MyInfoSectionProps) {
+export default function MyInfoSection({
+  authUser,
+  onGoToReview,
+}: MyInfoSectionProps) {
   const remainingCount = authUser.aiPipelineGenerationRemainingCount ?? 0;
 
   return (
     <section className="mx-auto max-w-3xl">
       <div className="mb-6">
         <p className="text-xs font-bold uppercase tracking-[0.22em] text-neutral-400">
-          My Info
+          Step 06 · My Info
         </p>
         <h2 className="mt-2 text-3xl font-black tracking-tight text-neutral-950">
           내 정보
         </h2>
         <p className="mt-2 text-sm text-neutral-500">
-          현재 로그인된 계정과 Free 베타 사용 정보를 확인할 수 있습니다.
+          현재 로그인된 기획자 체험 계정과 Free 베타 사용 정보를 확인할 수 있습니다.
         </p>
       </div>
 
@@ -83,6 +87,19 @@ export default function MyInfoSection({ authUser }: MyInfoSectionProps) {
           </div>
         </div>
       </div>
+
+      {onGoToReview && (
+        <div className="mt-5 flex justify-end">
+          <button
+            type="button"
+            onClick={onGoToReview}
+            className="inline-flex items-center gap-2 rounded-xl bg-neutral-950 px-4 py-3 text-sm font-bold text-white shadow-sm transition-colors hover:bg-neutral-800"
+          >
+            다음: 리뷰 쓰기
+            <Star className="h-4 w-4" />
+          </button>
+        </div>
+      )}
     </section>
   );
 }

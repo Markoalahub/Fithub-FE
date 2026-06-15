@@ -11,14 +11,13 @@ import PipelineCanvas from "./components/PipelineCanvas";
 import ProjectWorkspaceSection from "./components/ProjectWorkspaceSection.tsx";
 import ProjectInviteDialog from "./components/ProjectInviteDialog";
 import CustomDialog from "./components/CustomDialog";
-import FeatureQuestionComingSoon from "./components/FeatureQuestionComingSoon";
+import DemoReviewSection from "./components/DemoReviewSection";
 import type {
   DemoProject,
   PipelineCategoryOption,
 } from "./components/ProjectWorkspaceSection.tsx";
 import {
   createProject,
-  createPipelineGithubIssue,
   checkNicknameDuplicate,
   deleteProject,
   fetchCurrentUser,
@@ -30,27 +29,29 @@ import {
   inviteUserToProject,
   submitUserOnboarding,
   updateProject,
-  updatePipelineStep,
   type CurrentUser,
-  type DeveloperRepositoryDetail,
   type DeveloperOnboardingJobRole,
   type GenerateProjectPipelineResponse,
   type GeneratedPipelineFeature,
-  type PipelineGithubConnectionResponse,
   type PipelineGenerationCategory,
   type ProjectDetail,
   type ProjectInviteUser,
   type ProjectPipelineSummary,
 } from "./services/api";
+import {
+  DEMO_PROJECT,
+  IS_DEMO_MODE,
+  cloneDemoPipeline,
+  cloneDemoProjectDetail,
+  cloneDemoUser,
+  createDemoPipelineSummaries,
+  mapDemoPipelineToFeatures,
+} from "./demo/demoData";
 import type {
   AppTab,
   AuthUser,
   CardPosition,
-  ConnectedGithubRepository,
   Feature,
-  PipelineProposal,
-  PipelineProposalAction,
-  QuestionMessage,
   UserRole,
 } from "./types/index";
 
@@ -58,73 +59,14 @@ type DevTrack = "frontend" | "backend";
 
 const createId = () =>
   `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-const getNowTimeLabel = () =>
-  new Date().toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-
-const createQuestionMessage = (
-  role: "pm" | "dev-fe" | "dev-be",
-  content: string,
-): QuestionMessage => ({
-  id: createId(),
-  role,
-  content: content.trim(),
-  createdAt: getNowTimeLabel(),
-});
-
-const proposalNeedsValue = (action: PipelineProposalAction) =>
-  action === "add-feature" ||
-  action === "edit-feature" ||
-  action === "add-task" ||
-  action === "edit-task";
-
-const normalizeProposalValue = (value?: string) =>
-  (value ?? "").trim().replace(/\s+/g, " ");
-
-const buildPipelineProposalIntroMessage = ({
-  action,
-  featureName,
-  taskTitle,
-  proposedValue,
-}: {
-  action: PipelineProposalAction;
-  featureName?: string;
-  taskTitle?: string;
-  proposedValue?: string;
-}) => {
-  switch (action) {
-    case "add-feature":
-      return `신규 기능을 제안합니다: ${proposedValue ?? "-"}`;
-    case "edit-feature":
-      return `기능명을 수정 제안합니다. 대상: ${featureName ?? "-"} / 수정안: ${proposedValue ?? "-"}`;
-    case "delete-feature":
-      return `기능 삭제를 제안합니다. 대상: ${featureName ?? "-"}`;
-    case "add-task":
-      return `세부작업 추가를 제안합니다. 기능: ${featureName ?? "-"} / 제안: ${proposedValue ?? "-"}`;
-    case "edit-task":
-      return `세부작업 수정을 제안합니다. 기능: ${featureName ?? "-"} / 대상: ${taskTitle ?? "-"} / 수정안: ${proposedValue ?? "-"}`;
-    case "delete-task":
-      return `세부작업 삭제를 제안합니다. 기능: ${featureName ?? "-"} / 대상: ${taskTitle ?? "-"}`;
-    default:
-      return "기능 제안을 시작합니다.";
-  }
-};
-
-const makeTaskId = (featureId: number) =>
-  `${featureId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 
 const OAUTH_CALLBACK_PATH = "/auth/oauth/callback";
 const LEGACY_GITHUB_CALLBACK_PATH = "/auth/github/callback";
 const ACTIVE_PROJECT_ID_STORAGE_KEY = "fithub.activeProjectId";
 
 const LEGACY_PROJECT_NAME_STORAGE_KEY = "fithub.projectName";
-const LEGACY_CONNECTED_GITHUB_REPO_STORAGE_KEY = "fithub.connectedGithubRepo";
 const getProjectNameStorageKey = (track: "frontend" | "backend") =>
   `${LEGACY_PROJECT_NAME_STORAGE_KEY}.${track}`;
-const getConnectedGithubRepoStorageKey = (track: "frontend" | "backend") =>
-  `${LEGACY_CONNECTED_GITHUB_REPO_STORAGE_KEY}.${track}`;
 
 const parsePositiveNumber = (value: string | null | undefined) => {
   const numericValue = Number(value);
@@ -167,67 +109,6 @@ const readStoredProjectName = (track: "frontend" | "backend") => {
   }
 
   return "Fithub V1";
-};
-
-const readStoredConnectedGithubRepo = (
-  track: "frontend" | "backend",
-): ConnectedGithubRepository | null => {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  const scopedRepo = window.localStorage.getItem(
-    getConnectedGithubRepoStorageKey(track),
-  );
-  const repoRaw =
-    scopedRepo ??
-    (track === "frontend"
-      ? window.localStorage.getItem(LEGACY_CONNECTED_GITHUB_REPO_STORAGE_KEY)
-      : null);
-
-  if (!repoRaw) {
-    return null;
-  }
-
-  try {
-    const parsed = JSON.parse(repoRaw) as Partial<ConnectedGithubRepository>;
-    const repositoryId = Number(parsed.repositoryId ?? 0);
-    if (!repositoryId || !parsed.fullName || !parsed.htmlUrl) {
-      return null;
-    }
-
-    const [ownerFromFullName = "", nameFromFullName = ""] =
-      parsed.fullName.split("/");
-    const normalizedHtmlUrl = parsed.htmlUrl.replace(/\/+$/, "");
-
-    return {
-      repositoryId,
-      repoUrl: parsed.repoUrl?.trim() || normalizedHtmlUrl,
-      owner: parsed.owner || ownerFromFullName,
-      name: parsed.name || nameFromFullName,
-      fullName: parsed.fullName,
-      htmlUrl: normalizedHtmlUrl,
-      description: parsed.description,
-      language: parsed.language,
-      defaultBranch: parsed.defaultBranch || "main",
-      stars: Number(parsed.stars ?? 0),
-      forks: Number(parsed.forks ?? 0),
-      openIssuesCount:
-        parsed.openIssuesCount === undefined
-          ? undefined
-          : Number(parsed.openIssuesCount),
-      projectId:
-        parsed.projectId === undefined ? undefined : Number(parsed.projectId),
-      category: parsed.category,
-      githubRepoId:
-        parsed.githubRepoId === undefined
-          ? undefined
-          : Number(parsed.githubRepoId),
-      connectedAt: parsed.connectedAt || new Date().toLocaleString("ko-KR"),
-    };
-  } catch {
-    return null;
-  }
 };
 
 const normalizeDeveloperRole = (value: string | null | undefined) => {
@@ -451,210 +332,11 @@ const mapGeneratedFeatsToFeatures = (
         tasks: details.map((detail, detailIndex) => ({
           id: `${featureId}-${detailIndex + 1}`,
           title: detail.trim() || `Task ${detailIndex + 1}`,
-          completed: false,
-          devChecked: false,
-          pmConfirmed: false,
           isAiSuggested: true,
           pipelineId: pipelineId ?? undefined,
         })),
       };
     });
-
-const applyPipelineProposal = (
-  prevFeatures: Feature[],
-  proposal: PipelineProposal,
-): { nextFeatures: Feature[]; applied: boolean; resultMessage: string } => {
-  const fail = (resultMessage: string) => ({
-    nextFeatures: prevFeatures,
-    applied: false,
-    resultMessage,
-  });
-
-  switch (proposal.action) {
-    case "add-feature": {
-      const nextFeatureName = proposal.proposedValue?.trim();
-      if (!nextFeatureName) {
-        return fail("기능명이 비어 있어 적용할 수 없습니다.");
-      }
-
-      const nextId =
-        prevFeatures.length === 0
-          ? 1
-          : Math.max(...prevFeatures.map((feature) => feature.id)) + 1;
-
-      return {
-        nextFeatures: [
-          ...prevFeatures,
-          {
-            id: nextId,
-            name: nextFeatureName,
-            tasks: [],
-          },
-        ],
-        applied: true,
-        resultMessage: "기능이 추가되었습니다.",
-      };
-    }
-
-    case "edit-feature": {
-      if (proposal.featureId === undefined) {
-        return fail("수정할 기능을 찾을 수 없습니다.");
-      }
-
-      const nextFeatureName = proposal.proposedValue?.trim();
-      if (!nextFeatureName) {
-        return fail("기능명이 비어 있어 적용할 수 없습니다.");
-      }
-
-      let applied = false;
-      const nextFeatures = prevFeatures.map((feature) => {
-        if (feature.id !== proposal.featureId) return feature;
-        applied = true;
-        return { ...feature, name: nextFeatureName };
-      });
-
-      if (!applied) {
-        return fail("수정할 기능이 이미 삭제되었습니다.");
-      }
-
-      return {
-        nextFeatures,
-        applied: true,
-        resultMessage: "기능명이 수정되었습니다.",
-      };
-    }
-
-    case "delete-feature": {
-      if (proposal.featureId === undefined) {
-        return fail("삭제할 기능을 찾을 수 없습니다.");
-      }
-
-      const nextFeatures = prevFeatures.filter(
-        (feature) => feature.id !== proposal.featureId,
-      );
-      if (nextFeatures.length === prevFeatures.length) {
-        return fail("삭제할 기능이 이미 없습니다.");
-      }
-
-      return {
-        nextFeatures,
-        applied: true,
-        resultMessage: "기능이 삭제되었습니다.",
-      };
-    }
-
-    case "add-task": {
-      if (proposal.featureId === undefined) {
-        return fail("세부작업을 추가할 기능이 없습니다.");
-      }
-
-      const nextTaskTitle = proposal.proposedValue?.trim();
-      if (!nextTaskTitle) {
-        return fail("세부작업명이 비어 있어 적용할 수 없습니다.");
-      }
-
-      let applied = false;
-      const nextFeatures = prevFeatures.map((feature) => {
-        if (feature.id !== proposal.featureId) return feature;
-
-        applied = true;
-        return {
-          ...feature,
-          tasks: [
-            ...feature.tasks,
-            {
-              id: makeTaskId(feature.id),
-              title: nextTaskTitle,
-              devChecked: false,
-              pmConfirmed: false,
-            },
-          ],
-        };
-      });
-
-      if (!applied) {
-        return fail("세부작업을 추가할 기능이 이미 삭제되었습니다.");
-      }
-
-      return {
-        nextFeatures,
-        applied: true,
-        resultMessage: "세부작업이 추가되었습니다.",
-      };
-    }
-
-    case "edit-task": {
-      if (proposal.featureId === undefined || !proposal.taskId) {
-        return fail("수정할 세부작업을 찾을 수 없습니다.");
-      }
-
-      const nextTaskTitle = proposal.proposedValue?.trim();
-      if (!nextTaskTitle) {
-        return fail("세부작업명이 비어 있어 적용할 수 없습니다.");
-      }
-
-      let applied = false;
-      const nextFeatures = prevFeatures.map((feature) => {
-        if (feature.id !== proposal.featureId) return feature;
-
-        return {
-          ...feature,
-          tasks: feature.tasks.map((task) => {
-            if (task.id !== proposal.taskId) return task;
-            applied = true;
-            return { ...task, title: nextTaskTitle };
-          }),
-        };
-      });
-
-      if (!applied) {
-        return fail("수정할 세부작업이 이미 삭제되었습니다.");
-      }
-
-      return {
-        nextFeatures,
-        applied: true,
-        resultMessage: "세부작업이 수정되었습니다.",
-      };
-    }
-
-    case "delete-task": {
-      if (proposal.featureId === undefined || !proposal.taskId) {
-        return fail("삭제할 세부작업을 찾을 수 없습니다.");
-      }
-
-      let applied = false;
-      const nextFeatures = prevFeatures.map((feature) => {
-        if (feature.id !== proposal.featureId) return feature;
-
-        const nextTasks = feature.tasks.filter(
-          (task) => task.id !== proposal.taskId,
-        );
-        if (nextTasks.length !== feature.tasks.length) {
-          applied = true;
-        }
-
-        return {
-          ...feature,
-          tasks: nextTasks,
-        };
-      });
-
-      if (!applied) {
-        return fail("삭제할 세부작업이 이미 없습니다.");
-      }
-
-      return {
-        nextFeatures,
-        applied: true,
-        resultMessage: "세부작업이 삭제되었습니다.",
-      };
-    }
-
-    default:
-      return fail("알 수 없는 제안 타입입니다.");
-  }
-};
 
 const initialFeatures: Feature[] = [];
 
@@ -700,6 +382,9 @@ const initialPipelineTrackMeta = (
 
 export default function App() {
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const [demoAiRemainingCount, setDemoAiRemainingCount] = useState(
+    () => cloneDemoUser("pm").aiPipelineGenerationRemainingCount ?? 2,
+  );
   const [onboardingRole, setOnboardingRole] = useState<UserRole | null>(null);
   const [oauthOnboardingState, setOauthOnboardingState] =
     useState<OAuthOnboardingState>({
@@ -723,14 +408,6 @@ export default function App() {
   const [backendProjectName, setBackendProjectName] = useState<string>(() =>
     readStoredProjectName("backend"),
   );
-  const [frontendConnectedGithubRepo, setFrontendConnectedGithubRepo] =
-    useState<ConnectedGithubRepository | null>(() =>
-      readStoredConnectedGithubRepo("frontend"),
-    );
-  const [backendConnectedGithubRepo, setBackendConnectedGithubRepo] =
-    useState<ConnectedGithubRepository | null>(() =>
-      readStoredConnectedGithubRepo("backend"),
-    );
   const [isGeneratingPipeline, setIsGeneratingPipeline] = useState(false);
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [isFetchingProjects, setIsFetchingProjects] = useState(false);
@@ -767,7 +444,7 @@ export default function App() {
   const [isProjectInviteDialogOpen, setIsProjectInviteDialogOpen] =
     useState(false);
   const [projectInviteNickname, setProjectInviteNickname] = useState("");
-  const [, setDemoPipelines] = useState<DemoPipeline[]>([]);
+  const [demoPipelines, setDemoPipelines] = useState<DemoPipeline[]>([]);
   const [ProjectWorkspaceSectionStep, setProjectWorkspaceSectionStep] =
     useState<ProjectWorkspaceSectionStep>("project-list");
   const [showCreateProjectDialog, setShowCreateProjectDialog] = useState(false);
@@ -777,16 +454,7 @@ export default function App() {
         typeof window !== "undefined" &&
         window.localStorage.getItem("fithub.shownCreateProjectDialog") === "1",
     );
-  const [frontendPipelineProposals, setFrontendPipelineProposals] = useState<
-    PipelineProposal[]
-  >([]);
-  const [backendPipelineProposals, setBackendPipelineProposals] = useState<
-    PipelineProposal[]
-  >([]);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
-  const lastMessageFingerprintRef = useRef<{ key: string; at: number } | null>(
-    null,
-  );
   const toastTimeoutIdsRef = useRef<number[]>([]);
   const projectPipelineRequestRef = useRef(0);
 
@@ -813,14 +481,8 @@ export default function App() {
 
   const features =
     activeTrack === "frontend" ? frontendFeatures : backendFeatures;
-  const pipelineProposals =
-    activeTrack === "frontend"
-      ? frontendPipelineProposals
-      : backendPipelineProposals;
   const projectName =
     activeTrack === "frontend" ? frontendProjectName : backendProjectName;
-  const activePipelineMeta =
-    activeTrack === "frontend" ? frontendPipelineMeta : backendPipelineMeta;
 
   const cardPositions =
     activeTrack === "frontend" ? frontendCardPositions : backendCardPositions;
@@ -841,26 +503,6 @@ export default function App() {
       next.set(featureId, pos);
       return next;
     });
-  };
-
-  const setFeatures: React.Dispatch<React.SetStateAction<Feature[]>> = (
-    updater,
-  ) => {
-    if (activeTrack === "frontend") {
-      setFrontendFeatures(updater);
-      return;
-    }
-    setBackendFeatures(updater);
-  };
-
-  const setPipelineProposals: React.Dispatch<
-    React.SetStateAction<PipelineProposal[]>
-  > = (updater) => {
-    if (activeTrack === "frontend") {
-      setFrontendPipelineProposals(updater);
-      return;
-    }
-    setBackendPipelineProposals(updater);
   };
 
   const setPipelineMetaForTrack = (
@@ -937,13 +579,11 @@ export default function App() {
     setBackendFeatures(nextFeatures);
   };
 
-  const resetTrackCollaborationState = (track: DevTrack) => {
+  const resetTrackViewState = (track: DevTrack) => {
     if (track === "frontend") {
-      setFrontendPipelineProposals([]);
       setFrontendCardPositions(new Map());
       return;
     }
-    setBackendPipelineProposals([]);
     setBackendCardPositions(new Map());
   };
 
@@ -956,7 +596,7 @@ export default function App() {
     PIPELINE_GENERATION_CATEGORIES.forEach((category) => {
       const track = getTrackByPipelineCategory(category);
       const pipeline = latestByCategory.get(category);
-      resetTrackCollaborationState(track);
+      resetTrackViewState(track);
       setPipelineMetaForTrack(track, {
         category,
         pipeId: pipeline?.pipeId ?? null,
@@ -988,6 +628,46 @@ export default function App() {
     }
   };
 
+  const getDemoPipelineCategories = (projectId: number) =>
+    demoPipelines.find((pipeline) => pipeline.projectId === projectId)
+      ?.categories ?? [];
+
+  const applyDemoPipelinesToState = (
+    projectId: number,
+    categories: PipelineGenerationCategory[],
+    options: { techStack?: string; requirements?: string } = {},
+  ) => {
+    PIPELINE_GENERATION_CATEGORIES.forEach((category) => {
+      const track = getTrackByPipelineCategory(category);
+      resetTrackViewState(track);
+
+      if (!categories.includes(category)) {
+        setPipelineMetaForTrack(track, initialPipelineTrackMeta(category));
+        setTrackFeatures(track, []);
+        return;
+      }
+
+      const pipeline = cloneDemoPipeline({
+        category,
+        projectId,
+        techStack: options.techStack,
+        requirements: options.requirements,
+      });
+      setPipelineMetaForTrack(track, {
+        category,
+        pipeId: pipeline.pipeId,
+        githubRepoUrl: pipeline.githubRepoUrl,
+      });
+      setTrackFeatures(track, mapDemoPipelineToFeatures(pipeline));
+    });
+
+    if (categories.includes("FE")) {
+      setPmSelectedTrack("frontend");
+    } else if (categories.includes("BE")) {
+      setPmSelectedTrack("backend");
+    }
+  };
+
   const pushToast = (message: string, tone: ToastTone = "info") => {
     const id = createId();
     setToasts((prev) => [...prev.slice(-3), { id, message, tone }]);
@@ -1002,10 +682,67 @@ export default function App() {
     toastTimeoutIdsRef.current.push(timeoutId);
   };
 
+  const startDemoExperience = () => {
+    const demoUser = {
+      ...cloneDemoUser("pm"),
+      aiPipelineGenerationRemainingCount: demoAiRemainingCount,
+    };
+    setAuthUser(demoUser);
+    setOnboardingRole("pm");
+    setOauthOnboardingState({ isNewSocialUser: false, flow: "none" });
+    setActiveTab("pipeline");
+    setHasEnteredLanding(true);
+    setHasFetchedProjects(true);
+    setDemoProjects([]);
+    setDemoPipelines([]);
+    setSelectedDemoProject(null);
+    setSelectedProjectDetail(null);
+    setProjectPipelineSummaries([]);
+    setProjectPipelineEmptyMessage(null);
+    setFrontendFeatures([]);
+    setBackendFeatures([]);
+    setFrontendPipelineMeta(initialPipelineTrackMeta("FE"));
+    setBackendPipelineMeta(initialPipelineTrackMeta("BE"));
+    setFrontendCardPositions(new Map());
+    setBackendCardPositions(new Map());
+    setFrontendProjectName("Fithub V1");
+    setBackendProjectName("Fithub V1");
+    syncActiveProjectId(null);
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(getProjectNameStorageKey("frontend"));
+      window.localStorage.removeItem(getProjectNameStorageKey("backend"));
+    }
+    setProjectWorkspaceSectionStep("create-project");
+    pushToast("기획자 체험 계정으로 시작했습니다.", "success");
+  };
+
   const refreshCurrentUser = async (
     fallbackRole?: UserRole,
     options: { silent?: boolean; clearOnUnauthorized?: boolean } = {},
   ): Promise<CurrentUser | null> => {
+    if (IS_DEMO_MODE) {
+      const role = fallbackRole ?? authUser?.role ?? "pm";
+      const user = cloneDemoUser(role);
+      const currentUser: CurrentUser = {
+        userId: Number(user.id.replace(/\D/g, "")) || 1,
+        nickname: user.name,
+        jobRole: user.jobRole ?? (user.role === "pm" ? "PLANNER" : "FRONTEND"),
+        aiPipelineGenerationRemainingCount:
+          user.role === "pm" ? demoAiRemainingCount : 0,
+      };
+
+      setAuthUser((prev) =>
+        prev
+          ? {
+              ...prev,
+              aiPipelineGenerationRemainingCount:
+                prev.role === "pm" ? demoAiRemainingCount : 0,
+            }
+          : prev,
+      );
+      return currentUser;
+    }
+
     try {
       const currentUser = await fetchCurrentUser();
       const role = getUserRoleByJobRole(
@@ -1059,6 +796,16 @@ export default function App() {
     projectId: number,
     options: { clearOnError?: boolean; silent?: boolean } = {},
   ) => {
+    if (IS_DEMO_MODE) {
+      const categories = getDemoPipelineCategories(projectId);
+      const summaries = createDemoPipelineSummaries(projectId, categories);
+      setProjectPipelineSummaries(summaries);
+      setProjectPipelineEmptyMessage(
+        summaries.length === 0 ? "생성된 파이프라인이 없습니다." : null,
+      );
+      return summaries;
+    }
+
     const requestId = projectPipelineRequestRef.current + 1;
     projectPipelineRequestRef.current = requestId;
     setIsFetchingProjectPipelines(true);
@@ -1121,8 +868,16 @@ export default function App() {
     setOauthOnboardingState({ isNewSocialUser: false, flow: "none" });
   };
 
-  const handleCheckNicknameDuplicate = async (nickname: string) =>
-    checkNicknameDuplicate(nickname.trim());
+  const handleCheckNicknameDuplicate = async (nickname: string) => {
+    if (IS_DEMO_MODE) {
+      return {
+        isDuplicate: false,
+        message: `${nickname.trim()} 닉네임을 사용할 수 있습니다.`,
+      };
+    }
+
+    return checkNicknameDuplicate(nickname.trim());
+  };
 
   const handlePlannerOnboardingSubmit = async (nickname: string) => {
     const normalizedNickname = nickname.trim();
@@ -1167,6 +922,10 @@ export default function App() {
   };
 
   useEffect(() => {
+    if (IS_DEMO_MODE) {
+      return;
+    }
+
     if (typeof window === "undefined") {
       return;
     }
@@ -1326,6 +1085,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (IS_DEMO_MODE) {
+      return;
+    }
+
     if (!hasStoredApiToken()) {
       return;
     }
@@ -1376,146 +1139,6 @@ export default function App() {
     pushToast("로그아웃 되었습니다.", "info");
   };
 
-  const getRepositoryFullNameFromUrl = (repoUrl: string) =>
-    repoUrl
-      .trim()
-      .replace(/^https?:\/\/(www\.)?github\.com\//i, "")
-      .replace(/\.git$/i, "")
-      .replace(/\/+$/, "");
-
-  const handlePipelineGithubConnected = (
-    response: PipelineGithubConnectionResponse,
-    repository?: DeveloperRepositoryDetail,
-  ) => {
-    const category =
-      toPipelineGenerationCategory(response.category) ??
-      activePipelineMeta.category;
-    const track = getTrackByPipelineCategory(category);
-    const repoUrl = response.githubRepoUrl ?? repository?.repoUrl ?? "";
-    const fullName =
-      repository?.repoUrlName ||
-      getRepositoryFullNameFromUrl(repoUrl) ||
-      repoUrl;
-    const [owner = "", repoNameFromFullName = ""] = fullName.split("/");
-    const connectedRepository: ConnectedGithubRepository = {
-      repositoryId: repository?.repoId ?? response.pipeId,
-      repoUrl,
-      owner,
-      name: repository?.repoName || repoNameFromFullName || fullName,
-      fullName,
-      htmlUrl: repoUrl,
-      description: repository?.description ?? undefined,
-      language: repository?.language ?? undefined,
-      defaultBranch: repository?.defaultBranch ?? "main",
-      stars: repository?.starCount ?? 0,
-      forks: 0,
-      openIssuesCount: repository?.openIssuesCount,
-      projectId: response.projectId,
-      category,
-      githubRepoId: repository?.repoId,
-      connectedAt: new Date().toLocaleString("ko-KR"),
-    };
-
-    setPipelineMetaForTrack(track, {
-      category,
-      pipeId: response.pipeId,
-      githubRepoUrl: response.githubRepoUrl,
-    });
-
-    if (track === "frontend") {
-      setFrontendConnectedGithubRepo(connectedRepository);
-    } else {
-      setBackendConnectedGithubRepo(connectedRepository);
-    }
-
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(
-        getConnectedGithubRepoStorageKey(track),
-        JSON.stringify(connectedRepository),
-      );
-    }
-  };
-
-  const publishTaskToGithubIssue = async (
-    featureId: number,
-    taskId: string,
-  ) => {
-    if (!activePipelineMeta.pipeId) {
-      pushToast("먼저 파이프라인을 조회해 주세요.", "warning");
-      return;
-    }
-
-    const matchedFeature = features.find((feature) => feature.id === featureId);
-    const matchedTask = matchedFeature?.tasks.find(
-      (task) => task.id === taskId,
-    );
-
-    if (!matchedFeature || !matchedTask) {
-      pushToast("이슈로 올릴 세부작업을 찾을 수 없습니다.", "warning");
-      return;
-    }
-
-    if (matchedTask.githubIssueUrl || matchedTask.issueId) {
-      pushToast("이미 생성된 이슈가 있어 중복 생성하지 않습니다.", "info");
-      return;
-    }
-
-    const issueTitle = matchedTask.title;
-    const issueDescription = (
-      matchedTask.description?.trim() ||
-      `${matchedFeature.name} 기능의 세부작업: ${matchedTask.title}`
-    ).slice(0, 2000);
-
-    try {
-      const createdIssue = await createPipelineGithubIssue(
-        activePipelineMeta.pipeId,
-        {
-          featDetail: issueTitle,
-          body: issueDescription,
-        },
-      );
-
-      setFeatures((prev) =>
-        prev.map((feature) =>
-          feature.id !== featureId
-            ? feature
-            : {
-                ...feature,
-                tasks: feature.tasks.map((task) =>
-                  task.id === taskId
-                    ? {
-                        ...task,
-                        issueId: createdIssue.githubIssueNumber,
-                        githubIssueNumber: createdIssue.githubIssueNumber,
-                        githubIssueUrl: createdIssue.githubIssueUrl,
-                        githubIssueState: createdIssue.state,
-                      }
-                    : task,
-                ),
-              },
-        ),
-      );
-
-      if (createdIssue.githubIssueUrl) {
-        window.open(
-          createdIssue.githubIssueUrl,
-          "_blank",
-          "noopener,noreferrer",
-        );
-      }
-
-      pushToast("GitHub Issue를 생성했습니다.", "success");
-    } catch (error) {
-      console.error(error);
-      pushToast(
-        error instanceof Error
-          ? error.message
-          : "GitHub Issue 생성에 실패했습니다.",
-        "warning",
-      );
-    }
-  };
-
   const handleCreateProjectByPm = async (params: {
     name: string;
     description: string;
@@ -1531,6 +1154,36 @@ export default function App() {
     }
 
     setIsCreatingProject(true);
+
+    if (IS_DEMO_MODE) {
+      const newProject: DemoProject = {
+        id: Math.max(DEMO_PROJECT.id, ...demoProjects.map((project) => project.id)) + 1,
+        name: projectNameInput,
+        description: descriptionInput,
+        creatorId: 1,
+        creatorNickname: authUser?.name ?? "김기획",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      setDemoProjects((prev) => [newProject, ...prev]);
+      setSelectedDemoProject(newProject);
+      setSelectedProjectDetail(cloneDemoProjectDetail(newProject));
+      setProjectPipelineSummaries([]);
+      setProjectPipelineEmptyMessage("생성된 파이프라인이 없습니다.");
+      setDemoPipelines((prev) =>
+        prev.filter((pipeline) => pipeline.projectId !== newProject.id),
+      );
+      syncActiveProject(newProject);
+      applyDemoPipelinesToState(newProject.id, []);
+      setProjectInviteNickname("");
+      setProjectInviteUser(null);
+      setProjectWorkspaceSectionStep("project-detail");
+      setIsCreatingProject(false);
+      pushToast(`프로젝트 "${projectNameInput}"을(를) 생성했습니다.`, "success");
+      return;
+    }
+
     try {
       const response = await createProject({
         name: projectNameInput,
@@ -1609,6 +1262,34 @@ export default function App() {
     const deletedProject = projectPendingDelete;
     setIsDeletingProject(true);
 
+    if (IS_DEMO_MODE) {
+      setDemoProjects((prev) =>
+        prev.filter((project) => project.id !== deletedProject.id),
+      );
+      setDemoPipelines((prev) =>
+        prev.filter((pipeline) => pipeline.projectId !== deletedProject.id),
+      );
+      setProjectPipelineSummaries((prev) =>
+        selectedDemoProject?.id === deletedProject.id ? [] : prev,
+      );
+
+      if (
+        activeProjectId === deletedProject.id ||
+        selectedDemoProject?.id === deletedProject.id
+      ) {
+        clearActiveProject();
+        setProjectWorkspaceSectionStep("project-list");
+      }
+
+      setProjectPendingDelete(null);
+      setIsDeletingProject(false);
+      pushToast(
+        `프로젝트 "${deletedProject.name}"을(를) 삭제했습니다.`,
+        "success",
+      );
+      return;
+    }
+
     try {
       await deleteProject(deletedProject.id);
 
@@ -1658,6 +1339,19 @@ export default function App() {
     setProjectWorkspaceSectionStep("project-detail");
     setActiveTab("pipeline");
     setIsFetchingProjectDetail(true);
+
+    if (IS_DEMO_MODE) {
+      const categories = getDemoPipelineCategories(project.id);
+      const detail = cloneDemoProjectDetail(project);
+      setSelectedProjectDetail(detail);
+      setProjectPipelineSummaries(createDemoPipelineSummaries(project.id, categories));
+      applyDemoPipelinesToState(project.id, categories);
+      setProjectPipelineEmptyMessage(
+        categories.length === 0 ? "생성된 파이프라인이 없습니다." : null,
+      );
+      setIsFetchingProjectDetail(false);
+      return;
+    }
 
     try {
       const detail = await fetchProjectDetail(project.id);
@@ -1714,11 +1408,46 @@ export default function App() {
     setIsFetchingProjectPipelines(true);
     setProjectPipelineEmptyMessage(null);
 
+    if (IS_DEMO_MODE) {
+      const categories = getDemoPipelineCategories(activeProjectId);
+
+      if (!categories.includes(category)) {
+        const track = getTrackByPipelineCategory(category);
+        resetTrackViewState(track);
+        setTrackFeatures(track, []);
+        setPipelineMetaForTrack(track, initialPipelineTrackMeta(category));
+        setProjectPipelineEmptyMessage("생성된 파이프라인이 없습니다.");
+        setIsFetchingProjectPipelines(false);
+        pushToast("생성된 파이프라인이 없습니다.", "warning");
+        return;
+      }
+
+      const pipeline = cloneDemoPipeline({
+        category,
+        projectId: activeProjectId,
+      });
+      const track = getTrackByPipelineCategory(category);
+      resetTrackViewState(track);
+      setTrackFeatures(track, mapDemoPipelineToFeatures(pipeline));
+      setPipelineMetaForTrack(track, {
+        category,
+        pipeId: pipeline.pipeId,
+        githubRepoUrl: pipeline.githubRepoUrl,
+      });
+      if (isPm) {
+        setPmSelectedTrack(track);
+      }
+      setProjectWorkspaceSectionStep("canvas");
+      setActiveTab("pipeline");
+      setIsFetchingProjectPipelines(false);
+      return;
+    }
+
     try {
       const pipeline = await fetchProjectPipelines(activeProjectId, category);
       if (!pipeline) {
         const track = getTrackByPipelineCategory(category);
-        resetTrackCollaborationState(track);
+        resetTrackViewState(track);
         setTrackFeatures(track, []);
         setPipelineMetaForTrack(track, initialPipelineTrackMeta(category));
         setProjectPipelineEmptyMessage("생성된 파이프라인이 없습니다.");
@@ -1727,7 +1456,7 @@ export default function App() {
       }
 
       const track = getTrackByPipelineCategory(category);
-      resetTrackCollaborationState(track);
+      resetTrackViewState(track);
       setTrackFeatures(
         track,
         mapGeneratedFeatsToFeatures(pipeline.feats, pipeline.pipeId),
@@ -1783,6 +1512,39 @@ export default function App() {
     }
 
     setIsUpdatingProject(true);
+
+    if (IS_DEMO_MODE) {
+      const updatedProject: DemoProject = {
+        id: activeProjectId,
+        name: params.name.trim(),
+        description: params.description.trim(),
+        creatorId: selectedDemoProject?.creatorId,
+        creatorNickname: selectedDemoProject?.creatorNickname,
+        createdAt: selectedDemoProject?.createdAt,
+        updatedAt: new Date().toISOString(),
+      };
+
+      setDemoProjects((prev) =>
+        prev.map((project) =>
+          project.id === updatedProject.id ? updatedProject : project,
+        ),
+      );
+      setSelectedDemoProject(updatedProject);
+      setSelectedProjectDetail((prev) =>
+        prev && prev.projectId === updatedProject.id
+          ? {
+              ...prev,
+              projectName: updatedProject.name,
+              projectDescription: updatedProject.description,
+            }
+          : prev,
+      );
+      syncActiveProject(updatedProject);
+      setIsUpdatingProject(false);
+      pushToast("프로젝트 정보를 수정했습니다.", "success");
+      return;
+    }
+
     try {
       const response = await updateProject(activeProjectId, {
         name: params.name.trim(),
@@ -1874,6 +1636,22 @@ export default function App() {
 
     setIsSearchingInviteUser(true);
 
+    if (IS_DEMO_MODE) {
+      const user = {
+        id: normalizedNickname.includes("백") ? 3 : 2,
+        username: normalizedNickname,
+        nickname: normalizedNickname,
+        email: `${normalizedNickname}@fithub.demo`,
+        jobRole: normalizedNickname.includes("백")
+          ? ("BACKEND" as const)
+          : ("FRONTEND" as const),
+      };
+      setProjectInviteUser(user);
+      setIsSearchingInviteUser(false);
+      pushToast("데모 사용자를 찾았습니다.", "success");
+      return;
+    }
+
     try {
       const user = await fetchUserByNickname(normalizedNickname);
       setProjectInviteUser(user);
@@ -1909,6 +1687,39 @@ export default function App() {
 
     setIsInvitingProjectUser(true);
 
+    if (IS_DEMO_MODE) {
+      setSelectedProjectDetail((prev) => {
+        if (!prev) return prev;
+        const exists = prev.members.some(
+          (member) => member.nickname === normalizedNickname,
+        );
+        const members = exists
+          ? prev.members
+          : [
+              ...prev.members,
+              {
+                userId: projectInviteUser?.id ?? Date.now(),
+                nickname: normalizedNickname,
+              },
+            ];
+        return {
+          ...prev,
+          members,
+          memberCount: members.length,
+        };
+      });
+      setIsProjectInviteDialogOpen(false);
+      setProjectInviteNickname("");
+      setProjectInviteUser(null);
+      setIsInvitingProjectUser(false);
+      setProjectWorkspaceSectionStep("pipeline-form");
+      pushToast(
+        `"${projectName}" 프로젝트에 ${normalizedNickname}님을 초대했습니다.`,
+        "success",
+      );
+      return;
+    }
+
     try {
       const response = await inviteUserToProject(
         activeProjectId,
@@ -1941,7 +1752,7 @@ export default function App() {
   };
 
   const handleGeneratePmPipeline = async (params: {
-    file: File;
+    file: File | null;
     category: PipelineCategoryOption;
     techStack: string;
     requirements: string;
@@ -1963,25 +1774,83 @@ export default function App() {
         : [params.category];
 
     setIsGeneratingPipeline(true);
-    setGeneratingFileName(params.file.name);
+    setGeneratingFileName(params.file?.name ?? "Fithub 목업 PRD.pdf");
 
     for (const cat of requestedCategories) {
       const track: DevTrack = cat === "BE" ? "backend" : "frontend";
-      resetTrackCollaborationState(track);
+      resetTrackViewState(track);
       setTrackFeatures(track, []);
       setPipelineMetaForTrack(track, initialPipelineTrackMeta(cat));
     }
 
     pushToast(
       params.category === "ALL"
-        ? "FE · BE 파이프라인을 분석하고 있습니다."
-        : `${devTrackLabel[params.category === "BE" ? "backend" : "frontend"]} 파이프라인 PDF를 분석하고 있습니다.`,
+        ? IS_DEMO_MODE
+          ? "FE · BE 목업 파이프라인을 구성하고 있습니다."
+          : "FE · BE 파이프라인을 분석하고 있습니다."
+        : IS_DEMO_MODE
+          ? `${devTrackLabel[params.category === "BE" ? "backend" : "frontend"]} 목업 파이프라인을 구성하고 있습니다.`
+          : `${devTrackLabel[params.category === "BE" ? "backend" : "frontend"]} 파이프라인 PDF를 분석하고 있습니다.`,
       "info",
     );
 
     try {
+      if (IS_DEMO_MODE) {
+        await new Promise((resolve) => window.setTimeout(resolve, 650));
+        const nextCategories = [
+          ...new Set([
+            ...getDemoPipelineCategories(activeProjectId),
+            ...requestedCategories,
+          ]),
+        ];
+
+        applyDemoPipelinesToState(activeProjectId, nextCategories);
+        setDemoPipelines((prev) => {
+          const existing = prev.find((p) => p.projectId === activeProjectId);
+          if (existing) {
+            return prev.map((p) =>
+              p.projectId === activeProjectId
+                ? {
+                    ...p,
+                    categories: nextCategories,
+                  }
+                : p,
+            );
+          }
+          return [
+            ...prev,
+            { projectId: activeProjectId, categories: nextCategories },
+          ];
+        });
+        setProjectPipelineSummaries(
+          createDemoPipelineSummaries(activeProjectId, nextCategories),
+        );
+        setDemoAiRemainingCount((prev) => Math.max(0, prev - 1));
+        setAuthUser((prev) =>
+          prev?.role === "pm"
+            ? {
+                ...prev,
+                aiPipelineGenerationRemainingCount: Math.max(
+                  0,
+                  (prev.aiPipelineGenerationRemainingCount ?? 1) - 1,
+                ),
+              }
+            : prev,
+        );
+        setProjectPipelineEmptyMessage(null);
+        setProjectWorkspaceSectionStep("project-detail");
+        setActiveTab("pipeline");
+        pushToast(
+          params.category === "ALL"
+            ? "데모 FE · BE 파이프라인을 모두 생성했습니다."
+            : "데모 파이프라인을 생성했습니다. 프로젝트 상세에서 조회해 보세요.",
+          "success",
+        );
+        return;
+      }
+
       const response = await generateProjectPipeline({
-        file: params.file,
+        file: params.file as File,
         projectId: activeProjectId,
         category: params.category,
         techStack: params.techStack,
@@ -2092,6 +1961,12 @@ export default function App() {
       return;
     }
 
+    if (IS_DEMO_MODE) {
+      setIsFetchingProjects(false);
+      setHasFetchedProjects(true);
+      return;
+    }
+
     let isCancelled = false;
 
     const loadProjects = async () => {
@@ -2172,6 +2047,10 @@ export default function App() {
   }, [activeProjectId]);
 
   useEffect(() => {
+    if (IS_DEMO_MODE) {
+      return;
+    }
+
     if (
       !isPm ||
       activeTab !== "pipeline" ||
@@ -2197,515 +2076,27 @@ export default function App() {
     isPm,
   ]);
 
-  useEffect(() => {
-    setPipelineProposals((prev) =>
-      prev.map((proposal) => {
-        if (proposal.featureId === undefined || proposal.status !== "pending") {
-          return proposal;
-        }
-
-        const matchedFeature = features.find(
-          (feature) => feature.id === proposal.featureId,
-        );
-        if (!matchedFeature) return proposal;
-
-        const matchedTask = proposal.taskId
-          ? matchedFeature.tasks.find((task) => task.id === proposal.taskId)
-          : undefined;
-
-        return {
-          ...proposal,
-          featureName: matchedFeature.name,
-          taskTitle: matchedTask?.title,
-        };
-      }),
-    );
-  }, [features]);
-
-  const createPipelineProposal = ({
-    action,
-    featureId,
-    taskId,
-    proposedValue,
-    role = "pm",
-  }: {
-    action: PipelineProposalAction;
-    featureId?: number;
-    taskId?: string;
-    proposedValue?: string;
-    role?: "pm" | "dev-fe" | "dev-be";
-  }) => {
-    const nextValue = proposedValue?.trim();
-    if (proposalNeedsValue(action) && !nextValue) {
-      pushToast("제안 내용을 입력해 주세요.", "warning");
-      return;
-    }
-
-    const matchedFeature =
-      featureId === undefined
-        ? undefined
-        : features.find((feature) => feature.id === featureId);
-    const needsFeature =
-      action === "edit-feature" ||
-      action === "delete-feature" ||
-      action === "add-task" ||
-      action === "edit-task" ||
-      action === "delete-task";
-    if (needsFeature && !matchedFeature) {
-      pushToast("대상 기능을 찾을 수 없습니다.", "warning");
-      return;
-    }
-
-    const matchedTask =
-      taskId && matchedFeature
-        ? matchedFeature.tasks.find((task) => task.id === taskId)
-        : undefined;
-    const needsTask = action === "edit-task" || action === "delete-task";
-    if (needsTask && !matchedTask) {
-      pushToast("대상 세부작업을 찾을 수 없습니다.", "warning");
-      return;
-    }
-
-    const duplicatePendingProposal = pipelineProposals.find(
-      (proposal) =>
-        proposal.status === "pending" &&
-        proposal.action === action &&
-        (proposal.featureId ?? null) === (matchedFeature?.id ?? null) &&
-        (proposal.taskId ?? null) === (matchedTask?.id ?? null) &&
-        normalizeProposalValue(proposal.proposedValue) ===
-          normalizeProposalValue(nextValue),
-    );
-
-    if (duplicatePendingProposal) {
-      pushToast(
-        "같은 제안이 이미 대기 중입니다. 기존 제안 채팅에서 이어서 소통해 주세요.",
-        "warning",
-      );
-      return;
-    }
-
-    const nextProposal: PipelineProposal = {
-      id: createId(),
-      action,
-      featureId: matchedFeature?.id,
-      featureName: matchedFeature?.name,
-      taskId: matchedTask?.id,
-      taskTitle: matchedTask?.title,
-      proposedValue: nextValue,
-      messages: [
-        createQuestionMessage(
-          role,
-          buildPipelineProposalIntroMessage({
-            action,
-            featureName: matchedFeature?.name,
-            taskTitle: matchedTask?.title,
-            proposedValue: nextValue,
-          }),
-        ),
-      ],
-      createdAt: getNowTimeLabel(),
-      status: "pending",
-      pmConfirmed: false,
-      devConfirmed: false,
-    };
-
-    setPipelineProposals((prev) => [nextProposal, ...prev]);
-    pushToast(
-      `${devTrackLabel[activeTrack]} 기능 제안을 등록했습니다.`,
-      "success",
-    );
-  };
-
-  const addPipelineProposalMessage = (
-    proposalId: string,
-    role: "pm" | "dev-fe" | "dev-be",
-    content: string,
-  ) => {
-    const trimmed = content.trim();
-    if (!trimmed) {
-      pushToast("메시지를 입력해 주세요.", "warning");
-      return;
-    }
-
-    const targetProposal = pipelineProposals.find(
-      (proposal) => proposal.id === proposalId,
-    );
-    if (!targetProposal || targetProposal.status !== "pending") {
-      pushToast("현재 제안에는 메시지를 추가할 수 없습니다.", "warning");
-      return;
-    }
-
-    const fingerprint = `${proposalId}|proposal|${role}|${trimmed}`;
-    const now = Date.now();
-    const last = lastMessageFingerprintRef.current;
-    if (last && last.key === fingerprint && now - last.at < 800) {
-      pushToast("동일 메시지 중복 전송이 방지되었습니다.", "info");
-      return;
-    }
-    lastMessageFingerprintRef.current = { key: fingerprint, at: now };
-
-    setPipelineProposals((prev) =>
-      prev.map((proposal) => {
-        if (proposal.id !== proposalId) return proposal;
-        if (proposal.status !== "pending") return proposal;
-
-        return {
-          ...proposal,
-          messages: [
-            ...proposal.messages,
-            createQuestionMessage(role, trimmed),
-          ],
-          pmConfirmed: false,
-          devConfirmed: false,
-          resultMessage: undefined,
-        };
-      }),
-    );
-    pushToast("제안 채팅 메시지를 보냈습니다.", "success");
-  };
-
-  const updatePipelineProposalMessage = (
-    proposalId: string,
-    messageId: string,
-    role: "pm" | "dev-fe" | "dev-be",
-    content: string,
-  ) => {
-    const trimmed = content.trim();
-    if (!trimmed) {
-      pushToast("빈 메시지로 수정할 수 없습니다.", "warning");
-      return;
-    }
-
-    const targetProposal = pipelineProposals.find(
-      (proposal) => proposal.id === proposalId,
-    );
-    const targetMessage = targetProposal?.messages.find(
-      (message) => message.id === messageId && message.role === role,
-    );
-    if (
-      !targetProposal ||
-      targetProposal.status !== "pending" ||
-      !targetMessage
-    ) {
-      pushToast("수정 가능한 제안 메시지를 찾을 수 없습니다.", "warning");
-      return;
-    }
-
-    setPipelineProposals((prev) =>
-      prev.map((proposal) => {
-        if (proposal.id !== proposalId) return proposal;
-        if (proposal.status !== "pending") return proposal;
-
-        return {
-          ...proposal,
-          messages: proposal.messages.map((message) =>
-            message.id === messageId && message.role === role
-              ? { ...message, content: trimmed }
-              : message,
-          ),
-          pmConfirmed: false,
-          devConfirmed: false,
-          resultMessage: undefined,
-        };
-      }),
-    );
-    pushToast("제안 메시지를 수정했습니다.", "success");
-  };
-
-  const deletePipelineProposalMessage = (
-    proposalId: string,
-    messageId: string,
-    role: "pm" | "dev-fe" | "dev-be",
-  ) => {
-    const targetProposal = pipelineProposals.find(
-      (proposal) => proposal.id === proposalId,
-    );
-    const targetMessage = targetProposal?.messages.find(
-      (message) => message.id === messageId && message.role === role,
-    );
-    if (
-      !targetProposal ||
-      targetProposal.status !== "pending" ||
-      !targetMessage
-    ) {
-      pushToast("삭제 가능한 제안 메시지를 찾을 수 없습니다.", "warning");
-      return;
-    }
-
-    setPipelineProposals((prev) =>
-      prev.map((proposal) => {
-        if (proposal.id !== proposalId) return proposal;
-        if (proposal.status !== "pending") return proposal;
-
-        const nextMessages = proposal.messages.filter(
-          (message) => !(message.id === messageId && message.role === role),
-        );
-
-        return {
-          ...proposal,
-          messages: nextMessages,
-          pmConfirmed: false,
-          devConfirmed: false,
-          resultMessage: undefined,
-        };
-      }),
-    );
-    pushToast("제안 메시지를 삭제했습니다.", "info");
-  };
-
-  const updatePipelineProposalValue = (
-    proposalId: string,
-    proposedValue: string,
-  ) => {
-    const trimmed = proposedValue.trim();
-
-    const targetProposal = pipelineProposals.find(
-      (proposal) => proposal.id === proposalId,
-    );
-    if (!targetProposal || targetProposal.status !== "pending") {
-      pushToast("최종안을 업데이트할 수 없는 제안입니다.", "warning");
-      return;
-    }
-    if (proposalNeedsValue(targetProposal.action) && !trimmed) {
-      pushToast("최종안이 비어 있어 업데이트할 수 없습니다.", "warning");
-      return;
-    }
-
-    const nextValue = trimmed || undefined;
-    if (targetProposal.proposedValue === nextValue) {
-      pushToast("변경된 최종안이 없습니다.", "info");
-      return;
-    }
-
-    setPipelineProposals((prev) =>
-      prev.map((proposal) => {
-        if (proposal.id !== proposalId) return proposal;
-        if (proposal.status !== "pending") return proposal;
-        if (proposalNeedsValue(proposal.action) && !trimmed) return proposal;
-
-        return {
-          ...proposal,
-          proposedValue: nextValue,
-          pmConfirmed: false,
-          devConfirmed: false,
-          resultMessage: undefined,
-        };
-      }),
-    );
-    pushToast("제안 최종안을 업데이트했습니다.", "success");
-  };
-
-  const togglePipelineProposalConfirm = (
-    proposalId: string,
-    role: "pm" | "dev-fe" | "dev-be",
-  ) => {
-    const targetProposal = pipelineProposals.find(
-      (proposal) => proposal.id === proposalId && proposal.status === "pending",
-    );
-    if (!targetProposal) {
-      pushToast("확인할 제안을 찾을 수 없습니다.", "warning");
-      return;
-    }
-
-    const nextProposal = {
-      ...targetProposal,
-      pmConfirmed:
-        role === "pm"
-          ? !targetProposal.pmConfirmed
-          : targetProposal.pmConfirmed,
-      devConfirmed:
-        role !== "pm"
-          ? !targetProposal.devConfirmed
-          : targetProposal.devConfirmed,
-      resultMessage: undefined,
-    };
-
-    if (!(nextProposal.pmConfirmed && nextProposal.devConfirmed)) {
-      setPipelineProposals((prev) =>
-        prev.map((proposal) =>
-          proposal.id === proposalId && proposal.status === "pending"
-            ? nextProposal
-            : proposal,
-        ),
-      );
-      if (role === "pm") {
-        pushToast(
-          nextProposal.pmConfirmed
-            ? "기획 확인을 완료했습니다."
-            : "기획 확인을 취소했습니다.",
-          "info",
-        );
-      } else {
-        pushToast(
-          nextProposal.devConfirmed
-            ? "개발 확인을 완료했습니다."
-            : "개발 확인을 취소했습니다.",
-          "info",
-        );
-      }
-      return;
-    }
-
-    if (
-      proposalNeedsValue(nextProposal.action) &&
-      !nextProposal.proposedValue
-    ) {
-      setPipelineProposals((prev) =>
-        prev.map((proposal) =>
-          proposal.id === proposalId && proposal.status === "pending"
-            ? {
-                ...nextProposal,
-                pmConfirmed: false,
-                devConfirmed: false,
-                resultMessage: "최종안 값이 비어 있어 확정할 수 없습니다.",
-              }
-            : proposal,
-        ),
-      );
-      pushToast("최종안 값이 비어 있어 확정할 수 없습니다.", "warning");
-      return;
-    }
-
-    const applyResult = applyPipelineProposal(features, nextProposal);
-    if (applyResult.applied) {
-      setFeatures(applyResult.nextFeatures);
-    }
-
-    setPipelineProposals((prev) =>
-      prev.map((proposal) =>
-        proposal.id === proposalId && proposal.status === "pending"
-          ? {
-              ...nextProposal,
-              status: applyResult.applied ? "approved" : "rejected",
-              closedAt: getNowTimeLabel(),
-              resultMessage: applyResult.resultMessage,
-            }
-          : proposal,
-      ),
-    );
-
-    pushToast(
-      applyResult.resultMessage,
-      applyResult.applied ? "success" : "warning",
-    );
-  };
-
-  const togglePipelineProposalConfirmByPm = (proposalId: string) => {
-    togglePipelineProposalConfirm(proposalId, "pm");
-  };
-
-  const togglePipelineProposalConfirmByDev = (proposalId: string) => {
-    togglePipelineProposalConfirm(
-      proposalId,
-      authUser?.role === "dev-be" ? "dev-be" : "dev-fe",
-    );
-  };
-
-  const toggleDevTaskCheck = async (featureId: number, taskId: string) => {
-    const matchedFeature = features.find((feature) => feature.id === featureId);
-    const matchedTask = matchedFeature?.tasks.find(
-      (task) => task.id === taskId,
-    );
-    if (!matchedTask) {
-      pushToast("개발 체크할 세부작업을 찾을 수 없습니다.", "warning");
-      return;
-    }
-
-    const nextDevChecked = !matchedTask.devChecked;
-
-    if (matchedTask.pipelineStepId) {
-      try {
-        await updatePipelineStep(matchedTask.pipelineStepId, {
-          isCompleted: nextDevChecked,
-        });
-      } catch (error) {
-        console.error(error);
-        pushToast(
-          error instanceof Error
-            ? error.message
-            : "Pipeline step 상태 업데이트에 실패했습니다.",
-          "warning",
-        );
-        return;
-      }
-    }
-
-    setFeatures((prev) =>
-      prev.map((feature) => {
-        if (feature.id !== featureId) return feature;
-
-        return {
-          ...feature,
-          tasks: feature.tasks.map((task) => {
-            if (task.id !== taskId) return task;
-
-            const nextDevChecked = !task.devChecked;
-            const nextPmConfirmed = nextDevChecked ? task.pmConfirmed : false;
-            return {
-              ...task,
-              completed: nextDevChecked && nextPmConfirmed,
-              devChecked: nextDevChecked,
-              pmConfirmed: nextPmConfirmed,
-            };
-          }),
-        };
-      }),
-    );
-
-    pushToast(
-      nextDevChecked
-        ? "세부작업에 개발 체크를 등록했습니다."
-        : "세부작업 개발 체크를 해제했습니다.",
-      "info",
-    );
-  };
-
-  const togglePmTaskConfirm = (featureId: number, taskId: string) => {
-    const matchedFeature = features.find((feature) => feature.id === featureId);
-    const matchedTask = matchedFeature?.tasks.find(
-      (task) => task.id === taskId,
-    );
-    if (!matchedTask) {
-      pushToast("PM 확인할 세부작업을 찾을 수 없습니다.", "warning");
-      return;
-    }
-    if (!matchedTask.devChecked) {
-      pushToast("개발 체크가 먼저 완료되어야 PM 확인이 가능합니다.", "warning");
-      return;
-    }
-
-    const nextPmConfirmed = !matchedTask.pmConfirmed;
-
-    setFeatures((prev) =>
-      prev.map((feature) => {
-        if (feature.id !== featureId) return feature;
-
-        return {
-          ...feature,
-          tasks: feature.tasks.map((task) => {
-            if (task.id !== taskId) return task;
-            if (!task.devChecked) return task;
-
-            const nextPmConfirmed = !task.pmConfirmed;
-            return {
-              ...task,
-              completed: task.devChecked && nextPmConfirmed,
-              pmConfirmed: nextPmConfirmed,
-            };
-          }),
-        };
-      }),
-    );
-
-    pushToast(
-      nextPmConfirmed
-        ? "세부작업 PM 확인을 완료했습니다."
-        : "세부작업 PM 확인을 취소했습니다.",
-      "info",
-    );
-  };
-
   if (!authUser) {
+    if (IS_DEMO_MODE) {
+      if (!hasEnteredLanding) {
+        return <LandingScreen onComplete={() => setHasEnteredLanding(true)} />;
+      }
+
+      return (
+        <RoleSelectScreen
+          onSelectRole={(role) => {
+            if (role === "pm") {
+              startDemoExperience();
+            }
+          }}
+          onOpenTutorial={() => {
+            setOnboardingRole(null);
+            setHasEnteredLanding(false);
+          }}
+        />
+      );
+    }
+
     if (!hasEnteredLanding && !onboardingRole) {
       return <LandingScreen onComplete={() => setHasEnteredLanding(true)} />;
     }
@@ -2827,7 +2218,7 @@ export default function App() {
               onClose={handleCloseProjectInviteDialog}
             />
 
-            {/* Project landing: PM and developers both choose a project first */}
+            {/* PM demo workspace */}
             {shouldShowProjectLanding && (
               <ProjectWorkspaceSection
                 step={
@@ -2844,6 +2235,7 @@ export default function App() {
                 isFetchingProjectDetail={isFetchingProjectDetail}
                 isFetchingProjectPipelines={isFetchingProjectPipelines}
                 isUpdatingProject={isUpdatingProject}
+                isDemoMode={IS_DEMO_MODE}
                 deletingProjectId={
                   isDeletingProject ? (projectPendingDelete?.id ?? null) : null
                 }
@@ -2904,27 +2296,41 @@ export default function App() {
                   <div className="flex shrink-0 items-center gap-2 border-b border-gray-100 bg-white px-5 py-2">
                     <button
                       onClick={() =>
-                        setProjectWorkspaceSectionStep("project-list")
+                        setProjectWorkspaceSectionStep("project-detail")
                       }
                       className="flex items-center gap-1 text-xs text-gray-400 transition-colors hover:text-gray-700"
                     >
-                      <ChevronLeft className="h-3 w-3" /> 프로젝트 목록
+                      <ChevronLeft className="h-3 w-3" /> 프로젝트 상세
                     </button>
                     <span className="text-xs text-gray-200">/</span>
                     <span className="text-xs font-medium text-gray-900">
                       {selectedDemoProject.name}
                     </span>
-                    {isPm && (
-                      <>
+                    <div className="ml-auto flex items-center gap-2">
+                      {isPm && (
                         <button
                           type="button"
                           onClick={handleOpenProjectInviteDialog}
-                          className="ml-auto inline-flex items-center gap-1 text-xs font-semibold text-gray-500 transition-colors hover:text-gray-900"
+                          className="inline-flex items-center gap-1 text-xs font-semibold text-gray-500 transition-colors hover:text-gray-900"
                         >
                           <UserPlus className="h-3 w-3" /> 팀원 초대
                         </button>
-                      </>
-                    )}
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab("settings")}
+                        className="rounded-full border border-gray-200 px-2.5 py-1 text-xs font-semibold text-gray-500 transition-colors hover:border-gray-900 hover:text-gray-900"
+                      >
+                        내 정보 보기
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab("review")}
+                        className="rounded-full bg-gray-900 px-2.5 py-1 text-xs font-semibold text-white transition-colors hover:bg-gray-700"
+                      >
+                        리뷰 쓰기
+                      </button>
+                    </div>
                   </div>
                 )}
                 <div className="flex-1 overflow-hidden">
@@ -2933,7 +2339,6 @@ export default function App() {
                     features={features}
                     cardPositions={cardPositions}
                     onUpdateCardPosition={updateCardPosition}
-                    pipelineProposals={pipelineProposals}
                     isGeneratingPipeline={
                       isGeneratingPipeline || isFetchingProjectPipelines
                     }
@@ -2942,103 +2347,6 @@ export default function App() {
                         ? "프로젝트 파이프라인"
                         : generatingFileName
                     }
-                    // PM actions
-                    onEditFeature={(featureId, newName) =>
-                      createPipelineProposal({
-                        action: "edit-feature",
-                        featureId,
-                        proposedValue: newName,
-                      })
-                    }
-                    onDeleteFeature={(featureId) =>
-                      createPipelineProposal({
-                        action: "delete-feature",
-                        featureId,
-                      })
-                    }
-                    onAddTask={(featureId, taskTitle) =>
-                      createPipelineProposal({
-                        action: "add-task",
-                        featureId,
-                        proposedValue: taskTitle,
-                      })
-                    }
-                    onEditTask={(featureId, taskId, newTitle) =>
-                      createPipelineProposal({
-                        action: "edit-task",
-                        featureId,
-                        taskId,
-                        proposedValue: newTitle,
-                      })
-                    }
-                    onDeleteTask={(featureId, taskId) =>
-                      createPipelineProposal({
-                        action: "delete-task",
-                        featureId,
-                        taskId,
-                      })
-                    }
-                    onTogglePmTaskConfirm={togglePmTaskConfirm}
-                    onAddNewFeature={(featureName) =>
-                      createPipelineProposal({
-                        action: "add-feature",
-                        proposedValue: featureName,
-                      })
-                    }
-                    // Dev actions
-                    onToggleDevTaskCheck={(featureId, taskId) => {
-                      void toggleDevTaskCheck(featureId, taskId);
-                    }}
-                    onPublishTaskToGithubIssue={(featureId, taskId) => {
-                      void publishTaskToGithubIssue(featureId, taskId);
-                    }}
-                    onCreateTaskProposal={(featureId, proposedValue) =>
-                      createPipelineProposal({
-                        action: "add-task",
-                        featureId,
-                        proposedValue,
-                        role: resolvedRole,
-                      })
-                    }
-                    pipelineId={isDevUser ? activePipelineMeta.pipeId : null}
-                    githubRepoUrl={
-                      isDevUser ? activePipelineMeta.githubRepoUrl : null
-                    }
-                    onPipelineGithubConnected={handlePipelineGithubConnected}
-                    onPushToast={pushToast}
-                    // Proposal panel
-                    onAddPipelineProposalMessage={(proposalId, content) =>
-                      addPipelineProposalMessage(
-                        proposalId,
-                        isPm ? "pm" : resolvedRole,
-                        content,
-                      )
-                    }
-                    onUpdatePipelineProposalMessage={(
-                      proposalId,
-                      messageId,
-                      content,
-                    ) =>
-                      updatePipelineProposalMessage(
-                        proposalId,
-                        messageId,
-                        isPm ? "pm" : resolvedRole,
-                        content,
-                      )
-                    }
-                    onDeletePipelineProposalMessage={(proposalId, messageId) =>
-                      deletePipelineProposalMessage(
-                        proposalId,
-                        messageId,
-                        isPm ? "pm" : resolvedRole,
-                      )
-                    }
-                    onUpdatePipelineProposalValue={updatePipelineProposalValue}
-                    onTogglePipelineProposalConfirm={
-                      isPm
-                        ? togglePipelineProposalConfirmByPm
-                        : togglePipelineProposalConfirmByDev
-                    }
                   />
                 </div>
               </div>
@@ -3046,16 +2354,18 @@ export default function App() {
           </div>
         )}
 
-        {/* Questions tab */}
-        {activeTab === "questions" && (
+        {activeTab === "settings" && (
           <div className="flex-1 overflow-y-auto bg-[#F6F6F4] p-6">
-            <FeatureQuestionComingSoon />
+            <MyInfoSection
+              authUser={authUser}
+              onGoToReview={() => setActiveTab("review")}
+            />
           </div>
         )}
 
-        {activeTab === "settings" && (
+        {activeTab === "review" && (
           <div className="flex-1 overflow-y-auto bg-[#F6F6F4] p-6">
-            <MyInfoSection authUser={authUser} />
+            <DemoReviewSection />
           </div>
         )}
       </div>

@@ -45,43 +45,43 @@ type PricingPlan = {
 
 const workflowSteps: WorkflowStep[] = [
   {
-    eyebrow: "01 · PRD PDF",
-    title: "서비스 기획서 업로드",
+    eyebrow: "01 · Role",
+    title: "기획자 체험 시작",
     description:
-      "PM이 작성한 PRD PDF를 기반으로 서비스 요구사항과 기능 단위를 분석합니다.",
+      "기획자 직군을 선택하고 서버 없이 동작하는 PM 데모 세션으로 진입합니다.",
     Icon: FileText,
   },
   {
-    eyebrow: "02 · AI Pipeline",
-    title: "FE/BE 파이프라인 생성",
+    eyebrow: "02 · Project",
+    title: "프로젝트와 사용자 초대",
     description:
-      "AI가 요구사항을 Frontend와 Backend 작업 흐름으로 나누어 파이프라인을 생성합니다.",
-    Icon: GitBranch,
+      "프로젝트를 직접 만들고 목업 사용자를 초대한 뒤 파이프라인 생성 단계로 이동합니다.",
+    Icon: Users,
   },
   {
-    eyebrow: "03 · Shared Workspace",
-    title: "실시간 파이프라인 공유",
+    eyebrow: "03 · Mock PRD",
+    title: "FE/BE 파이프라인 조회",
     description:
-      "기획자와 개발자가 같은 파이프라인을 기준으로 기능과 세부작업을 함께 확인합니다.",
-    Icon: Users,
+      "PRD 목업과 입력한 요청 내용으로 고정 FE/BE 파이프라인 결과를 조회합니다.",
+    Icon: GitBranch,
   },
 ];
 
 const betaFeatures: BetaFeature[] = [
   {
-    title: "PRD PDF 기반 파이프라인 생성",
+    title: "PRD 목업 기반 파이프라인 생성",
     description:
-      "서비스 기획 문서를 업로드하면 AI가 핵심 기능과 구현 단위를 분석해 파이프라인으로 정리합니다.",
+      "PDF 업로드 없이 목업 PRD를 사용해 체험판 생성 흐름을 바로 확인할 수 있습니다.",
   },
   {
     title: "Frontend / Backend 작업 분리",
     description:
-      "하나의 PRD에서 프론트엔드와 백엔드 작업을 분리해 각 역할에 맞는 개발 흐름을 확인할 수 있습니다.",
+      "하나의 요청에서 프론트엔드와 백엔드 작업 결과를 분리해 조회할 수 있습니다.",
   },
   {
-    title: "기획자·개발자 간 실시간 공유",
+    title: "프로젝트 생성과 사용자 초대",
     description:
-      "생성된 파이프라인을 기준으로 PM과 개발자가 같은 화면에서 작업 내용을 확인하고 소통할 수 있습니다.",
+      "프로젝트 생성, 목업 사용자 초대, 파이프라인 생성까지 PM 체험 흐름을 순서대로 진행합니다.",
   },
 ];
 
@@ -156,7 +156,7 @@ export default function LandingScreen({ onComplete }: LandingScreenProps) {
               작동 방식
             </a>
             <a href="#pricing" className="hover:text-neutral-950">
-              요금 안내
+              체험 범위
             </a>
             <a href="#preview" className="hover:text-neutral-950">
               미리보기
@@ -167,7 +167,7 @@ export default function LandingScreen({ onComplete }: LandingScreenProps) {
             onClick={onComplete}
             className="inline-flex items-center gap-2 rounded-full bg-neutral-950 px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-neutral-800"
           >
-            무료로 체험해보기
+            기획자로 체험하기
             <ArrowRight className="h-3.5 w-3.5" />
           </button>
         </div>
@@ -178,29 +178,28 @@ export default function LandingScreen({ onComplete }: LandingScreenProps) {
         <div className="auth-fade-up">
           <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-600 shadow-sm">
             <Sparkles className="h-3.5 w-3.5 text-neutral-900" />
-            Fithub Beta
+            Fithub Demo
           </div>
 
           <h1 className="max-w-3xl text-4xl font-black tracking-tight text-neutral-950 md:text-6xl">
-            PRD를 분석해
+            서버 없이 먼저
             <br />
-            FE/BE 파이프라인으로.
+            Fithub을 체험하세요.
           </h1>
 
           <p className="mt-6 max-w-xl text-base leading-8 text-neutral-600">
-            Fithub은 서비스 기획 PRD PDF를 분석해 Frontend와 Backend
-            파이프라인을 생성하고, 기획자와 개발자가 같은 작업 흐름을 실시간으로
-            공유할 수 있도록 돕는 베타 서비스입니다.
+            현재 서버 비용 절감을 위해 백엔드는 잠시 닫혀 있습니다. 그동안에도
+            Fithub의 기획자 화면, 프로젝트 생성, 사용자 초대, FE/BE 파이프라인
+            조회를 목업 데이터로 체험할 수 있습니다.
           </p>
 
           <div className="mt-5 rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
             <p className="text-sm font-semibold text-neutral-900">
-              현재 Free 베타로 체험 가능
+              서버 재오픈 전 체험판
             </p>
             <p className="mt-1 text-sm leading-6 text-neutral-500">
-              지금은 Free 플랜으로 월 2회의 파이프라인 생성 테스트와 프로젝트
-              1개 생성을 제공합니다. PRD PDF 분석, Frontend/Backend 파이프라인
-              생성, 기획자·개발자 간 실시간 공유 흐름을 먼저 체험할 수 있습니다.
+              로그인 없이 직군 선택 화면을 거쳐 기획자 계정으로 시작합니다.
+              프로젝트 생성부터 리뷰 작성까지 7단계 흐름으로 구성되어 있습니다.
             </p>
           </div>
 
@@ -209,7 +208,7 @@ export default function LandingScreen({ onComplete }: LandingScreenProps) {
               onClick={onComplete}
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-neutral-950 px-6 py-3 text-sm font-bold text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-neutral-800"
             >
-              무료로 체험해보기
+              기획자로 체험하기
               <ArrowRight className="h-4 w-4" />
             </button>
 
@@ -224,15 +223,15 @@ export default function LandingScreen({ onComplete }: LandingScreenProps) {
           <div className="mt-10 grid max-w-lg grid-cols-3 gap-3">
             <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
               <p className="text-xl font-black text-neutral-950">PRD</p>
-              <p className="mt-1 text-xs text-neutral-500">PDF 분석</p>
+              <p className="mt-1 text-xs text-neutral-500">목업 사용</p>
             </div>
             <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
               <p className="text-xl font-black text-neutral-950">FE/BE</p>
               <p className="mt-1 text-xs text-neutral-500">작업 분리</p>
             </div>
             <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
-              <p className="text-xl font-black text-neutral-950">Share</p>
-              <p className="mt-1 text-xs text-neutral-500">실시간 공유</p>
+              <p className="text-xl font-black text-neutral-950">Review</p>
+              <p className="mt-1 text-xs text-neutral-500">의견 남기기</p>
             </div>
           </div>
         </div>
@@ -252,7 +251,7 @@ export default function LandingScreen({ onComplete }: LandingScreenProps) {
                 />
                 <div>
                   <p className="text-xs font-semibold text-neutral-400">
-                    Beta Pipeline
+                    Demo Pipeline
                   </p>
                   <h2 className="mt-1 text-lg font-bold">
                     서비스 기획 PRD.pdf
@@ -279,7 +278,7 @@ export default function LandingScreen({ onComplete }: LandingScreenProps) {
                     역할 선택 UI 구성
                   </div>
                   <div className="rounded-lg bg-white/10 px-3 py-2 text-xs text-neutral-200">
-                    무료 체험 CTA 연결
+                    기획자 체험 CTA 연결
                   </div>
                 </div>
               </div>
@@ -294,7 +293,7 @@ export default function LandingScreen({ onComplete }: LandingScreenProps) {
 
                 <div className="space-y-2">
                   <div className="rounded-lg bg-white/10 px-3 py-2 text-xs text-neutral-200">
-                    PRD PDF 업로드 처리
+                    PRD 목업 입력 처리
                   </div>
                   <div className="rounded-lg bg-white/10 px-3 py-2 text-xs text-neutral-200">
                     FE/BE 파이프라인 응답 구조화
@@ -305,11 +304,11 @@ export default function LandingScreen({ onComplete }: LandingScreenProps) {
               <div className="rounded-2xl bg-white p-4 text-neutral-950">
                 <div className="mb-2 flex items-center gap-2">
                   <MessageSquare className="h-4 w-4" />
-                  <p className="text-sm font-bold">실시간 공유</p>
+                  <p className="text-sm font-bold">리뷰 수집</p>
                 </div>
                 <p className="text-xs leading-relaxed text-neutral-500">
-                  기획자는 생성된 파이프라인을 확인하고, 개발자는 같은 작업
-                  단위를 기준으로 구현 범위를 검토합니다.
+                  체험을 마친 뒤 내 정보와 리뷰 탭으로 이동해 사용 의견을
+                  남길 수 있습니다.
                 </p>
               </div>
             </div>
@@ -396,16 +395,15 @@ export default function LandingScreen({ onComplete }: LandingScreenProps) {
           <div className="mb-10 flex flex-col justify-between gap-5 md:flex-row md:items-end">
             <div className="max-w-2xl">
               <p className="text-xs font-bold uppercase tracking-[0.22em] text-neutral-400">
-                Pricing Preview
+                Demo Scope
               </p>
               <h2 className="mt-3 text-3xl font-black tracking-tight text-neutral-950 md:text-4xl">
-                현재는 Free 베타로 먼저 체험할 수 있습니다.
+                현재는 서버 없이 핵심 흐름을 먼저 체험할 수 있습니다.
               </h2>
               <p className="mt-4 text-sm leading-7 text-neutral-600">
                 추후 업데이트에서는 사용량과 프로젝트 생성 수에 따라 Free, Plus,
-                Pro, Max 플랜을 제공할 예정입니다. 현재 베타에서는 Free 플랜
-                기준으로 월 2회의 파이프라인 생성 테스트와 프로젝트 1개 생성을
-                사용할 수 있습니다.
+                Pro, Max 플랜을 제공할 예정입니다. 지금 체험판에서는 서버 호출
+                없이 목업 프로젝트와 FE/BE 파이프라인을 확인할 수 있습니다.
               </p>
             </div>
 
@@ -511,37 +509,36 @@ export default function LandingScreen({ onComplete }: LandingScreenProps) {
               Current Beta Scope
             </p>
             <h2 className="mt-3 text-2xl font-black tracking-tight text-neutral-950">
-              베타에서는 파이프라인 생성과 공유에 집중합니다.
+              베타에서는 PM 체험 플로우에 집중합니다.
             </h2>
             <p className="mt-4 text-sm leading-7 text-neutral-600">
               현재 버전은 전체 프로젝트 관리 도구가 아니라, PRD 기반 파이프라인
-              생성과 기획자·개발자 간 공유 흐름을 검증하기 위한 베타입니다.
+              생성과 기획자 화면의 핵심 흐름을 검증하기 위한 베타입니다.
             </p>
           </div>
 
           <div className="rounded-[2rem] bg-neutral-950 p-8 text-white">
             <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs font-semibold text-neutral-300">
               <Users className="h-3.5 w-3.5" />
-              기획자와 개발자를 같은 흐름으로 연결
+              서버 없이도 기획자 흐름 먼저 체험
             </div>
 
             <h2 className="text-3xl font-black tracking-tight md:text-4xl">
               PRD 기반 파이프라인을
               <br />
-              지금 무료로 체험해보세요.
+              지금 서버 없이 체험해보세요.
             </h2>
 
             <p className="mt-4 max-w-xl text-sm leading-7 text-neutral-400">
-              현재는 Free 베타로 월 2회의 파이프라인 생성 테스트와 프로젝트 1개
-              생성을 제공합니다. PRD 기반 파이프라인 생성과 공유 흐름을 먼저
-              체험해보세요.
+              지금은 서버 없이도 PRD 기반 파이프라인 생성과 공유 흐름을 먼저
+              체험할 수 있습니다. 마지막 리뷰 탭에서 의견도 남겨주세요.
             </p>
 
             <button
               onClick={onComplete}
               className="mt-8 inline-flex items-center justify-center gap-2 rounded-xl bg-white px-6 py-3 text-sm font-bold text-neutral-950 transition-colors hover:bg-neutral-200"
             >
-              무료로 체험해보기
+              기획자로 체험하기
               <ArrowRight className="h-4 w-4" />
             </button>
           </div>
